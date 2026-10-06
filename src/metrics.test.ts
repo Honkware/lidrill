@@ -64,7 +64,9 @@ describe('streak', () => {
 
 describe('openingTable', () => {
   it('groups by family', () => {
-    const rows = openingTable([hung, { ...hung, result: 'win', opening: 'Italian Game: Two Knights Defense' }])
-    expect(rows).toEqual([{ family: 'Italian Game', games: 2, win: 1, draw: 0, loss: 1, avgWorstCp: 320 }])
+    const other = { ...hung, id: 'lichess:y', result: 'win' as const, opening: 'Italian Game: Two Knights Defense' }
+    const journal = new Map([[hung.id, { gameId: hung.id, at: 1, opening: '', hung: { ply: 9, san: 'Ng5', swingCp: 320 }, confirmed: false }]])
+    const rows = openingTable([hung, other], journal)
+    expect(rows).toEqual([{ family: 'Italian Game', games: 2, win: 1, draw: 0, loss: 1, analyzed: 1, hangs: 1 }])
   })
 })

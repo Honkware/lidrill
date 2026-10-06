@@ -137,12 +137,12 @@ export function calibrate(profile: Profile, reviews: Review[], now: Date): Profi
   }
 }
 
-// For the sparkline: zero-hang share of each week's games, oldest week first
-export function weeklyZeroHang(journal: JournalEntry[], now: Date, weeks = 8): (number | undefined)[] {
+// For the weekly bars: games and zero-hang games per week, oldest week first
+export function weeklyZeroHang(journal: JournalEntry[], now: Date, weeks = 8): { games: number; clean: number }[] {
   return Array.from({ length: weeks }, (_, i) => {
     const to = +now - (weeks - 1 - i) * 7 * DAY
     const inWeek = journal.filter(j => j.at > to - 7 * DAY && j.at <= to)
-    return inWeek.length ? inWeek.filter(j => !j.hung).length / inWeek.length : undefined
+    return { games: inWeek.length, clean: inWeek.filter(j => !j.hung).length }
   })
 }
 

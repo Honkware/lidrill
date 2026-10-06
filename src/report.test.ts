@@ -68,6 +68,6 @@ describe('weeklyZeroHang', () => {
   it('buckets by week, newest last', () => {
     const e = (at: number, hang: boolean): JournalEntry => ({ gameId: String(at), at, opening: '', hung: hang ? { ply: 1, san: '', swingCp: 1 } : undefined, confirmed: false })
     const weeks = weeklyZeroHang([e(+now - DAY, false), e(+now - 2 * DAY, true), e(+now - 10 * DAY, false)], now, 3)
-    expect(weeks).toEqual([undefined, 1, 0.5])
+    expect(weeks).toEqual([{ games: 0, clean: 0 }, { games: 1, clean: 1 }, { games: 2, clean: 1 }])
   })
 })

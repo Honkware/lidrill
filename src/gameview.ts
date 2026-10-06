@@ -2,7 +2,8 @@ import { Chessground } from '@lichess-org/chessground'
 import type { Api } from '@lichess-org/chessground/api'
 import type { Key } from '@lichess-org/chessground/types'
 import { Chess } from 'chessops/chess'
-import { makeFen } from 'chessops/fen'
+import { makeFen, parseFen } from 'chessops/fen'
+import { makeSan } from 'chessops/san'
 import { parseUci } from 'chessops/util'
 import type { Game, JournalEntry, Puzzle } from './db'
 
@@ -58,6 +59,12 @@ export class GameView {
       check: this.checks[this.ply],
     })
     this.redraw()
+  }
+
+  // SAN of a UCI move in the position before `ply`
+  sanBefore(ply: number, uci: string): string {
+    const move = parseUci(uci)
+    return move ? makeSan(Chess.fromSetup(parseFen(this.fens[ply - 1]).unwrap()).unwrap(), move) : uci
   }
 
   // The player's mistakes and blunders, for "jump to" buttons

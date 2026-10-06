@@ -3,7 +3,7 @@ import type { Ctrl } from '../ctrl'
 import type { Practice, PracticeKind } from '../db'
 import { el } from '../el'
 import { CLEAR_AFTER } from '../practice'
-import { board, button, card, icon, pawns, topBar } from './ui'
+import { board, button, card, icon, moveInput, pawns, topBar } from './ui'
 
 const ABOUT: Record<PracticeKind, { title: string; text: string }> = {
   conversion: {
@@ -87,7 +87,10 @@ export function practiceView(ctrl: Ctrl): VNode {
             el('p', 'font-display text-xl', { class: { 'text-accent': run.state === 'won', 'text-bad': run.state === 'lost' } }, run.state === 'won' ? (p.kind === 'conversion' ? 'Converted' : 'Held') : 'Not this time'),
             el('div', 'flex gap-2', [button('Try again', () => ctrl.retryPractice()), button('All drills', () => ctrl.go('drills'), 'plain')]),
           ])
-        : el('p', 'text-sm text-dim', run.state === 'thinking' ? 'Stockfish is thinking…' : 'Your move.'),
+        : el('div', 'space-y-2', [
+            el('p', 'text-sm text-dim', run.state === 'thinking' ? 'Stockfish is thinking…' : 'Your move.'),
+            moveInput(t => run.typeMove(t)),
+          ]),
     ]),
   ])
 }

@@ -36,10 +36,10 @@ body {
   color: var(--color-fg);
 }
 
-@font-face { font-family: 'Red Hat Text'; font-weight: 400; src: url('/fonts/RedHatText-Regular.ttf'); font-display: swap; }
-@font-face { font-family: 'Red Hat Text'; font-weight: 500; src: url('/fonts/RedHatText-Medium.ttf'); font-display: swap; }
-@font-face { font-family: 'Red Hat Text'; font-weight: 700; src: url('/fonts/RedHatText-Bold.ttf'); font-display: swap; }
-@font-face { font-family: 'Red Hat Display'; font-weight: 700; src: url('/fonts/RedHatDisplay-Bold.ttf'); font-display: swap; }
+@font-face { font-family: 'Red Hat Text'; font-weight: 400; src: url('/fonts/RedHatText-Regular.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'Red Hat Text'; font-weight: 500; src: url('/fonts/RedHatText-Medium.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'Red Hat Text'; font-weight: 700; src: url('/fonts/RedHatText-Bold.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'Red Hat Display'; font-weight: 700; src: url('/fonts/RedHatDisplay-Bold.woff2') format('woff2'); font-display: swap; }
 
 body { font-family: var(--font-sans); }
 

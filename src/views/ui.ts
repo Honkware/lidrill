@@ -77,22 +77,27 @@ export const topBar = (title: string, onBack: () => void, right?: VNode | null) 
     right ?? null,
   ])
 
-export function sparkline(values: (number | undefined)[], w = 160, hgt = 36): VNode {
-  const pts = values.map((v, i) => (v === undefined ? null : [(i / Math.max(1, values.length - 1)) * w, hgt - 4 - v * (hgt - 8)]))
-  const segs: string[] = []
-  let open = false
-  for (const p of pts) {
-    if (!p) {
-      open = false
-      continue
-    }
-    segs.push(`${open ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`)
-    open = true
-  }
-  return h('svg', { attrs: { viewBox: `0 0 ${w} ${hgt}`, width: w, height: hgt, class: 'text-accent', 'aria-hidden': 'true' } }, [
-    h('path', { attrs: { d: segs.join(' '), fill: 'none', stroke: 'currentColor', 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' } }),
-    ...pts.filter((p): p is number[] => !!p).map(p => h('circle', { attrs: { cx: p[0], cy: p[1], r: 2.5, fill: 'currentColor' } })),
-  ])
+// Games per week, oldest first: the green part is zero-hang games. Empty
+// weeks keep a stub so the eight slots always read as a timeline.
+export function weekBars(weeks: { games: number; clean: number }[]): VNode {
+  const max = Math.max(1, ...weeks.map(w => w.games))
+  const ht = 40
+  const bw = 10
+  const gap = 5
+  return svgEl('svg', { viewBox: `0 0 ${weeks.length * (bw + gap) - gap} ${ht}`, width: weeks.length * (bw + gap) - gap, height: ht, role: 'img', 'aria-label': 'Games per week, zero-hang games in green' }, weeks.flatMap((w, i) => {
+    const x = i * (bw + gap)
+    if (!w.games) return [svgEl('rect', { x, y: ht - 2, width: bw, height: 2, rx: 1, class: 'fill-raised' })]
+    const total = Math.max(4, (w.games / max) * ht)
+    const clean = (w.clean / w.games) * total
+    return [
+      svgEl('rect', { x, y: ht - total, width: bw, height: total, rx: 2, class: 'fill-bad opacity-60' }, [svgEl('title', {}, [`${w.clean} of ${w.games} without a hang`])]),
+      clean ? svgEl('rect', { x, y: ht - clean, width: bw, height: clean, rx: 2, class: 'fill-accent' }) : null,
+    ]
+  }))
+}
+
+function svgEl(tag: string, attrs: Record<string, string | number>, children: (VNode | string | null)[] = []): VNode {
+  return h(tag, { attrs }, children.filter((c): c is VNode | string => c !== null))
 }
 
 export const judgColor = { inaccuracy: 'text-inaccuracy', mistake: 'text-mistake', blunder: 'text-blunder' } as const
@@ -104,4 +109,50 @@ export const resultChip = (result: 'win' | 'loss' | 'draw') =>
     'grid size-8 shrink-0 place-items-center rounded-md text-sm font-bold',
     { class: { 'bg-accent': result === 'win', 'text-bg': result !== 'draw', 'bg-bad': result === 'loss', 'bg-raised': result === 'draw' } },
     result === 'win' ? 'W' : result === 'loss' ? 'L' : 'D',
+  )
+
+// Centipawns in words a player uses: "a pawn and a half", "three pawns"
+export function pawnsWorth(cp: number): string {
+  const n = Math.round(cp / 50) / 2
+  if (n >= 9) return 'a queen or more'
+  if (n <= 1) return 'a pawn'
+  if (n === 1.5) return 'a pawn and a half'
+  const word = ['', '', 'two', 'three', 'four', 'five'][Math.floor(n)]
+  const whole = Number.isInteger(n) && word ? `${word} pawns` : `${n} pawns`
+  return n === 3 ? `${whole} (about a knight or bishop)` : whole
+}
+
+export const LEVEL_WORD = { beginner: 'beginner', club: 'club', advanced: 'advanced' } as const
+
+// What counts as a hang at each level, in plain words
+export const HANG_RULE = {
+  beginner: 'a hang is one move that gives away three pawns or more, like dropping a knight or bishop',
+  club: 'a hang is one move that gives away a pawn and a half or more and loses material',
+  advanced: 'a hang is one of your worst 5% of moves, costing at least a pawn and a half',
+} as const
+
+// Keyboard move entry under the board
+export const moveInput = (onMove: (text: string) => boolean) =>
+  el(
+    'form',
+    'flex gap-2',
+    {
+      on: {
+        submit: e => {
+          e.preventDefault()
+          const input = (e.target as HTMLFormElement).elements.namedItem('move') as HTMLInputElement
+          const ok = onMove(input.value)
+          input.setCustomValidity(ok ? '' : "That isn't a legal move here")
+          if (ok) input.value = ''
+          else input.reportValidity()
+        },
+      },
+    },
+    [
+      el('input', 'min-h-11 min-w-0 flex-1 rounded-lg bg-raised px-3 text-sm', {
+        attrs: { name: 'move', placeholder: 'Or type a move: Nf3, exd5, O-O', autocomplete: 'off', autocapitalize: 'none', spellcheck: false, 'aria-label': 'Type a move' },
+        on: { input: e => (e.target as HTMLInputElement).setCustomValidity('') },
+      }),
+      el('button', 'min-h-11 rounded-lg bg-raised px-4 text-sm font-medium', { attrs: { type: 'submit' } }, 'Play'),
+    ],
   )

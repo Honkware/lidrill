@@ -3,6 +3,7 @@ import { SCOPES } from '../auth'
 import type { Ctrl } from '../ctrl'
 import { el } from '../el'
 import { PREFERENCE_SCOPE } from '../lichess/api'
+import { STUDY_READ_SCOPE } from '../lichess/repertoire'
 import { STUDY_SCOPE } from '../lichess/study'
 import { BOARDS, DEFAULT_BOARD, DEFAULT_PIECES, PIECE_SETS } from '../look'
 import { button, card, label } from './ui'
@@ -13,6 +14,7 @@ const SCOPE_WHY: Record<string, string> = {
   'puzzle:read': 'Read your puzzle dashboard and history, to find weak themes and puzzles you missed.',
   [STUDY_SCOPE]: 'Create private studies when you press "Send to Lichess study".',
   [PREFERENCE_SCOPE]: 'Read your board and piece set, once, when you press "Use my Lichess look".',
+  [STUDY_READ_SCOPE]: 'Read your studies, when you pick one as your repertoire.',
 }
 
 const choice = (selected: boolean, onClick: () => void, children: (VNode | string)[]) =>
@@ -65,16 +67,24 @@ export function settingsView(ctrl: Ctrl): VNode {
     ),
     card(
       [
-        label('Plan'),
-        el('form', 'space-y-2', { on: { submit: e => (e.preventDefault(), savePlan(ctrl)) } }, [
-          el('label', 'block text-sm', { attrs: { for: 'when' } }, 'When you do your daily puzzles'),
-          el('input', 'min-h-11 w-full rounded-lg bg-raised px-3', { attrs: { id: 'when', value: p?.trainingTime ?? '', placeholder: 'e.g. after dinner', autocomplete: 'off' } }),
-          el('label', 'block text-sm', { attrs: { for: 'rep' } }, 'Openings to aim for (comma separated; empty picks them for you)'),
-          el('input', 'min-h-11 w-full rounded-lg bg-raised px-3', {
-            attrs: { id: 'rep', value: p?.repertoire?.join(', ') ?? '', placeholder: 'e.g. Italian Game, Caro-Kann Defense', autocomplete: 'off' },
-          }),
-          el('button', 'min-h-11 rounded-lg bg-raised px-4 font-medium', { attrs: { type: 'submit' } }, 'Save'),
-        ]),
+        label('Openings plan'),
+        el('p', 'text-sm text-dim', 'Today shows how often your games reach these. Pick up to four of the openings you play, or leave them all off and lidrill picks for you.'),
+        ctrl.playedFamilies.length
+          ? el(
+              'div',
+              'flex flex-wrap gap-2',
+              ctrl.playedFamilies.map(f => {
+                const on = !!p?.repertoire?.includes(f)
+                return el(
+                  'button',
+                  'min-h-9 rounded-full border px-3 text-sm',
+                  { attrs: { type: 'button', 'aria-pressed': on }, class: { 'border-accent': on, 'text-accent': on, 'border-raised': !on }, on: { click: () => ctrl.toggleRepertoire(f) } },
+                  f,
+                )
+              }),
+            )
+          : el('p', 'text-sm text-dim', 'Your openings show up here once games are imported.'),
+        ctrl.auth ? studyPicker(ctrl) : null,
       ],
       'space-y-3',
     ),
@@ -119,9 +129,23 @@ export function settingsView(ctrl: Ctrl): VNode {
   ])
 }
 
-function savePlan(ctrl: Ctrl) {
-  const val = (id: string) => (document.getElementById(id) as HTMLInputElement).value.trim()
-  const rep = val('rep').split(',').map(s => s.trim()).filter(Boolean)
-  ctrl.setPlan({ trainingTime: val('when') || undefined, repertoire: rep.length ? rep : undefined })
-  ctrl.notice = { text: 'Saved.' }
+
+// A Lichess study as the repertoire (study:read, asked for on first use)
+function studyPicker(ctrl: Ctrl): VNode {
+  const current = ctrl.profile?.repertoireStudy
+  return el('div', 'space-y-2 border-t border-raised pt-3', [
+    el('p', 'text-sm', current ? `Repertoire from your study "${current.name}" (${current.lines.length} lines).` : 'Or use one of your Lichess studies as your repertoire.'),
+    ctrl.studies
+      ? el(
+          'ul',
+          'max-h-60 space-y-1 overflow-y-auto',
+          ctrl.studies.map(st =>
+            el('li', [el('button', 'min-h-11 w-full rounded-lg bg-raised px-3 text-left text-sm', { attrs: { type: 'button' }, on: { click: () => ctrl.useStudy(st) } }, st.name)]),
+          ),
+        )
+      : el('div', 'flex flex-wrap gap-2', [
+          button(current ? 'Pick another study' : 'Pick a study', () => ctrl.loadStudies(), 'plain'),
+          current ? button('Stop using it', () => ctrl.useStudy(undefined), 'quiet') : null,
+        ]),
+  ])
 }

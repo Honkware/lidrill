@@ -99,34 +99,35 @@ export function journalFor(game: Game, band: Band, cutoff: number, old?: Journal
   }
 }
 
+const familyOf = (g: Game) => (g.opening || g.eco || 'Unknown').split(':')[0].trim()
+
 export interface OpeningRow {
   family: string
   games: number
   win: number
   draw: number
   loss: number
-  avgWorstCp: number
+  analyzed: number // games with a journal entry
+  hangs: number // of those, games with a hang
 }
 
-// Win/draw/loss and average worst swing per opening family, e.g.
+// Win/draw/loss and hang count per opening family, e.g.
 // "Italian Game: Two Knights Defense" counts as "Italian Game".
-export function openingTable(games: Game[]): OpeningRow[] {
-  const rows = new Map<string, OpeningRow & { swingSum: number; swingN: number }>()
+export function openingTable(games: Game[], journal = new Map<string, JournalEntry>()): OpeningRow[] {
+  const rows = new Map<string, OpeningRow>()
   for (const g of games) {
-    const family = (g.opening || g.eco || 'Unknown').split(':')[0].trim()
-    const r = rows.get(family) ?? { family, games: 0, win: 0, draw: 0, loss: 0, avgWorstCp: 0, swingSum: 0, swingN: 0 }
+    const family = familyOf(g)
+    const r = rows.get(family) ?? { family, games: 0, win: 0, draw: 0, loss: 0, analyzed: 0, hangs: 0 }
     r.games++
     r[g.result]++
-    if (g.analyzedAt) {
-      const worst = Math.max(0, ...swings(g).map(s => s.swingCp))
-      r.swingSum += worst
-      r.swingN++
+    const j = journal.get(g.id)
+    if (j) {
+      r.analyzed++
+      if (j.hung) r.hangs++
     }
     rows.set(family, r)
   }
-  return [...rows.values()]
-    .map(({ swingSum, swingN, ...r }) => ({ ...r, avgWorstCp: swingN ? Math.round(swingSum / swingN) : 0 }))
-    .sort((a, b) => b.games - a.games)
+  return [...rows.values()].sort((a, b) => b.games - a.games)
 }
 
 // Beginner repertoire template: open games with e4 as White, e5 against
@@ -134,7 +135,6 @@ export function openingTable(games: Game[]): OpeningRow[] {
 // and Chess.com give them.
 export const TEMPLATE_FAMILIES = ['Italian Game', 'Four Knights Game', 'Scotch Game', "King's Pawn Game", "Queen's Gambit Declined", 'Petrov\'s Defense']
 
-const familyOf = (g: Game) => (g.opening || g.eco || 'Unknown').split(':')[0].trim()
 
 // Plan targets: the player's own choice, else their top 3 families
 // once they have 100 games at Club level or above, else the template
