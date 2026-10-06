@@ -133,7 +133,7 @@ export function validateSlots(out: unknown, p: Packet): Verdict {
 
   // 6. Modality
   const forced = p.certificates.find(c => c.id === 'c-forced')
-  if (/\b(forced|only move|only way|no choice|had to|necessary|required|needed|must|the only)\b/i.test(all) && !(forced && p.best.unique)) v.push('"forced"/"only move"/"needed" needs the forced certificate')
+  if (/\b(forced|forcing|forces|only move|only way|no choice|had to|necessary|required|needed|must|the only)\b/i.test(all) && !(forced && p.best.unique)) v.push('"forced"/"only move"/"needed" needs the forced certificate')
   // Stopping, preventing or holding off the threat: only with the certificate
   if (/\b(stops?|stopped|stopping|prevents?|prevented|parr(y|ies|ied)|blocks? the threat|counters?|countered|deals? with|meets? the threat|holds? off|defuses?)\b/i.test(all) && !p.certificates.some(c => c.id === 'c-stops'))
     v.push('saying the answer stops the threat needs the c-stops fact')
