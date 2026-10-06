@@ -1,0 +1,20 @@
+@import 'tailwindcss';
+
+/* Gruvbox Dark, the default Light theme comes in Phase 3. */
+@theme {
+  --color-bg: #1d2021;
+  --color-surface: #282828;
+  --color-raised: #3c3836;
+  --color-fg: #ebdbb2;
+  --color-dim: #bdae93;
+  --color-accent: #8ec07c;
+  --color-warn: #fabd2f;
+  --color-bad: #fb4934;
+  --font-sans: 'Red Hat Text', system-ui, sans-serif;
+  --font-display: 'Red Hat Display', system-ui, sans-serif;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+}
