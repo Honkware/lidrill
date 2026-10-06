@@ -10,7 +10,7 @@
 // draft verdict and rendered explanation to out.json for reading, plus the
 // engine reports to src/server/fixtures/gate-reports.json for CI. Without a
 // key it stops after the reports (engine-only gate).
-import { readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { it } from 'vitest'
 import { analyzeMoves } from './analysis/analyze'
@@ -30,7 +30,10 @@ const require = createRequire(import.meta.url)
 const out = process.env.GATE_OUT ?? 'gate-out.json'
 const count = Number(process.env.GATE_COUNT ?? 23)
 
-it.runIf(process.env.GATE)('explanation gate', async () => {
+const REPORTS = 'src/server/fixtures/gate-reports.json'
+
+// Stockfish certification of the hardest puzzles in the reference games
+async function certifyAll(): Promise<EngineReport[]> {
   const sf = await require('stockfish')('lite-single')
   const uci: UciEngine = { send: c => sf.sendCommand(c), onLine: l => (sf.listener = l) }
   const engine = new Engine(uci)
@@ -62,7 +65,14 @@ it.runIf(process.env.GATE)('explanation gate', async () => {
     console.error(`certified ${i + 1}/${hardest.length} ${p.id} in ${((Date.now() - t) / 1000).toFixed(1)} s`)
   }
   console.error(`certification: ${((Date.now() - t0) / 1000).toFixed(0)} s for ${reports.length} puzzles`)
-  writeFileSync('src/server/fixtures/gate-reports.json', `${JSON.stringify(reports)}\n`)
+  mkdirSync('src/server/fixtures', { recursive: true })
+  writeFileSync(REPORTS, `${JSON.stringify(reports)}\n`)
+  return reports
+}
+
+it.runIf(process.env.GATE)('explanation gate', async () => {
+  // GATE_REUSE=1 narrates the saved reports again without re-running Stockfish
+  const reports: EngineReport[] = process.env.GATE_REUSE && existsSync(REPORTS) ? JSON.parse(readFileSync(REPORTS, 'utf8')) : await certifyAll()
 
   const key = process.env.OPENROUTER_API_KEY
   const results = []
