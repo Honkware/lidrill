@@ -13,9 +13,11 @@ against Stockfish; a journal and a zero-hang streak track the games
 themselves. Signed in, it also reads your Lichess puzzle dashboard and
 mixes in puzzles you failed there (at most 30% of a day).
 
-There is no server. Games, analysis and puzzles live in IndexedDB in your
-browser; the only network calls go to Lichess and Chess.com. The Lichess
-token is stored there too and revoked when you sign out.
+Games, analysis and puzzles live in IndexedDB in your browser, and the
+Lichess token too (revoked when you sign out). The network calls go to
+Lichess and Chess.com, plus one to lidrill's own Worker when you tap "Why?"
+after a puzzle: it sends that position and Stockfish's lines, and gets back
+a two-sentence explanation from a model on OpenRouter.
 
 The first sync pulls your newest 200 games per site. Games Lichess has
 already analyzed reuse its evals. The rest are analyzed at depth 14 with
@@ -44,7 +46,9 @@ first time you use the feature that needs them.
 `bun run deploy` builds and publishes `dist/` as Cloudflare Workers static
 assets (`wrangler.jsonc`, which also binds lidrill.org). Wrangler reads
 `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` from the environment.
-The CSP and other headers are in `public/_headers`.
+The CSP and other headers are in `public/_headers`. The Worker
+(`worker/index.ts`) only handles `/api/explain`; it needs the secret
+`OPENROUTER_API_KEY` (`wrangler secret put OPENROUTER_API_KEY`).
 
 The design and its reasoning are in [docs/spec.md].
 
