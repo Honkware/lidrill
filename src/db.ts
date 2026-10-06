@@ -3,12 +3,21 @@ import Dexie, { type EntityTable } from 'dexie'
 export type Site = 'lichess' | 'chesscom'
 export type Result = 'win' | 'loss' | 'draw'
 
+// White's point of view. A checkmated position is stored as cp ±10000 so it
+// sorts and compares like any other eval.
+export interface Eval {
+  cp?: number
+  mate?: number
+}
+
+export type Judgment = 'inaccuracy' | 'mistake' | 'blunder'
+
 export interface Move {
   san: string
   uci: string
-  // Filled in by the analyzer
-  eval?: number
-  judg?: 'inaccuracy' | 'mistake' | 'blunder'
+  // Filled in by the analyzer: the eval after this move
+  eval?: Eval
+  judg?: Judgment
   book?: boolean
 }
 
