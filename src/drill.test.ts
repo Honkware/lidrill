@@ -94,3 +94,38 @@ describe('puzzle flow', () => {
     expect(d.state).toBe('view')
   })
 })
+
+describe('check highlight', () => {
+  // A stand-in board that keeps the last value set for each key
+  const fakeBoard = () => {
+    const state: Record<string, unknown> = {}
+    const cg = { set: (c: Record<string, unknown>) => Object.assign(state, c), setAutoShapes: () => {}, selectSquare: () => {}, destroy: () => {} }
+    return { cg: cg as unknown as Parameters<Drill['useBoard']>[0], state }
+  }
+
+  it('names the king in check when a wrong move gives check', async () => {
+    const d = drill()
+    const { cg, state } = fakeBoard()
+    d.useBoard(cg)
+    await flush()
+    d.typeMove('Bb5+')
+    expect(state.check).toBe('black')
+    expect(state.turnColor).toBe('black')
+  })
+
+  it("a previewed checking move lights up the checked king, not the mover's", async () => {
+    const d = drill()
+    const { cg, state } = fakeBoard()
+    d.useBoard(cg)
+    await flush()
+    d.viewSolution()
+    await flush()
+    const after = 'rn1qkbnr/ppp2Bp1/3p3p/4N3/4P3/2N5/PPPP1PPP/R1BbK2R b KQkq - 0 6'
+    d.preview({ index: 0, text: 'Bxf7+', from: 'c4', to: 'f7', fen: legal.fen, after })
+    expect(state.check).toBe(false)
+    expect(state.turnColor).toBe('white')
+    await vi.advanceTimersByTimeAsync(200)
+    expect(state.check).toBe('black')
+    expect(state.turnColor).toBe('black')
+  })
+})

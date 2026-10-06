@@ -5,6 +5,7 @@ import { Chess } from 'chessops/chess'
 import { makeFen } from 'chessops/fen'
 import { parseUci } from 'chessops/util'
 import type { Engine } from './analysis/engine'
+import { checkColor } from './checkColor'
 import { Drill } from './drill'
 import type { Game, Puzzle } from './db'
 
@@ -101,7 +102,7 @@ export class Replay {
       fen: this.fens[ply],
       lastMove: last ? ([last.uci.slice(0, 2), last.uci.slice(2, 4)] as Key[]) : undefined,
       turnColor: pos.turn,
-      check: pos.isCheck(),
+      check: checkColor(pos),
       movable: { color: undefined, dests: new Map() },
       events: { move: undefined },
     })

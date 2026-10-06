@@ -7,6 +7,7 @@ import { makeFen, parseFen } from 'chessops/fen'
 import { makeSan } from 'chessops/san'
 import { parseSquare, parseUci } from 'chessops/util'
 import type { Engine } from './analysis/engine'
+import { checkColor } from './checkColor'
 import { db, type ExplanationLink, type Game, type Puzzle } from './db'
 import { explain } from './explain'
 import { pawns } from './format'
@@ -189,7 +190,7 @@ export class Drill {
       fen: node.fen,
       orientation: this.flipped ? (this.color === 'white' ? 'black' : 'white') : this.color,
       turnColor: pos.turn,
-      check: pos.isCheck(),
+      check: checkColor(pos),
       lastMove: node.uci ? ([node.uci.slice(0, 2), node.uci.slice(2, 4)] as Key[]) : undefined,
       movable: playable
         ? { free: false, color: this.state === 'view' ? 'both' : this.color, dests: chessgroundDests(pos), showDests: true }
@@ -291,6 +292,8 @@ export class Drill {
     pos.play(parseUci(uci)!)
     this.cg?.set({
       fen: makeFen(pos.toSetup()),
+      turnColor: pos.turn,
+      check: checkColor(pos),
       lastMove: [uci.slice(0, 2), uci.slice(2, 4)] as Key[],
       movable: { color: undefined, dests: new Map() },
     })
@@ -369,11 +372,12 @@ export class Drill {
     const still = { lastMove: undefined, check: false, movable: { color: undefined, dests: new Map() }, highlight: { custom: new Map() } }
     if (target.fen && target.after && target.from) {
       this.cg?.setAutoShapes([])
-      this.cg?.set({ ...still, animation: { enabled: false }, fen: target.fen })
+      const before = Chess.fromSetup(parseFen(target.fen).unwrap()).unwrap()
+      this.cg?.set({ ...still, animation: { enabled: false }, fen: target.fen, turnColor: before.turn })
       this.previewTimer = setTimeout(() => {
         if (this.previewing !== target) return
         const after = Chess.fromSetup(parseFen(target.after!).unwrap()).unwrap()
-        this.cg?.set({ animation: { enabled: true }, fen: target.after, lastMove: [target.from as Key, target.to as Key], check: after.isCheck() })
+        this.cg?.set({ animation: { enabled: true }, fen: target.after, turnColor: after.turn, lastMove: [target.from as Key, target.to as Key], check: checkColor(after) })
       }, 180)
     } else {
       this.cg?.set({ ...still, animation: { enabled: true }, fen: this.nodes[this.cursor].fen })

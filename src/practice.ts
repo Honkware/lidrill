@@ -7,6 +7,7 @@ import { makeFen, parseFen } from 'chessops/fen'
 import { makeSan } from 'chessops/san'
 import { parseSquare, parseUci } from 'chessops/util'
 import type { Engine } from './analysis/engine'
+import { checkColor } from './checkColor'
 import { db, type Game, type Practice, type PracticeKind } from './db'
 import { povCp } from './puzzles/generate'
 import { parseTyped } from './typed'
@@ -110,7 +111,7 @@ export class PracticeRun {
     this.cg?.set({
       fen: makeFen(this.pos.toSetup()),
       turnColor: this.pos.turn,
-      check: this.pos.isCheck(),
+      check: checkColor(this.pos),
       lastMove: lastMove ? ([lastMove.slice(0, 2), lastMove.slice(2, 4)] as Key[]) : undefined,
       movable: this.state === 'your-move' ? { color: this.color, dests: chessgroundDests(this.pos) } : { color: undefined, dests: new Map() },
     })

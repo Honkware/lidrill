@@ -5,6 +5,8 @@ import { Chess } from 'chessops/chess'
 import { makeFen, parseFen } from 'chessops/fen'
 import { makeSan } from 'chessops/san'
 import { parseUci } from 'chessops/util'
+import type { Color } from 'chessops/types'
+import { checkColor } from './checkColor'
 import type { Game, JournalEntry, Puzzle } from './db'
 
 // Review of one game: step through it with the move list or the arrow keys.
@@ -14,7 +16,7 @@ export class GameView {
   journal?: JournalEntry
   puzzles: Puzzle[] = []
   private fens: string[]
-  private checks: boolean[]
+  private checks: (Color | false)[]
   private cg?: Api
   private redraw: () => void
   private onKey = (e: KeyboardEvent) => {
@@ -35,7 +37,7 @@ export class GameView {
     for (const m of game.moves) {
       pos.play(parseUci(m.uci)!)
       this.fens.push(makeFen(pos.toSetup()))
-      this.checks.push(pos.isCheck())
+      this.checks.push(checkColor(pos))
     }
   }
 
@@ -57,6 +59,7 @@ export class GameView {
       fen: this.fens[this.ply],
       lastMove: last ? ([last.uci.slice(0, 2), last.uci.slice(2, 4)] as Key[]) : undefined,
       check: this.checks[this.ply],
+      turnColor: this.fens[this.ply].split(' ')[1] === 'w' ? 'white' : 'black',
     })
     this.redraw()
   }
