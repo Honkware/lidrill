@@ -1,12 +1,12 @@
-// Static site only: Workers serves dist/ with no server code. Request logs are
-// off to match the no-telemetry rule.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "lidrill",
   "compatibility_date": "2026-10-01",
-  "assets": {
-    "directory": "./dist",
-    "not_found_handling": "single-page-application"
-  },
+  "assets": { "directory": "./dist", "not_found_handling": "single-page-application" },
+  "routes": [
+    // www.lidrill.org is a proxied DNS record that a zone redirect rule sends here
+    { "pattern": "lidrill.org", "custom_domain": true }
+  ],
+  "workers_dev": true,
   "observability": { "enabled": false }
 }
