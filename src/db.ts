@@ -184,6 +184,18 @@ export interface Review {
   solved: boolean
   hinted?: boolean // solved after showing the hint: scheduled Hard, not counted as solved
   whyMissed?: string
+  source?: 'queue' | 'replay' // missing on older rows: 'queue'
+}
+
+// One Turning Points run: its stops are ordinary review rows, so
+// the scheduler counts them; this row is the score for the end screen
+export interface ReplaySession {
+  id?: number
+  gameId: string
+  at: number
+  stops: number[] // review ids
+  scoreN: number
+  scoreM: number
 }
 
 // Never exported, never logged
@@ -207,6 +219,7 @@ class LidrillDb extends Dexie {
   liPuzzle!: EntityTable<PuzzleDashboardSnapshot, 'week'>
   practice!: EntityTable<Practice, 'id'>
   explanations!: EntityTable<ExplanationRow, 'id'>
+  replaySessions!: EntityTable<ReplaySession, 'id'>
 
   constructor() {
     super('lidrill')
@@ -232,6 +245,7 @@ class LidrillDb extends Dexie {
     })
     this.version(6).stores({
       explanations: 'id, puzzleId, createdAt, dedupeKey',
+      replaySessions: '++id, gameId, at',
     })
   }
 }

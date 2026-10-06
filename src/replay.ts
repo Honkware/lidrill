@@ -7,7 +7,7 @@ import { parseUci } from 'chessops/util'
 import type { Engine } from './analysis/engine'
 import { checkColor } from './checkColor'
 import { Drill } from './drill'
-import type { Game, Puzzle } from './db'
+import { db, type Game, type Puzzle } from './db'
 
 export type ReplayState = 'playing' | 'stop' | 'between' | 'done'
 
@@ -21,6 +21,7 @@ export class Replay {
   ply = 0 // moves on the board
   drill?: Drill
   results: boolean[] = []
+  private reviewIds: number[] = []
   readonly game: Game
   readonly stops: Puzzle[]
   private fens: string[]
@@ -93,6 +94,10 @@ export class Replay {
     this.schedule()
   }
 
+  private async saveSession() {
+    await db.replaySessions.add({ gameId: this.game.id, at: Date.now(), stops: this.reviewIds, scoreN: this.results.filter(Boolean).length, scoreM: this.stops.length })
+  }
+
   private show(ply: number) {
     this.ply = ply
     const last = this.game.moves[ply - 1]
@@ -119,14 +124,19 @@ export class Replay {
   private arrive() {
     if (this.atStop()) {
       this.state = 'stop'
-      this.drill = new Drill(this.current!, this.redraw, {
-        record: false,
+      const drill = new Drill(this.current!, this.redraw, {
+        // Stops are reviews like any other: the scheduler counts them
+        record: true,
+        source: 'replay',
         engine: this.engine,
         onFinish: outcome => {
           this.results.push(outcome === 'clean' || outcome === 'hinted')
+          if (drill.reviewId !== undefined) this.reviewIds.push(drill.reviewId)
           this.state = 'between'
+          if (!this.current) void this.saveSession()
         },
       })
+      this.drill = drill
       this.drill.useBoard(this.cg!)
       this.redraw()
       return

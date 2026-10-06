@@ -35,6 +35,7 @@ export type Outcome = 'clean' | 'hinted' | 'missed' | 'shown'
 export interface DrillOptions {
   // Daily queue puzzles feed FSRS; Turning Points stops don't
   record: boolean
+  source?: 'queue' | 'replay'
   engine?: Engine // evals in view mode
   onFinish?: (outcome: Outcome) => void
 }
@@ -353,7 +354,7 @@ export class Drill {
     if (this.recorded || !this.opts.record) return
     this.recorded = true
     const solved = outcome === 'clean' || outcome === 'hinted'
-    this.reviewId = await recordAttempt(this.puzzle, solved, new Date(), outcome === 'hinted')
+    this.reviewId = await recordAttempt(this.puzzle, solved, new Date(), outcome === 'hinted', this.opts.source)
   }
 
   // While a word in the explanation is hovered or tapped: the position the

@@ -70,11 +70,11 @@ export function ratingFor(solved: boolean, hinted: boolean): Rating.Good | Ratin
   return !solved ? Rating.Again : hinted ? Rating.Hard : Rating.Good
 }
 
-export async function recordAttempt(puzzle: Puzzle, solved: boolean, now = new Date(), hinted = false): Promise<number> {
+export async function recordAttempt(puzzle: Puzzle, solved: boolean, now = new Date(), hinted = false, source: 'queue' | 'replay' = 'queue'): Promise<number> {
   const { card } = scheduler.next(puzzle.card, now, ratingFor(solved, hinted))
   await db.puzzles.update(puzzle.id, { card })
   // ++id is always set on add
-  return (await db.reviews.add({ puzzleId: puzzle.id, at: +now, solved, hinted: hinted || undefined }))!
+  return (await db.reviews.add({ puzzleId: puzzle.id, at: +now, solved, hinted: hinted || undefined, source }))!
 }
 
 // What the stats count as solved

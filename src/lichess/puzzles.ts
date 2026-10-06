@@ -6,6 +6,7 @@ import { createEmptyCard } from 'ts-fsrs'
 import type { Puzzle, PuzzleDashboardSnapshot, PuzzleTag } from '../db'
 import { SignInExpired } from '../sync/lichess'
 import { lichessJson } from './api'
+import { validPosition } from '../server/gamestate'
 
 // Lichess puzzle data behind the puzzle:read scope
 
@@ -97,7 +98,8 @@ export function failedPuzzles(activity: Activity[], now: Date, max = 60): Puzzle
   const out = new Map<string, Puzzle>()
   for (const a of [...activity].sort((x, y) => y.date - x.date)) {
     if (a.win) solved.add(a.puzzle.id)
-    else if (!solved.has(a.puzzle.id) && !out.has(a.puzzle.id))
+    // Positions that fail the validity gate never enter
+    else if (!solved.has(a.puzzle.id) && !out.has(a.puzzle.id) && validPosition(a.puzzle.fen).ok)
       out.set(a.puzzle.id, lichessPuzzle(a.puzzle.id, a.puzzle.fen, a.puzzle.solution, a.puzzle.themes, a.puzzle.rating, now, { lastMove: a.puzzle.lastMove }))
   }
   return [...out.values()].slice(0, max)
@@ -132,6 +134,7 @@ export function fromBatch(b: BatchPuzzle, now: Date): Puzzle | undefined {
     lastMove = makeUci(move)
     pos.play(move)
   }
+  if (!validPosition(makeFen(pos.toSetup())).ok) return undefined
   return lichessPuzzle(b.puzzle.id, makeFen(pos.toSetup()), b.puzzle.solution, b.puzzle.themes, b.puzzle.rating, now, { before, lastMove })
 }
 
