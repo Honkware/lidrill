@@ -133,7 +133,10 @@ export function validateSlots(out: unknown, p: Packet): Verdict {
 
   // 6. Modality
   const forced = p.certificates.find(c => c.id === 'c-forced')
-  if (/\b(forced|only move|only way|no choice|had to)\b/i.test(all) && !(forced && p.best.unique)) v.push('"forced"/"only move" needs the forced certificate')
+  if (/\b(forced|only move|only way|no choice|had to|necessary|required|needed|must|the only)\b/i.test(all) && !(forced && p.best.unique)) v.push('"forced"/"only move"/"needed" needs the forced certificate')
+  // Stopping, preventing or holding off the threat: only with the certificate
+  if (/\b(stops?|stopped|stopping|prevents?|prevented|parr(y|ies|ied)|blocks? the threat|counters?|countered|deals? with|meets? the threat|holds? off|defuses?)\b/i.test(all) && !p.certificates.some(c => c.id === 'c-stops'))
+    v.push('saying the answer stops the threat needs the c-stops fact')
   const anyMate = p.certificates.some(c => c.type === 'mate') || p.threat?.consequence.type === 'mate' || [p.played, p.tried].some(f => f?.reply.some(r => r.mate))
   if (/\b(check)?mat(e|es|ed|ing)\b/i.test(all) && !anyMate) v.push('mate is mentioned but no mate is certified')
   if (/\b(best|winning|wins|won)\b/i.test(all) && p.meta.certification.refusals.some(r => /differs|not the puzzle/.test(r))) v.push('"best"/"wins" is not certified here')
@@ -163,7 +166,11 @@ export function validateSlots(out: unknown, p: Packet): Verdict {
     const text = renderText(slots, p)
     for (const s of slots) if (refIds(s.text).some(r => renderRef(r, p) === undefined)) v.push(`${s.slot}: a ref can't be rendered`)
     const whole = SLOTS.map(n => text[n]).join(' ')
-    for (const c of checkCeilings(whole, band)) v.push(`readability: ${c}`)
+    // Readability on what the player reads; a rendered fact counts as one
+    // word toward sentence length (it's one unit, written by the renderer)
+    const unitText = SLOTS.map(n => by[n].text.replace(REF, 'X')).join(' ')
+    for (const c of checkCeilings(whole, band)) if (!c.startsWith('sentence')) v.push(`readability: ${c}`)
+    for (const c of checkCeilings(unitText, band)) if (c.startsWith('sentence')) v.push(`readability: ${c}`)
     for (const t of toneViolations(whole, band)) v.push(`tone: ${t}`)
   }
   return { ok: v.length === 0, violations: [...new Set(v)], slots }

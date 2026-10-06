@@ -42,7 +42,8 @@ export const SYSTEM_V2 = [
   'List every id you use in that slot\'s refs, and no others.',
   'Use only the fact ids given, each with the meaning shown. Add no plans, ideas or patterns that are not facts in the list.',
   'whatHappened: what was played and what it cost. why: the mechanism, using the required ids and enough line steps. pattern: the certified pattern and its library text. nextTime: the habit id, nothing else of substance.',
-  'Ownership: say "you"/"your" for the player\'s facts and "they"/"their" for the opponent\'s, right before the id, in the same sentence.',
+  'Ownership: say "you"/"your" for the player\'s moves and patterns and "they"/"their" for the opponent\'s, right before the id, in the same sentence. Amounts like {ref:swing} take no "your".',
+  'Only say the answer stops, prevents or meets the threat if c-stops is in the list; only say a move was forced, needed or the only move if c-forced is.',
   'Plain, short sentences. No praise, no labels like brilliant, no rhetorical questions, no exclamation marks. Do not start a sentence with This, That, It or Such.',
   'Answer with JSON only: {"slots":[{"slot":"whatHappened","text":"…","refs":["…"]}, …]}, each slot exactly once.',
 ].join('\n')
@@ -170,12 +171,10 @@ export async function narrate(p: Packet, call: Caller): Promise<Narration> {
   let slots = verdict.slots!
 
   // Decompose into claims; delete the unanchored ones
-  const decomposed = await ask(
-    'decompose',
-    `Facts packet:\n${view}\n\nExplanation in ref form:\n${JSON.stringify({ slots })}\n\nSplit every slot into its atomic claims. For each claim give the slot, its exact text (a substring of the slot text), the fact ids it rests on (from its {ref:…} and NO_THREAT tokens), and its tense: past, present, or none if it states no fact. Cover all the text.`,
-    'lint',
-    CLAIM_SCHEMA,
-  )
+  const decomposeAsk = `Facts packet:\n${view}\n\nExplanation in ref form:\n${JSON.stringify({ slots })}\n\nSplit every slot into its atomic claims. For each claim give the slot, its exact text (a substring of the slot text), the fact ids it rests on (from its {ref:…} and NO_THREAT tokens), and its tense: past, present, or none if it states no fact. Cover all the text.`
+  // One more try if the claim check times out or fails: it's the check that
+  // makes model text servable, so it gets a second chance before the floor
+  const decomposed = (await ask('decompose', decomposeAsk, 'lint', CLAIM_SCHEMA)) ?? (await ask('decompose', decomposeAsk, 'lint', CLAIM_SCHEMA))
   if (decomposed === undefined) return floor('claim check unavailable')
   const pruning = prune(slots, decomposed, p)
   if (!pruning) return floor('claim check unreadable')

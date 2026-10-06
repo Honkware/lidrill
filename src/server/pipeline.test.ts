@@ -113,6 +113,13 @@ describe('packet', () => {
     expect(medium.threatStatus).toBe('uncertified')
   })
 
+  it('certifies that the answer stops the threat only when it does', () => {
+    // Bxf7+ checks: dxe5 is no longer legal, so the threat is stopped
+    expect(packetOf(legalReport()).certificates.find(c => c.id === 'c-stops')?.text).toBe('Bxf7+ stops dxe5')
+    // Nothing to stop when there's no threat
+    expect(packetOf(forkReport()).certificates.some(c => c.id === 'c-stops')).toBe(false)
+  })
+
   it('names a missed mate as a mate, never as pawns', () => {
     const p = packetOf(legalReport())
     expect(p.played!.swing).toMatchObject({ type: 'mate', value: 2 })
@@ -237,6 +244,13 @@ describe('validator', () => {
     ['loanword at club', edit(1, 'They had NO_THREAT, so {ref:best} created zugzwang. After {ref:pv1}, {ref:pv2} takes the rook.')],
     ['off-label praise', edit(0, 'You played {ref:played}, not the brilliant move, and it cost {ref:swing}.')],
     ['empty slot', edit(3, '', [])],
+    ['"stops" the threat without the certificate', edit(1, 'They had NO_THREAT, so {ref:best} stops nothing yet. After {ref:pv1}, {ref:pv2} takes the rook.')],
+    ['"needed" without the forced certificate', [
+      { slot: 'whatHappened', text: 'You played {ref:played} and it cost {ref:swing}.', refs: ['played', 'swing'] },
+      { slot: 'why', text: 'They had NO_THREAT, so you needed {ref:best}. After {ref:pv1}, {ref:pv2} takes the rook.', refs: ['c-nothreat', 'best', 'pv1', 'pv2'] },
+      { slot: 'pattern', text: 'Your idea: {ref:c-motif}. {ref:gloss:fork}', refs: ['c-motif', 'gloss:fork'] },
+      { slot: 'nextTime', text: '{ref:habit:cct-scan}', refs: ['habit:cct-scan'] },
+    ], hold],
     ['bad ref charset', edit(0, 'You played {ref:PV1} and it cost {ref:swing}.', ['swing'])],
     ['not JSON slots at all', 'You played Ke2 and it cost a rook.'],
   ]

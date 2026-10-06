@@ -105,7 +105,9 @@ export function renderSlot(s: Slot, p: Packet): Segment[] {
   for (const m of s.text.matchAll(REF)) {
     if (m.index > last) out.push({ text: s.text.slice(last, m.index) })
     const id = m[1] ?? NO_THREAT_ID
-    const words = renderRef(id, p) ?? ''
+    let words = renderRef(id, p) ?? ''
+    // Library sentences end with a full stop; don't double it
+    if (words.endsWith('.') && s.text[m.index + m[0].length] === '.') words = words.slice(0, -1)
     const move = moves.get(id)
     if (move) out.push({ text: words, ref: id, link: { from: move.from, to: move.to, fen: move.fenBefore, after: move.fenAfter } })
     else if (id.startsWith('c-')) out.push(...squareLinks(words, id, certPosition(id, p, moves)))

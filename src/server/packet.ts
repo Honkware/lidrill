@@ -123,7 +123,7 @@ export interface MoveFact extends PvMove {
 
 export interface Certificate {
   id: string
-  type: 'forced' | 'tactical' | 'mate' | 'featureDelta' | 'noThreat' | 'drawRule'
+  type: 'forced' | 'tactical' | 'mate' | 'featureDelta' | 'noThreat' | 'drawRule' | 'stopsThreat'
   subject?: string
   side: Side
   targetSide?: Side
@@ -589,6 +589,9 @@ export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION
   }
   punish(tried, 'c-try')
   punish(played, 'c-punish')
+  // "The answer stops the threat" only when it does: after the answer, the
+  // threatening move is illegal, no longer mates, or no longer wins the same thing
+  if (threat && stopsThreat(pv[0].fenAfter, threat.line[0])) add({ id: 'c-stops', type: 'stopsThreat', subject: 'best', side: sideOf(player), payload: { threat: threat.san }, text: `${pv[0].san} stops ${threat.san}` })
   if (threatStatus === 'certifiedNull') add({ id: 'c-nothreat', type: 'noThreat', side: sideOf(opp), targetSide: sideOf(player), payload: { threatDef: THREAT_DEF, floorCp: CERT.nullCp }, text: 'no forcing reply' })
 
   // Quiet-position facts: what the answer changes (feature deltas)
@@ -709,6 +712,20 @@ export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION
     context: { opening: report.opening, eco: report.eco, band },
   }
   return { ok: true, packet }
+}
+
+function stopsThreat(fenAfterBest: string, t: PvMove): boolean {
+  const pos = fromFen(fenAfterBest)
+  if (!pos) return false
+  // The threat needs the opponent to move; after the answer they do
+  const move = parseUci(t.uci)
+  if (!move || !pos.isLegal(move)) return true
+  const victim = 'from' in move ? pos.board.get(move.to) : undefined
+  const next = pos.clone()
+  next.play(move)
+  if (t.mate) return !next.isCheckmate()
+  if (t.captured) return !victim || victim.role !== t.captured
+  return false
 }
 
 function threatRequirement(status: ThreatStatus, threat: Packet['threat'], inCheck: boolean): string | undefined {
