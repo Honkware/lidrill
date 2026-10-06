@@ -1,5 +1,7 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type { Card } from 'ts-fsrs'
+import type { Perf, Speed } from './lichess/api'
+import type { WeakTheme } from './lichess/puzzles'
 
 export type Site = 'lichess' | 'chesscom'
 export type Result = 'win' | 'loss' | 'draw'
@@ -30,6 +32,8 @@ export interface Game {
   color: 'white' | 'black'
   result: Result
   rating: number // the player's rating at the time, for the band
+  opponent?: string // missing on games imported before v5
+  opponentRating?: number
   speed: string // bullet/blitz/rapid/classical/daily; daily is kept out of time stats
   eco: string
   opening: string
@@ -38,6 +42,9 @@ export interface Game {
   moves: Move[]
   termination: string
   clocks?: number[] // centiseconds left after each move
+  accuracy?: number // Lichess accuracy %, when the game was analyzed there
+  division?: { middle?: number; end?: number } // plies where middlegame/endgame start
+  serverAnalysis?: boolean // evals came from Lichess's analysis
 }
 
 export interface SyncState {
@@ -48,12 +55,19 @@ export interface SyncState {
   doneMonths: string[]
 }
 
-export type PuzzleType = 'hang' | 'missed-win' | 'conversion'
+export type PuzzleType = 'hang' | 'missed-win' | 'conversion' | 'external'
 export type PuzzleTag = 'hang' | 'mate' | 'defensive'
 
+export type PuzzleSource = 'own' | 'lichess'
+
 export interface Puzzle {
-  id: string // `${gameId}:${ply}`
-  gameId: string
+  id: string // `${gameId}:${ply}`, or `lichess:${puzzleId}` for Lichess puzzles
+  gameId: string // '' for Lichess puzzles
+  // Missing on puzzles made before v5: those are all 'own'. 'lichess' puzzles
+  // are the external tier, capped at 30% of a day's queue.
+  source?: PuzzleSource
+  themes?: string[] // Lichess puzzle themes
+  rating?: number // Lichess puzzle rating
   ply: number // the position before this ply is the puzzle
   fen: string
   played: string // UCI of what the player actually played
@@ -75,6 +89,47 @@ export interface Profile {
   bandHistory: { band: Band; at: number }[]
   swingThresholdCp: number
   marginCp: number
+  thresholdHistory?: { cp: number; at: number; solveRate: number }[] // calibration audit
+  repertoire?: string[] // opening families the plan aims for, editable in Settings
+  ratings?: Partial<Record<Speed | 'puzzle', Perf>> // from /api/account when signed in
+  trainingTime?: string // S9: the player's answer to "when will you train?"
+  weakThemes?: WeakTheme[] // from the Lichess puzzle dashboard
+  puzzleActivityAt?: number // newest Lichess puzzle activity already read
+  theme?: 'dark' | 'light'
+  pieces?: string // piece set key, see look.ts
+  board?: string
+}
+
+export interface JournalEntry {
+  gameId: string
+  at: number
+  opening: string
+  // The worst hang by the band's definition, or none for a zero-hang game
+  hung?: { ply: number; san: string; swingCp: number }
+  note?: string
+  confirmed: boolean
+}
+
+export type PracticeKind = 'conversion' | 'defense'
+
+// A conversion or defense drill position
+export interface Practice {
+  id: string // `${gameId}:${ply}:${kind}`
+  gameId: string
+  ply: number
+  fen: string
+  kind: PracticeKind
+  startCp: number // engine eval for the player at the start
+  streak: number // successes in a row
+  attempts: number
+  cleared: boolean // 3 in a row
+}
+
+// Weekly snapshot of the Lichess puzzle dashboard
+export interface PuzzleDashboardSnapshot {
+  week: string // ISO date of that week's Monday
+  global: { nb: number; firstWins: number; performance: number }
+  themes: Record<string, { nb: number; firstWins: number; performance: number }>
 }
 
 export interface Review {
@@ -82,6 +137,7 @@ export interface Review {
   puzzleId: string
   at: number
   solved: boolean
+  hinted?: boolean // solved after showing the hint: scheduled Hard, not counted as solved
   whyMissed?: string
 }
 
@@ -101,6 +157,10 @@ class LidrillDb extends Dexie {
   profile!: EntityTable<Profile, 'id'>
   reviews!: EntityTable<Review, 'id'>
   auth!: EntityTable<Auth, 'id'>
+  explorer!: EntityTable<{ key: string; moves: Record<string, number> }, 'key'>
+  journal!: EntityTable<JournalEntry, 'gameId'>
+  liPuzzle!: EntityTable<PuzzleDashboardSnapshot, 'week'>
+  practice!: EntityTable<Practice, 'id'>
 
   constructor() {
     super('lidrill')
@@ -117,6 +177,12 @@ class LidrillDb extends Dexie {
     })
     this.version(4).stores({
       auth: 'id',
+    })
+    this.version(5).stores({
+      explorer: 'key',
+      journal: 'gameId, at',
+      liPuzzle: 'week',
+      practice: 'id, gameId, kind',
     })
   }
 }

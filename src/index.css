@@ -1,6 +1,6 @@
 @import 'tailwindcss';
 
-/* Gruvbox Dark, the default Light theme comes in Phase 3. */
+/* Gruvbox Dark, the default; Gruvbox Light below */
 @theme {
   --color-bg: #1d2021;
   --color-surface: #282828;
@@ -10,9 +10,26 @@
   --color-accent: #8ec07c;
   --color-warn: #fabd2f;
   --color-bad: #fb4934;
+  /* Lichess's own judgment colours */
+  --color-inaccuracy: #56b4e9;
+  --color-mistake: #e69f00;
+  --color-blunder: #df5353;
   --font-sans: 'Red Hat Text', system-ui, sans-serif;
   --font-display: 'Red Hat Display', system-ui, sans-serif;
 }
+
+html[data-theme='light'] {
+  --color-bg: #fbf1c7;
+  --color-surface: #f2e5bc;
+  --color-raised: #ebdbb2;
+  --color-fg: #3c3836;
+  --color-dim: #665c54;
+  --color-accent: #427b58;
+  --color-warn: #b57614;
+  --color-bad: #9d0006;
+  color-scheme: light;
+}
+html { color-scheme: dark; }
 
 body {
   background: var(--color-bg);
@@ -26,21 +43,55 @@ body {
 
 body { font-family: var(--font-sans); }
 
-/* Board and pieces from the prettier-lichess kit */
-cg-board { background-image: url('/board/walnut.svg'); background-size: cover; }
+/* Board and pieces. Piece set and board are picked in Settings;
+   src/look.ts writes the piece rules and sets data-board on <html>. */
+cg-board { background-size: cover; }
+html[data-board='walnut'] cg-board { background-image: url('/board/walnut.svg'); }
+/* repeating-conic-gradient tiles 2x2 squares, light square top left */
+html[data-board='brown'] cg-board { background: repeating-conic-gradient(#b58863 0 25%, #f0d9b5 0 50%) 0 0 / 25% 25%; }
+html[data-board='green'] cg-board { background: repeating-conic-gradient(#769656 0 25%, #eeeed2 0 50%) 0 0 / 25% 25%; }
+html[data-board='blue'] cg-board { background: repeating-conic-gradient(#8ca2ad 0 25%, #dee3e6 0 50%) 0 0 / 25% 25%; }
 cg-board square.last-move { background-color: rgb(155 199 0 / 0.41); }
 cg-board square.move-dest { background: radial-gradient(rgb(20 85 30 / 0.5) 19%, transparent 20%); }
 cg-board square.check { background: radial-gradient(ellipse at center, rgb(255 0 0) 0%, rgb(231 0 0) 25%, transparent 89%); }
-coords coord { color: var(--color-fg); opacity: 0.8; }
-.cg-wrap piece.white.pawn { background-image: url('/pieces/wP.svg'); }
-.cg-wrap piece.white.knight { background-image: url('/pieces/wN.svg'); }
-.cg-wrap piece.white.bishop { background-image: url('/pieces/wB.svg'); }
-.cg-wrap piece.white.rook { background-image: url('/pieces/wR.svg'); }
-.cg-wrap piece.white.queen { background-image: url('/pieces/wQ.svg'); }
-.cg-wrap piece.white.king { background-image: url('/pieces/wK.svg'); }
-.cg-wrap piece.black.pawn { background-image: url('/pieces/bP.svg'); }
-.cg-wrap piece.black.knight { background-image: url('/pieces/bN.svg'); }
-.cg-wrap piece.black.bishop { background-image: url('/pieces/bB.svg'); }
-.cg-wrap piece.black.rook { background-image: url('/pieces/bR.svg'); }
-.cg-wrap piece.black.queen { background-image: url('/pieces/bQ.svg'); }
-.cg-wrap piece.black.king { background-image: url('/pieces/bK.svg'); }
+cg-board square.hint { box-shadow: inset 0 0 0 4px var(--color-warn); }
+
+/* App shell: safe areas for notched phones, room for the tab bar */
+.pt-safe { padding-top: env(safe-area-inset-top); }
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+.pb-tabbar { padding-bottom: calc(3.5rem + env(safe-area-inset-bottom)); }
+@media (min-width: 640px) { .pb-tabbar { padding-bottom: 0; } }
+.bottom-notice { bottom: calc(1rem + env(safe-area-inset-bottom)); }
+.bottom-notice-tabs { bottom: calc(4.5rem + env(safe-area-inset-bottom)); }
+@media (min-width: 640px) { .bottom-notice-tabs { bottom: 1.5rem; } }
+
+/* The board fills the phone's width but leaves room for the controls below;
+   on wider screens it sits beside a side panel. */
+.board { width: 100%; max-width: min(100vw, calc(100dvh - 15rem)); aspect-ratio: 1; margin-inline: auto; }
+.board .cg-wrap { width: 100%; height: 100%; }
+/* An auto-width grid column would shrink a percentage width to nothing */
+@media (min-width: 768px) { .board { width: min(40rem, calc(100dvh - 8rem), 58vw); max-width: none; margin: 0; } }
+
+.piece-preview { width: 2.75rem; height: 2.75rem; background-size: cover; display: inline-block; }
+html { -webkit-tap-highlight-color: transparent; }
+.board-swatch { width: 2.75rem; height: 2.75rem; border-radius: 0.25rem; background-size: 50% 50%; }
+.board-brown { background: repeating-conic-gradient(#b58863 0 25%, #f0d9b5 0 50%) 0 0 / 50% 50%; }
+.board-green { background: repeating-conic-gradient(#769656 0 25%, #eeeed2 0 50%) 0 0 / 50% 50%; }
+.board-blue { background: repeating-conic-gradient(#8ca2ad 0 25%, #dee3e6 0 50%) 0 0 / 50% 50%; }
+.board-walnut { background: url('/board/walnut.svg') 0 0 / 400% 400%; }
+
+/* Coordinates inside the board, Lichess style: ranks top-left of the left
+   column, files bottom-right of the bottom row, each in the colour of the
+   other square shade so they read on both. */
+html { --sq-light: #f0d9b5; --sq-dark: #b58863; }
+html[data-board='green'] { --sq-light: #eeeed2; --sq-dark: #769656; }
+html[data-board='blue'] { --sq-light: #dee3e6; --sq-dark: #8ca2ad; }
+html[data-board='walnut'] { --sq-light: #e8c9a1; --sq-dark: #8a5a33; }
+.cg-wrap coords { font-family: var(--font-sans); font-size: clamp(9px, 2.6vw, 13px); font-weight: 700; opacity: 1; }
+.cg-wrap coords.ranks { left: 2px; top: 1px; width: auto; }
+.cg-wrap coords.ranks coord { transform: none; }
+.cg-wrap coords.files { left: 0; bottom: 0; height: auto; text-transform: none; text-align: right; }
+.cg-wrap coords.files coord { padding-right: 3px; }
+.cg-wrap coords coord { color: var(--sq-light); }
+.cg-wrap coords:not(.black) coord:nth-child(even),
+.cg-wrap coords.black coord:nth-child(odd) { color: var(--sq-dark); }

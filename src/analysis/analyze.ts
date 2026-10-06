@@ -14,8 +14,9 @@ export interface AnalyzeOptions {
 
 const MATED = 10000
 
-// Returns the moves with eval/judg/book filled in. Positions are searched in
-// order so a cancelled run leaves a clean prefix.
+// Returns the moves with eval/judg/book filled in. Moves that already carry an
+// eval aren't searched again. Positions are searched in order so a cancelled
+// run leaves a clean prefix.
 export async function analyzeMoves(moves: Move[], engine: Engine, opts: AnalyzeOptions): Promise<Move[]> {
   const pos = Chess.default()
   const fens: string[] = [makeFen(pos.toSetup())]
@@ -34,6 +35,12 @@ export async function analyzeMoves(moves: Move[], engine: Engine, opts: AnalyzeO
       evals[i] = terminal[i]
       continue
     }
+    // Already known, e.g. from Lichess's server analysis
+    const known = i > 0 ? moves[i - 1].eval : undefined
+    if (known) {
+      evals[i] = known
+      continue
+    }
     const { eval: e } = await engine.search(fens[i], opts.depth)
     // UCI scores are from the side to move; store white's view
     const whiteToMove = i % 2 === 0
@@ -42,10 +49,12 @@ export async function analyzeMoves(moves: Move[], engine: Engine, opts: AnalyzeO
 
   return moves.map((m, idx) => {
     const ply = idx + 1
-    if (ply <= opts.bookPlies) return { ...m, book: true, eval: undefined, judg: undefined }
+    if (ply <= opts.bookPlies) return { ...m, book: true, eval: m.eval, judg: undefined }
     const prev = evals[ply - 1]
     const next = evals[ply]
     const mover = ply % 2 === 1 ? 'white' : 'black'
-    return { ...m, book: false, eval: next, judg: prev && next ? judge(prev, next, mover) : undefined }
+    // Delivering mate isn't judged, as on Lichess (the mated position has no eval there)
+    const mates = Math.abs(terminal[ply]?.cp ?? 0) === MATED
+    return { ...m, book: false, eval: next, judg: prev && next && !mates ? judge(prev, next, mover) : undefined }
   })
 }

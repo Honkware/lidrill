@@ -2,7 +2,7 @@ import { attributesModule, classModule, eventListenersModule, init, propsModule,
 import '@lichess-org/chessground/assets/chessground.base.css'
 import './index.css'
 import { Ctrl } from './ctrl'
-import { view } from './view'
+import { view } from './views/layout'
 
 const patch = init([classModule, attributesModule, propsModule, styleModule, eventListenersModule])
 
@@ -21,3 +21,7 @@ function redraw() {
 
 const ctrl = new Ctrl(redraw)
 redraw()
+
+// Offline shell and installability; not in dev, where it would
+// cache Vite's modules
+if (import.meta.env.PROD && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js')

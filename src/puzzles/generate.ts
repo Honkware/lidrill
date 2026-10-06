@@ -1,5 +1,6 @@
 import { Chess } from 'chessops/chess'
 import { makeFen, parseFen } from 'chessops/fen'
+import { makeSan } from 'chessops/san'
 import { parseUci } from 'chessops/util'
 import { createEmptyCard } from 'ts-fsrs'
 import type { Eval, Game, Puzzle, PuzzleTag, PuzzleType } from '../db'
@@ -51,6 +52,11 @@ export function findCandidates(game: Game, swingThresholdCp: number): Candidate[
   return out
 }
 
+function sanOf(fen: string, uci: string): string {
+  const move = parseUci(uci)
+  return move ? makeSan(Chess.fromSetup(parseFen(fen).unwrap()).unwrap(), move) : uci
+}
+
 const isMate = (r: SearchResult) => r.eval.mate !== undefined && r.eval.mate > 0
 
 // Best move is unique: the gap to the second line clears the band margin, or
@@ -77,7 +83,9 @@ export async function generatePuzzles(game: Game, engine: Engine, opts: Generate
     const lines = await engine.searchLines(c.fen, opts.depth, 2)
     if (lines.length < 2 || !isUnique(lines, opts.marginCp)) continue
     const best = lines[0]
-    if (best.pv[0] === c.played) continue // engine now likes the played move: not a mistake at depth
+    // Engine now likes the played move: not a mistake at depth. Compared as
+    // SAN because castling is e1h1 in chessops and e1g1 from Stockfish.
+    if (sanOf(c.fen, best.pv[0]) === sanOf(c.fen, c.played)) continue
 
     // Recapture-only puzzles teach nothing
     const prevMove = game.moves[c.ply - 2]

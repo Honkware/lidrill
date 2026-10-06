@@ -1,4 +1,5 @@
 import type { Band, Game } from './db'
+import type { Perf, Speed } from './lichess/api'
 
 // Defaults per level
 export const BAND_DEFAULTS: Record<Band, { swingThresholdCp: number; marginCp: number }> = {
@@ -7,9 +8,25 @@ export const BAND_DEFAULTS: Record<Band, { swingThresholdCp: number; marginCp: n
   advanced: { swingThresholdCp: 100, marginCp: 80 },
 }
 
+const bandOf = (rating: number): Band => (rating < 1000 ? 'beginner' : rating < 1800 ? 'club' : 'advanced')
+
+// The current Lichess rating in the speed played most, rapid/classical first
+//Provisional ratings are skipped: a few games say little.
+export function bandFromRatings(perfs: Partial<Record<Speed, Perf>>): Band | undefined {
+  for (const speeds of [['rapid', 'classical'], ['blitz', 'bullet']] as Speed[][]) {
+    const known = speeds.map(s => perfs[s]).filter((p): p is Perf => !!p && p.games > 0 && !p.prov)
+    known.sort((a, b) => b.games - a.games)
+    if (known.length) return bandOf(known[0].rating)
+  }
+  return undefined
+}
+
 // Median rating of the last 50 rapid/classical games. Blitz counts only
 // when there are no slower games, since most beginners don't play rapid.
-export function computeBand(games: Game[]): Band {
+// Signed-in players get their live Lichess rating instead, when it's settled.
+export function computeBand(games: Game[], perfs?: Partial<Record<Speed, Perf>>): Band {
+  const fromLichess = perfs && bandFromRatings(perfs)
+  if (fromLichess) return fromLichess
   const recent = (speeds: string[]) =>
     games
       .filter(g => speeds.includes(g.speed) && g.rating > 0)
@@ -20,6 +37,5 @@ export function computeBand(games: Game[]): Band {
   if (!ratings.length) ratings = recent(['blitz', 'bullet'])
   if (!ratings.length) return 'beginner'
   ratings.sort((a, b) => a - b)
-  const median = ratings[Math.floor(ratings.length / 2)]
-  return median < 1000 ? 'beginner' : median < 1800 ? 'club' : 'advanced'
+  return bandOf(ratings[Math.floor(ratings.length / 2)])
 }

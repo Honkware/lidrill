@@ -75,7 +75,7 @@ describe('runQueue', () => {
     const engine = await sharedEngine()
     const controller = new AbortController()
     const seen: number[] = []
-    await runQueue(engine, { depth: 6, bookPlies: 0 }, p => {
+    await runQueue(engine, { depth: 6, bookPlies: async () => 0 }, p => {
       seen.push(p.done)
       if (p.done === 1) controller.abort()
     }, controller.signal)

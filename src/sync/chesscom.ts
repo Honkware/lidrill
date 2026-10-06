@@ -41,6 +41,8 @@ export function fromChesscom(g: ChesscomGame, user: string): Game | null {
     color,
     result,
     rating: g[color].rating,
+    opponent: g[color === 'white' ? 'black' : 'white'].username,
+    opponentRating: g[color === 'white' ? 'black' : 'white'].rating,
     speed: g.time_class,
     eco: pgnHeader(g.pgn, 'ECO') ?? '',
     opening: decodeURIComponent(slug).replace(/-/g, ' '),

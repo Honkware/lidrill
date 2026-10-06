@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { analyzeMoves } from '../analysis/analyze'
 import { Engine, type SearchResult, type UciEngine } from '../analysis/engine'
 import type { Game, Move } from '../db'
-import { computeBand } from '../profile'
+import { bandFromRatings, computeBand } from '../profile'
 import { pgnMoves } from '../sync/pgn'
 import { findCandidates, generatePuzzles, isUnique, povCp } from './generate'
 
@@ -21,6 +21,13 @@ describe('computeBand', () => {
     expect(computeBand([g(900), g(950), g(2000)])).toBe('beginner')
     expect(computeBand([g(1200), g(1500), g(900)])).toBe('club')
     expect(computeBand([g(1900), g(2100)])).toBe('advanced')
+  })
+  it('prefers the settled Lichess rating in the most played slow speed', () => {
+    const perfs = { rapid: { rating: 884, games: 3, prov: true }, classical: { rating: 1270, games: 12 }, blitz: { rating: 2000, games: 90 } }
+    expect(bandFromRatings(perfs)).toBe('club')
+    expect(computeBand([g(1900)], perfs)).toBe('club')
+    expect(bandFromRatings({ blitz: { rating: 1500, games: 4, prov: true } })).toBeUndefined()
+    expect(computeBand([g(1900)], { blitz: { rating: 1500, games: 4, prov: true } })).toBe('advanced')
   })
   it('falls back to blitz, then to beginner', () => {
     expect(computeBand([g(1500, 'blitz')])).toBe('club')

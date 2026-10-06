@@ -1,27 +1,84 @@
 import { fsrs, Rating } from 'ts-fsrs'
-import { db, type Puzzle } from './db'
+import { db, type Puzzle, type Review } from './db'
 
 const scheduler = fsrs()
 
 // About 15 minutes a day: at ~75 s a puzzle that's 12.
 export const DAILY_CAP = 12
 
-// Due puzzles, shortest solutions first so beginners meet 1-3 movers before
-// long lines.
-export async function dueQueue(now = new Date()): Promise<Puzzle[]> {
-  const due = await db.puzzles.where('card.due').belowOrEqual(now).toArray()
-  due.sort((a, b) => a.solutionLen - b.solutionLen || +a.card.due - +b.card.due)
-  return due.slice(0, DAILY_CAP)
+// After two days away the queue shrinks to this (S10 lapse planning): a short
+// set to restart with, never a pile-up.
+export const RECOVERY_CAP = 6
+const EXTERNAL_SHARE = 0.3
+const TOP_LEAK_SHARE = 0.6
+
+export interface DayQueue {
+  puzzles: Puzzle[]
+  recovery: boolean
+  topLeak?: string
 }
 
-// First-try solve is Good, anything else is Again; there's no hint button
-// to make Hard/Easy meaningful.
-export async function recordAttempt(puzzle: Puzzle, solved: boolean, now = new Date()): Promise<number> {
-  const { card } = scheduler.next(puzzle.card, now, solved ? Rating.Good : Rating.Again)
+// Round-robin over tags so the same kind doesn't come twice in a row when
+// there's a choice (S3 interleaving)
+export function interleave(puzzles: Puzzle[]): Puzzle[] {
+  const byTag = new Map<string, Puzzle[]>()
+  for (const p of puzzles) byTag.set(p.tag, [...(byTag.get(p.tag) ?? []), p])
+  const out: Puzzle[] = []
+  while (out.length < puzzles.length)
+    for (const list of byTag.values()) {
+      const next = list.shift()
+      if (next) out.push(next)
+    }
+  return out
+}
+
+// The day's queue: own-game puzzles first, shortest solutions first
+//at least 60% from the player's most common puzzle type
+// when there are enough, interleaved by tag; Lichess puzzles fill at most 30%.
+export function buildQueue(due: Puzzle[], all: Puzzle[], lastReviewAt: number | undefined, now: Date): DayQueue {
+  const recovery = lastReviewAt !== undefined && +now - lastReviewAt > 2 * 24 * 3600 * 1000
+  const cap = recovery ? RECOVERY_CAP : DAILY_CAP
+  const byLength = (a: Puzzle, b: Puzzle) => a.solutionLen - b.solutionLen || +a.card.due - +b.card.due
+  const own = due.filter(p => p.source !== 'lichess').sort(byLength)
+  const external = due.filter(p => p.source === 'lichess').sort(byLength)
+
+  const counts = new Map<string, number>()
+  for (const p of all) if (p.source !== 'lichess') counts.set(p.type, (counts.get(p.type) ?? 0) + 1)
+  const topLeak = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0]
+
+  const maxExternal = Math.floor(cap * EXTERNAL_SHARE)
+  const ownSlots = Math.min(own.length, cap - Math.min(maxExternal, external.length))
+  const leak = own.filter(p => p.type === topLeak)
+  const rest = own.filter(p => p.type !== topLeak)
+  const leakSlots = Math.min(leak.length, Math.max(Math.ceil(ownSlots * TOP_LEAK_SHARE), ownSlots - rest.length))
+  const chosen = [...leak.slice(0, leakSlots), ...rest.slice(0, ownSlots - leakSlots)]
+  const ext = external.slice(0, Math.min(maxExternal, cap - chosen.length))
+  return { puzzles: [...interleave(chosen.sort(byLength)), ...ext], recovery, topLeak }
+}
+
+export async function dueQueue(now = new Date()): Promise<DayQueue> {
+  const due = await db.puzzles.where('card.due').belowOrEqual(now).toArray()
+  const all = await db.puzzles.toArray()
+  const last = await db.reviews.orderBy('at').last()
+  return buildQueue(due, all, last?.at, now)
+}
+
+// First-try solve is Good, a solve after the hint is Hard, a miss is Again.
+// A hinted solve doesn't count as solved in the stats or for calibration,
+// the way a hint makes a Lichess puzzle unrated.
+export function ratingFor(solved: boolean, hinted: boolean): Rating.Good | Rating.Hard | Rating.Again {
+  return !solved ? Rating.Again : hinted ? Rating.Hard : Rating.Good
+}
+
+export async function recordAttempt(puzzle: Puzzle, solved: boolean, now = new Date(), hinted = false): Promise<number> {
+  const { card } = scheduler.next(puzzle.card, now, ratingFor(solved, hinted))
   await db.puzzles.update(puzzle.id, { card })
   // ++id is always set on add
-  return (await db.reviews.add({ puzzleId: puzzle.id, at: +now, solved }))!
+  return (await db.reviews.add({ puzzleId: puzzle.id, at: +now, solved, hinted: hinted || undefined }))!
 }
+
+// What the stats count as solved
+export const cleanSolve = (r: Review) => r.solved && !r.hinted
 
 export async function saveWhyMissed(reviewId: number, text: string): Promise<void> {
   await db.reviews.update(reviewId, { whyMissed: text.trim() || undefined })

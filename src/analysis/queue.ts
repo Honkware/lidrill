@@ -1,6 +1,12 @@
 import { db, type Game } from '../db'
-import { analyzeMoves, type AnalyzeOptions } from './analyze'
+import { analyzeMoves } from './analyze'
 import type { Engine } from './engine'
+
+export interface QueueOptions {
+  depth: number
+  // Book length for a game: masters explorer when signed in, else a fixed count
+  bookPlies: (game: Game) => Promise<number>
+}
 
 export interface Progress {
   done: number
@@ -12,7 +18,7 @@ export interface Progress {
 // mid-game loses only that game's work.
 export async function runQueue(
   engine: Engine,
-  opts: AnalyzeOptions,
+  opts: QueueOptions,
   onProgress: (p: Progress) => void,
   signal?: AbortSignal,
   onGame?: (game: Game) => Promise<void>,
@@ -23,7 +29,8 @@ export async function runQueue(
   onProgress({ done: 0, total })
   for (const [i, game] of pending.entries()) {
     if (signal?.aborted) return
-    const moves = await analyzeMoves(game.moves, engine, opts)
+    const bookPlies = await opts.bookPlies(game)
+    const moves = await analyzeMoves(game.moves, engine, { depth: opts.depth, bookPlies })
     if (signal?.aborted) return
     const analyzed = { ...game, moves, analyzedAt: Date.now() }
     await db.games.put(analyzed)

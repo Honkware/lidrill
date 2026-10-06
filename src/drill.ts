@@ -11,11 +11,18 @@ import { recordAttempt } from './train'
 
 export type DrillState = 'playing' | 'solved' | 'failed'
 
+export interface DrillOptions {
+  // Daily queue puzzles feed FSRS; Turning Points stops don't
+  record: boolean
+  onFinish?: (solved: boolean) => void
+}
+
 // One puzzle on one board. The view reads its fields; moves come in from
 // chessground and the controller calls redraw when something changes.
 export class Drill {
   state: DrillState = 'playing'
   step = 0
+  hinted = false
   game?: Game
   reviewId?: number
   private pos: Chess
@@ -23,15 +30,18 @@ export class Drill {
 
   readonly puzzle: Puzzle
   private redraw: () => void
+  private opts: DrillOptions
 
-  constructor(puzzle: Puzzle, redraw: () => void) {
+  constructor(puzzle: Puzzle, redraw: () => void, opts: DrillOptions = { record: true }) {
     this.puzzle = puzzle
     this.redraw = redraw
+    this.opts = opts
     this.pos = Chess.fromSetup(parseFen(puzzle.fen).unwrap()).unwrap()
-    db.games.get(puzzle.gameId).then(g => {
-      this.game = g
-      redraw()
-    })
+    if (puzzle.gameId)
+      db.games.get(puzzle.gameId).then(g => {
+        this.game = g
+        redraw()
+      })
   }
 
   get color() {
@@ -39,19 +49,42 @@ export class Drill {
   }
 
   mount(el: HTMLElement) {
-    this.cg = Chessground(el, {
+    this.useBoard(Chessground(el, { coordinates: true, premovable: { enabled: false } }), true)
+  }
+
+  // Take over a board that's already on screen (Turning Points replays the
+  // game on it first). The drill only destroys boards it created.
+  useBoard(cg: Api, owned = false) {
+    this.cg = cg
+    this.owned = owned
+    cg.set({
       fen: this.puzzle.fen,
       orientation: this.color,
       turnColor: this.color,
-      coordinates: true,
+      check: this.pos.isCheck(),
       movable: { free: false, color: this.color, dests: chessgroundDests(this.pos), showDests: true },
-      premovable: { enabled: false },
       events: { move: (orig, dest) => this.onMove(orig, dest) },
     })
   }
 
   destroy() {
-    this.cg?.destroy()
+    this.timers.forEach(clearTimeout)
+    if (this.owned) this.cg?.destroy()
+  }
+
+  private owned = false
+  private timers: ReturnType<typeof setTimeout>[] = []
+  private later(f: () => void, ms: number) {
+    this.timers.push(setTimeout(f, ms))
+  }
+
+  // Marks the piece to move. The drill still counts, as Hard if solved.
+  hint() {
+    if (this.state !== 'playing' || this.hinted) return
+    this.hinted = true
+    const from = this.puzzle.solution[this.step].slice(0, 2) as Key
+    this.cg?.set({ highlight: { custom: new Map([[from, 'hint']]) } })
+    this.redraw()
   }
 
   // SAN of a UCI move from the puzzle's starting position
@@ -67,11 +100,15 @@ export class Drill {
     if (expected?.startsWith(uci) && expected.length === 5) uci = expected
     else if (this.pos.board.get(parseSquare(orig)!)?.role === 'pawn' && /[18]$/.test(dest)) uci += 'q'
 
-    if (uci !== expected) return this.finish(false)
+    // Castling arrives as e1g1 or e1h1 depending on where the king was dropped
+    const here = makeFen(this.pos.toSetup())
+    if (uci !== expected && (!expected || this.sanAt(uci, here) !== this.sanAt(expected, here))) return this.finish(false)
+    uci = expected
+    this.cg?.set({ highlight: { custom: new Map() } })
     this.play(uci)
     if (this.step >= this.puzzle.solution.length) return this.finish(true)
     // Opponent's reply from the solution line
-    setTimeout(() => {
+    this.later(() => {
       this.play(this.puzzle.solution[this.step])
       this.cg?.set({ turnColor: this.color, movable: { color: this.color, dests: chessgroundDests(this.pos) } })
       this.redraw()
@@ -99,9 +136,11 @@ export class Drill {
       // Walk the rest of the solution so the player sees it
       const rest = this.puzzle.solution.slice(this.step)
       this.cg?.set({ fen: makeFen(this.pos.toSetup()) })
-      rest.forEach((uci, i) => setTimeout(() => this.play(uci), 500 + i * 600))
+      rest.forEach((uci, i) => this.later(() => this.play(uci), 500 + i * 600))
     }
-    this.reviewId = await recordAttempt(this.puzzle, solved)
+    this.cg?.set({ highlight: { custom: new Map() } })
+    if (this.opts.record) this.reviewId = await recordAttempt(this.puzzle, solved, new Date(), this.hinted)
+    this.opts.onFinish?.(solved)
     this.redraw()
   }
 }
