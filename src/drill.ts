@@ -11,7 +11,7 @@ import { checkColor } from './checkColor'
 import { db, type Game, type Puzzle } from './db'
 import { contextFor, explain } from './explain'
 import { renderSlot, type BoardLink, type Segment } from './server/render'
-import type { SlotName } from './server/packet'
+import type { Packet, SlotName } from './server/packet'
 import { pawns } from './format'
 import { recordAttempt } from './train'
 import { parseTyped } from './typed'
@@ -38,6 +38,9 @@ export interface DrillOptions {
   source?: 'queue' | 'replay'
   engine?: Engine // evals in view mode
   certEngines?: Engine[] // for "Why?"; the app's certification engines by default
+  // (Turning Points): collapse the explanation's packet to the game's
+  // stored eval line before it renders, so no stop contradicts another
+  consistency?: (packet: Packet) => Packet
   onFinish?: (outcome: Outcome) => void
 }
 
@@ -75,6 +78,7 @@ export class Drill {
   flipped = false
   why?: { loading?: boolean; progress?: [number, number]; slots?: { slot: SlotName; segments: Segment[] }[]; floor?: boolean; error?: string }
   readonly puzzle: Puzzle
+  readonly opts: DrillOptions
   private cg?: Api
   private owned = false
   private timers: ReturnType<typeof setTimeout>[] = []
@@ -82,7 +86,6 @@ export class Drill {
   private recorded = false
   private reverting = false // a wrong move is on the board for a moment
   private redraw: () => void
-  private opts: DrillOptions
   private loaded: Promise<void>
 
   constructor(puzzle: Puzzle, redraw: () => void, opts: DrillOptions = { record: true }) {
@@ -409,7 +412,8 @@ export class Drill {
           this.redraw()
         }),
       )
-      this.why = { slots: e.slots.map(s => ({ slot: s.slot, segments: renderSlot(s, e.packet) })), floor: e.floor }
+      const packet = this.opts.consistency?.(e.packet) ?? e.packet
+      this.why = { slots: e.slots.map(s => ({ slot: s.slot, segments: renderSlot(s, packet) })), floor: e.floor }
     } catch (e) {
       this.why = { error: (e as Error).message }
     }

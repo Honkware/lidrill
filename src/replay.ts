@@ -8,6 +8,7 @@ import type { Engine } from './analysis/engine'
 import { checkColor } from './checkColor'
 import { Drill } from './drill'
 import { db, type Game, type Puzzle } from './db'
+import { lineEvalCp, reconcileWithLine } from './server/consistency'
 
 export type ReplayState = 'playing' | 'stop' | 'between' | 'done'
 
@@ -129,6 +130,11 @@ export class Replay {
         record: true,
         source: 'replay',
         engine: this.engine,
+        // The Turning Points consistency point: a stop's packet must
+        // not contradict the game's stored certified eval line (which the
+        // review screen already shows for this game). Fresh packets were
+        // reconciled at build time; this collapses rows stored earlier.
+        consistency: packet => reconcileWithLine(packet, lineEvalCp(this.game, this.current!.ply)),
         onFinish: outcome => {
           this.results.push(outcome === 'clean' || outcome === 'hinted')
           if (drill.reviewId !== undefined) this.reviewIds.push(drill.reviewId)

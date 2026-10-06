@@ -5,6 +5,7 @@ import type { CertifiedRun, Engine } from './analysis/engine'
 import { db, type Band, type ExplanationRow, type Game, type Puzzle } from './db'
 import { CERT, dedupeKey, nullMoveFen, packetHash, PROMPT_VERSION, REPORT_SCHEMA, type EngineReport, type Packet, type PuzzleKind } from './server/packet'
 import { gameState } from './server/gamestate'
+import { lineEvalCp } from './server/consistency'
 import type { Slot } from './server/render'
 import { sha256Hex, solve } from './server/sha256'
 
@@ -18,6 +19,7 @@ export const EXPLAIN_VERSION = 10
 export interface ExplainContext {
   band: Band
   history?: string[] // earlier FENs of the game, for repetition counts
+  lineCp?: number // the game's stored eval line at the puzzle position, player's point of view
   weeklyFocusHabit?: string
   opening?: string
   eco?: string
@@ -92,6 +94,7 @@ export async function certifyReport(p: Puzzle, engines: Engine[], ctx: ExplainCo
     schema: REPORT_SCHEMA,
     fen: p.fen,
     history: ctx.history?.slice(-600),
+    lineCp: ctx.lineCp,
     solution: p.solution,
     holding: p.alternatives,
     kind: kindOf(p),
@@ -173,7 +176,10 @@ export async function contextFor(p: Puzzle, game?: Game): Promise<ExplainContext
   const week = await db.journal.where('at').above(Date.now() - WEEK).toArray()
   const hangs = week.filter(j => j.hung).length
   const weeklyFocusHabit = week.length >= 3 && hangs / week.length >= 0.3 ? 'habit:blunder-check' : undefined
-  return { band: profile?.band ?? 'beginner', history, weeklyFocusHabit, opening: game?.opening, eco: game?.eco }
+  // The game's own stored eval line at the puzzle position, so the
+  // packet can be reconciled against what the review screen already shows
+  const lineCp = game ? lineEvalCp(game, p.ply) : undefined
+  return { band: profile?.band ?? 'beginner', history, lineCp, weeklyFocusHabit, opening: game?.opening, eco: game?.eco }
 }
 
 export const rowId = (puzzleId: string, tried?: string) => `${puzzleId}|${tried ?? ''}`

@@ -2,6 +2,7 @@ import { issue, verify } from '../src/server/guard'
 import type { Band } from '../src/db'
 import { narrate } from '../src/server/narrate'
 import { openRouter } from '../src/server/openrouter'
+import { reconcileWithLine } from '../src/server/consistency'
 import { BANDS, buildPacket, packetHash, packetProblems, stampTier, validPacket, validReport, type Packet } from '../src/server/packet'
 import { templateFloor } from '../src/server/floor'
 import { sha256Hex } from '../src/server/sha256'
@@ -81,7 +82,9 @@ async function packet(request: Request, env: Env): Promise<Response> {
   if (!report) return json({ error: 'That isn’t a puzzle report.' }, 400)
   const built = buildPacket(report)
   if (!built.ok) return json({ error: `That position can’t be explained (${built.error}).` }, 422)
-  const pkt = stampTier(built.packet, 'client-lite')
+  // Collapse to the stored eval line before the self-check, the
+  // store, and (on the explain path) the narrator ever see the packet
+  const pkt = reconcileWithLine(stampTier(built.packet, 'client-lite'), report.lineCp)
   const problems = packetProblems(pkt)
   if (problems.length) return json({ error: `That position can’t be explained (${problems[0]}).` }, 422)
   const hash = await packetHash({ fen: report.fen, solution: report.solution, band: report.band })
@@ -161,7 +164,7 @@ async function explain(request: Request, env: Env, ctx: { waitUntil(p: Promise<u
   if (!report) return json({ error: 'That isn’t a puzzle report.' }, 400)
   const built = buildPacket(report)
   if (!built.ok) return json({ error: `That position can’t be explained (${built.error}).` }, 422)
-  const pkt = stampTier(built.packet, 'client-lite')
+  const pkt = reconcileWithLine(stampTier(built.packet, 'client-lite'), report.lineCp)
   pkt.meta.packetHash = await packetHash({ fen: report.fen, solution: report.solution, band: report.band })
 
   // A packet that fails its own self-check never reaches the model
