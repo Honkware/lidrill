@@ -1,13 +1,13 @@
 import { bookLength, FALLBACK_BOOK_PLIES } from './analysis/book'
 import { Engine, workerEngine } from './analysis/engine'
-import { runQueue, type Progress } from './analysis/queue'
+import { eachWithEngine, runQueue, type Progress } from './analysis/queue'
 import { db, type Game, type Profile } from './db'
 import { fetchAccount } from './lichess/api'
 import { failedPuzzles, fetchActivity, fetchDashboard, fetchThemePuzzles, snapshot, weakThemes } from './lichess/puzzles'
 import { journalFor, worst5Cutoff } from './metrics'
 import { BAND_DEFAULTS, computeBand } from './profile'
 import { findPractice } from './practice'
-import { generatePuzzles } from './puzzles/generate'
+import { GENERATOR_VERSION, generatePuzzles } from './puzzles/generate'
 import { calibrate } from './report'
 import { SignInExpired } from './sync/lichess'
 import { sync } from './sync/sync'
@@ -19,8 +19,16 @@ export interface Accounts {
   chesscomUser?: string
 }
 
+// One engine for interactive use (drills), and a pool for background
+// analysis: each pool engine takes whole games, so results match a single
+// engine while using more of the device's cores. One core is left free for
+// the page; four is plenty and keeps phones from cooking.
 let engine: Engine | undefined
 export const getEngine = () => (engine ??= new Engine(workerEngine()))
+
+let pool: Engine[] | undefined
+export const poolSize = () => Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 2) - 1))
+const getPool = () => (pool ??= Array.from({ length: poolSize() }, () => new Engine(workerEngine())))
 
 // Merges into the stored profile and recomputes the band. A band change
 // re-defaults the thresholds and is logged in bandHistory.
@@ -168,14 +176,10 @@ export async function syncAndAnalyze(
   // games come in and the journal is redone at the end
   let cutoff = worst5Cutoff(await db.games.filter(g => g.analyzedAt !== undefined).toArray())
   let sinceCutoff = 0
-  await runQueue(getEngine(), { depth: 14, bookPlies: bookFor(accounts.lichessToken) }, onProgress, signal, async game => {
-    const puzzles = await generatePuzzles(game, getEngine(), {
-      swingThresholdCp: profile.swingThresholdCp,
-      marginCp: profile.marginCp,
-      depth: 16,
-      maxSolutionMoves: 3,
-    })
-    await db.puzzles.bulkPut(puzzles)
+  const genOpts = { swingThresholdCp: profile.swingThresholdCp, marginCp: profile.marginCp, depth: 16, maxSolutionMoves: 3 }
+  await runQueue(getPool(), { depth: 14, bookPlies: bookFor(accounts.lichessToken) }, onProgress, signal, async (game, eng) => {
+    await db.puzzles.bulkPut(await generatePuzzles(game, eng, genOpts))
+    await db.games.update(game.id, { puzzlesVersion: GENERATOR_VERSION })
     if (profile.band === 'advanced' && ++sinceCutoff >= 10) {
       cutoff = worst5Cutoff(await db.games.filter(g => g.analyzedAt !== undefined).toArray())
       sinceCutoff = 0
@@ -184,5 +188,25 @@ export async function syncAndAnalyze(
     await addPractice([game])
   })
   if (profile.band === 'advanced') await rebuildJournal(profile)
+
+  // Games analyzed by an older generator get another look; puzzles they
+  // already have keep their schedule
+  const stale = (await db.games.filter(g => g.analyzedAt !== undefined && (g.puzzlesVersion ?? 1) < GENERATOR_VERSION).toArray()).sort(
+    (a, b) => b.playedAt - a.playedAt,
+  )
+  let rechecked = 0
+  await eachWithEngine(
+    stale,
+    getPool(),
+    async (game, eng) => {
+      onStatus(`Looking for more puzzles in games you've already played (${++rechecked}/${stale.length})…`)
+      const found = await generatePuzzles(game, eng, genOpts)
+      const known = new Set(await db.puzzles.where('gameId').equals(game.id).primaryKeys())
+      await db.puzzles.bulkAdd(found.filter(p => !known.has(p.id)))
+      await db.games.update(game.id, { puzzlesVersion: GENERATOR_VERSION })
+    },
+    signal,
+  )
+  if (signal.aborted) return
   onStatus('Done.')
 }

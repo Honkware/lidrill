@@ -2,14 +2,15 @@ import type { VNode } from 'snabbdom'
 import type { Ctrl, ReviewRow } from '../ctrl'
 import { el } from '../el'
 import type { GameView } from '../gameview'
-import { board, button, card, dateLabel, icon, judgColor, judgMark, label, plural, resultChip, topBar } from './ui'
+import { deviation } from '../lichess/repertoire'
+import { board, button, card, dateLabel, icon, judgColor, judgMark, label, pawnsWorth, plural, resultChip, topBar } from './ui'
 
 export function reviewView(ctrl: Ctrl): VNode {
   const rows = ctrl.reviewList
   return el('div', 'mx-auto max-w-2xl space-y-3', [
     el('h1', 'font-display text-2xl', 'Review'),
     !rows
-      ? null
+      ? el('div', 'h-96 animate-pulse rounded-xl bg-surface')
       : !rows.length
         ? card([el('p', 'text-dim', ctrl.syncing ? 'Your games are being analyzed. They show up here one by one.' : 'No analyzed games yet.')])
         : el('ul', 'divide-y divide-raised overflow-hidden rounded-xl bg-surface', rows.map(r => row(r))),
@@ -55,6 +56,7 @@ export function gameView(ctrl: Ctrl): VNode {
         g.accuracy ? ` · accuracy ${g.accuracy}%` : '',
       ]),
       lowPoints(v),
+      studyNote(ctrl, v),
       moveList(v),
       journalCard(ctrl, v),
       el('div', 'flex flex-wrap gap-2', [
@@ -140,7 +142,7 @@ function journalCard(ctrl: Ctrl, v: GameView): VNode | null {
         'p',
         '',
         j.hung
-          ? [`You hung material on move ${Math.ceil(j.hung.ply / 2)} (`, el('button', 'underline', { attrs: { type: 'button' }, on: { click: () => v.go(j.hung!.ply) } }, j.hung.san), `), about ${(j.hung.swingCp / 100).toFixed(1)} pawns.`]
+          ? [`You hung material on move ${Math.ceil(j.hung.ply / 2)} (`, el('button', 'underline', { attrs: { type: 'button' }, on: { click: () => v.go(j.hung!.ply) } }, j.hung.san), `), giving away about ${pawnsWorth(j.hung.swingCp)}.`]
           : 'No hangs in this game. It counts toward your streak.',
       ),
       el('label', 'flex items-center gap-2 text-sm', [
@@ -155,4 +157,19 @@ function journalCard(ctrl: Ctrl, v: GameView): VNode | null {
     ],
     'space-y-3',
   )
+}
+
+// Where the game left the player's study repertoire, if they use one
+function studyNote(ctrl: Ctrl, v: GameView): VNode | null {
+  const study = ctrl.profile?.repertoireStudy
+  if (!study) return null
+  const d = deviation(v.game, study.lines)
+  if (!d) return null
+  const moveNo = `${Math.ceil(d.ply / 2)}${d.ply % 2 ? '.' : '…'}`
+  const played = v.sanBefore(d.ply, v.game.moves[d.ply - 1].uci)
+  const expected = v.sanBefore(d.ply, d.expected)
+  return el('button', 'block w-full rounded-xl bg-surface p-3 text-left text-sm', { attrs: { type: 'button' }, on: { click: () => v.go(d.ply - 1) } }, [
+    el('span', 'text-dim', `Study "${study.name}": `),
+    d.byPlayer ? `you left it at ${moveNo} It plays ${expected}; you played ${played}.` : `your opponent left it at ${moveNo} with ${played} (the study expects ${expected}).`,
+  ])
 }

@@ -5,6 +5,7 @@ import { db, type Auth, type Game, type JournalEntry, type Practice, type Profil
 import { Drill } from './drill'
 import { GameView } from './gameview'
 import { fetchLook, PREFERENCE_SCOPE } from './lichess/api'
+import { fetchStudyLines, listStudies, STUDY_READ_SCOPE, studyCompliance, type StudyInfo } from './lichess/repertoire'
 import { STUDY_SCOPE, sendToStudy } from './lichess/study'
 import { applyLook, BOARDS, PIECE_SETS } from './look'
 import { compliance, openingTable, repertoireTargets, streak, type OpeningRow, type Streak } from './metrics'
@@ -27,7 +28,8 @@ export interface TodayData {
   queue: DayQueue
   streak: Streak
   report: WeekReport
-  weeks: (number | undefined)[]
+  weeks: { games: number; clean: number }[]
+  practice: { conversion: number; defense: number; cleared: number }
   openings: OpeningRow[]
   replayPick?: { game: Game; stops: number }
   puzzlePerf?: { now: number; delta?: number }
@@ -66,11 +68,16 @@ export class Ctrl {
   replay?: Replay
   gameView?: GameView
   run?: PracticeRun
+  studies?: StudyInfo[]
+  playedFamilies: string[] = []
   private queue: string[] = []
   private abort?: AbortController
   private refreshing?: Promise<void>
   private lastRefresh = 0
   private depth = 0
+  private loadedKey = ''
+  // First load finished: until then screens show placeholders, not "no data"
+  ready = false
   readonly redraw: () => void
 
   constructor(redraw: () => void) {
@@ -96,6 +103,7 @@ export class Ctrl {
     await this.route()
     if (after?.startsWith('study:')) this.sendStudy(after.slice(6))
     if (after === 'look') this.useLichessLook()
+    if (after === 'studies') this.loadStudies()
     if (this.auth || this.profile?.chesscomUser) this.sync()
   }
 
@@ -155,14 +163,37 @@ export class Ctrl {
     return this.refreshing
   }
 
+  // Counts are cheap (indexes); the full game list and the stats built on
+  // it are only re-read when something changed since the last look, so
+  // switching tabs during a long analysis stays instant.
   private async load() {
     this.profile = await db.profile.get('me')
-    const games = await db.games.toArray()
-    const analyzed = games.filter(g => g.analyzedAt !== undefined)
-    this.counts = { games: games.length, analyzed: analyzed.length, puzzles: await db.puzzles.count() }
-    if (this.screen === 'today' && this.profile) await this.loadToday(games, analyzed, this.profile)
-    if (this.screen === 'review') await this.loadReview(analyzed)
+    const [games, analyzed, puzzles, reviews, journal, practice] = await Promise.all([
+      db.games.count(),
+      db.games.where('analyzedAt').above(0).count(),
+      db.puzzles.count(),
+      db.reviews.count(),
+      db.journal.count(),
+      db.practice.count(),
+    ])
+    this.counts = { games, analyzed, puzzles }
+    const version = [games, analyzed, puzzles, reviews, journal, practice, this.profile?.band, this.profile?.repertoire?.join(), this.profile?.repertoireStudy?.id, new Date().toDateString()].join('|')
+    const key = `${this.screen}:${version}`
+    if (key !== this.loadedKey) {
+      const all = this.screen === 'today' || this.screen === 'review' || this.screen === 'settings' ? await db.games.toArray() : []
+      const done = all.filter(g => g.analyzedAt !== undefined)
+      if (this.screen === 'today' && this.profile) await this.loadToday(all, done, this.profile)
+      if (this.screen === 'review') await this.loadReview(done)
+      if (this.screen === 'settings')
+        this.playedFamilies = openingTable(all)
+          .filter(r => r.family !== 'Unknown')
+          .slice(0, 10)
+          .map(r => r.family)
+      this.loadedKey = key
+    }
+    // Streaks change without the count changing, and the list is small
     if (this.screen === 'drills') this.practiceList = await db.practice.toArray()
+    this.ready = true
     this.redraw()
   }
 
@@ -177,16 +208,19 @@ export class Ctrl {
     const snaps = (await db.liPuzzle.toArray()).sort((a, b) => a.week.localeCompare(b.week))
     const [prev, last] = [snaps.at(-2), snaps.at(-1)]
     const targets = repertoireTargets(games, profile.band, profile.repertoire)
+    const practice = await db.practice.toArray()
+    const open = (kind: string) => practice.filter(p => p.kind === kind && !p.cleared).length
     this.today = {
       queue: await dueQueue(now),
       streak: streak(journal),
       report: weekReport(games, journal, reviews, profile, now),
       weeks: weeklyZeroHang(journal, now),
-      openings: openingTable(games).slice(0, 8),
+      practice: { conversion: open('conversion'), defense: open('defense'), cleared: practice.filter(p => p.cleared).length },
+      openings: openingTable(games, new Map(journal.map(j => [j.gameId, j]))).slice(0, 8),
       replayPick: latest && { game: latest, stops: stopsByGame.get(latest.id)! },
       puzzlePerf: last && { now: last.global.performance, delta: prev && last.global.performance - prev.global.performance },
       targets,
-      compliance: compliance(games, targets),
+      compliance: profile.repertoireStudy ? studyCompliance(games, profile.repertoireStudy.lines) : compliance(games, targets),
     }
   }
 
@@ -395,6 +429,38 @@ export class Ctrl {
     this.redraw()
   }
 
+  async loadStudies() {
+    if (!this.auth) return
+    if (!this.hasScope(STUDY_READ_SCOPE)) return void startSignIn([...this.auth.scopes, STUDY_READ_SCOPE], 'studies')
+    try {
+      this.studies = await listStudies(this.auth.username, this.auth.token)
+      if (!this.studies.length) this.notice = { text: "You don't have any studies on Lichess yet." }
+    } catch (e) {
+      await this.signInExpired(e)
+      this.notice = { text: (e as Error).message }
+    }
+    this.redraw()
+  }
+
+  async useStudy(study: StudyInfo | undefined) {
+    if (!study) {
+      this.profile = await saveProfile({ repertoireStudy: undefined })
+      return this.refresh(true)
+    }
+    if (!this.auth) return
+    try {
+      const lines = await fetchStudyLines(study.id, this.auth.token)
+      if (!lines.length) return void ((this.notice = { text: `"${study.name}" has no chapters that start from the opening position.` }), this.redraw())
+      this.profile = await saveProfile({ repertoireStudy: { ...study, lines } })
+      this.studies = undefined
+      this.notice = { text: `Using "${study.name}": ${lines.length} lines.` }
+    } catch (e) {
+      await this.signInExpired(e)
+      this.notice = { text: (e as Error).message }
+    }
+    this.refresh(true)
+  }
+
   // --- settings ---
 
   async setLook(patch: Partial<Pick<Profile, 'theme' | 'pieces' | 'board'>>) {
@@ -404,9 +470,16 @@ export class Ctrl {
     this.redraw()
   }
 
-  async setPlan(patch: Partial<Pick<Profile, 'trainingTime' | 'repertoire'>>) {
+  async setPlan(patch: Partial<Pick<Profile, 'repertoire'>>) {
     this.profile = await saveProfile(patch)
     this.refresh(true)
+  }
+
+  // Up to four families; none selected means lidrill picks them
+  async toggleRepertoire(family: string) {
+    const now = this.profile?.repertoire ?? []
+    const next = now.includes(family) ? now.filter(f => f !== family) : [...now, family].slice(-4)
+    await this.setPlan({ repertoire: next.length ? next : undefined })
   }
 
   async exportFile() {
