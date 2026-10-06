@@ -132,6 +132,12 @@ export interface Certificate {
   text: string // the certified fact in words, rendered verbatim
 }
 
+// Which device ran the certification: every certification
+// in today's architecture runs in the player's browser; 'server' is reserved
+// for a future server-side build pipeline. Data only - the narrator and
+// validator treat both identically.
+export type CertTier = 'client-lite' | 'server'
+
 export type ThreatStatus = 'certified' | 'certifiedNull' | 'uncertified'
 export type Verdict = 'winning' | 'better' | 'slightly better' | 'equal' | 'slightly worse' | 'worse' | 'lost' | 'dead-draw' | 'draw (automatic)'
 export type SlotName = 'whatHappened' | 'why' | 'pattern' | 'nextTime'
@@ -142,7 +148,7 @@ export interface Packet {
     packetHash: string
     promptVersion: string
     engine: typeof ENGINE & { certDepth: number; multipv: number; nodesCap: number }
-    certification: { status: 'certified' | 'partial' | 'refused'; policyVersion: string; refusals: string[]; evalStable: boolean }
+    certification: { status: 'certified' | 'partial' | 'refused'; policyVersion: string; refusals: string[]; evalStable: boolean; tier: CertTier }
     readabilityVersion: string
     versions: Record<string, string>
   }
@@ -652,7 +658,7 @@ export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION
       packetHash: '',
       promptVersion,
       engine: { ...ENGINE, certDepth: CERT.depth, multipv: CERT.multipv, nodesCap: CERT.nodesCap },
-      certification: { status, policyVersion: CERT.version, refusals, evalStable: bs.stable },
+      certification: { status, policyVersion: CERT.version, refusals, evalStable: bs.stable, tier: 'client-lite' },
       readabilityVersion: READABILITY_VERSION,
       versions: versions(promptVersion),
     },
@@ -841,6 +847,39 @@ export function dedupeKey(input: { fen: string; occurrenceCount: number; band: B
 }
 
 // --- packet self-check ("the reference packet must pass") --------------
+
+// The tier a certification ran at. Version strings become
+// cert/1.0-client / cert/1.0-server; the tier is data and never changes the
+// packet hash.
+export function stampTier(p: Packet, tier: CertTier): Packet {
+  p.meta.certification.tier = tier
+  p.meta.certification.policyVersion = `${CERT.version}-${tier === 'server' ? 'server' : 'client'}`
+  return p
+}
+
+// What /api/explain v2 trusts from KV: the packet schema, the certification
+// block (incl. tier), the band it was built for, and the shape the narrator
+// and renderer actually read. Facts inside are the uploader's word only where
+// they always were (engine evals); every move and pattern was replayed and
+// re-detected by buildPacket before the packet was stored.
+export function validPacket(x: unknown): Packet | undefined {
+  if (!x || typeof x !== 'object') return undefined
+  const p = x as Packet
+  if (p.schema !== PACKET_SCHEMA) return undefined
+  const c = p.meta?.certification
+  if (!c || !['certified', 'partial', 'refused'].includes(c.status) || !Array.isArray(c.refusals)) return undefined
+  if (c.tier !== 'client-lite' && c.tier !== 'server') return undefined
+  if (typeof c.policyVersion !== 'string' || !/^cert\//.test(c.policyVersion)) return undefined
+  if (typeof p.meta.packetHash !== 'string' || !p.meta.packetHash.startsWith('sha256:')) return undefined
+  if (!p.context || !BANDS.includes(p.context.band)) return undefined
+  if (!p.position || typeof p.position.fenBefore !== 'string' || !['white', 'black'].includes(p.position.playerColor)) return undefined
+  if (!Array.isArray(p.claimAnchors) || !p.claimAnchors.every(a => typeof a === 'string')) return undefined
+  if (!Array.isArray(p.certificates) || p.certificates.length > 8) return undefined
+  if (!p.didactic || typeof p.didactic.habitSlotId !== 'string' || !p.didactic.habitSlotId.startsWith('habit:')) return undefined
+  if (!p.best || typeof p.best.san !== 'string' || !Array.isArray(p.best.pv)) return undefined
+  if (p.tried !== undefined && (!p.tried || typeof p.tried.uci !== 'string')) return undefined
+  return p
+}
 
 export function packetProblems(p: Packet): string[] {
   const problems: string[] = []

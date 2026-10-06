@@ -15,5 +15,6 @@
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true
   },
-  "include": ["worker"]
+  "include": ["worker"],
+  "exclude": ["worker/**/*.test.ts"]
 }
