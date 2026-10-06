@@ -18,6 +18,9 @@ export interface LlmCall {
   system: string
   user: string
   schema: Record<string, unknown>
+  // Set for auto-router calls (smooth only): the reservation the budget
+  // check held, enforced on the wire as provider.max_price
+  routing?: { maxPrice: number }
 }
 export interface LlmResult {
   json?: unknown
@@ -35,6 +38,18 @@ export const MODELS = {
 export const BUDGET_USD = 0.05
 export const MAX_CALLS = 5
 export const PRUNE_MAX = 0.3
+
+// Smooth rides the auto-router (openrouter/auto with
+// cost_tier 'low'): a rejoin/readability pass whose output is re-validated
+// mechanically and falls back to the floor, so the router may pick the
+// market's cheap models for it. Draft/decompose stay pinned - the
+// gate needs reproducible per-slug numbers and the budget reservation uses
+// per-model price constants. The reservation basis is the pinned draft
+// model's price: it caps what the router may select (provider.max_price), so
+// the budget check stays fail-closed. The served model comes back per
+// response and is recorded in models[] like any call.
+export const SMOOTH_MODEL = 'openrouter/auto'
+export const SMOOTH = { temperature: 0.3, maxTokens: 900, usdPerMTokIn: 0.75, usdPerMTokOut: 3.75 } as const
 
 export const SYSTEM_V2 = [
   'You write the explanation of a chess puzzle for an improving player, in four slots: whatHappened, why, pattern, nextTime.',
@@ -145,13 +160,23 @@ export async function narrate(p: Packet, call: Caller): Promise<Narration> {
 
   const view = JSON.stringify(promptView(p))
   // Reserve each call's worst case before making it (fail closed at the cap)
-  const ask = async (pass: LlmCall['pass'], user: string, which: keyof typeof MODELS, schema: Record<string, unknown>) => {
-    const m = MODELS[which]
+  const ask = async (pass: LlmCall['pass'], user: string, which: keyof typeof MODELS | 'smooth', schema: Record<string, unknown>) => {
+    const pinned = which === 'smooth' ? undefined : MODELS[which]
+    const m = pinned ?? SMOOTH
     const worst = ((SYSTEM_V2.length + user.length) / 3) * (m.usdPerMTokIn / 1e6) + m.maxTokens * (m.usdPerMTokOut / 1e6)
     if (calls >= MAX_CALLS || cost + worst > BUDGET_USD) return undefined
     calls++
     try {
-      const r = await call({ pass, model: m.model, temperature: m.temperature, maxTokens: m.maxTokens, system: SYSTEM_V2, user, schema })
+      const r = await call({
+        pass,
+        model: pinned ? pinned.model : SMOOTH_MODEL,
+        temperature: m.temperature,
+        maxTokens: m.maxTokens,
+        system: SYSTEM_V2,
+        user,
+        schema,
+        ...(which === 'smooth' ? { routing: { maxPrice: worst } } : {}),
+      })
       cost += r.cost
       if (r.model) models.push(r.model)
       return r.json
@@ -184,7 +209,7 @@ export async function narrate(p: Packet, call: Caller): Promise<Narration> {
     slots = pruning.slots
     verdict = validateSlots({ slots }, p)
     if (!verdict.ok) {
-      const smooth = await ask('smooth', `Facts packet:\n${view}\n\nSome claims were removed from this explanation. Rejoin the text so it reads well. Keep every {ref:…} token and NO_THREAT exactly, add no facts, and fix these problems:\n- ${verdict.violations.slice(0, 12).join('\n- ')}\n\n${JSON.stringify({ slots })}`, 'draft', SLOT_SCHEMA)
+      const smooth = await ask('smooth', `Facts packet:\n${view}\n\nSome claims were removed from this explanation. Rejoin the text so it reads well. Keep every {ref:…} token and NO_THREAT exactly, add no facts, and fix these problems:\n- ${verdict.violations.slice(0, 12).join('\n- ')}\n\n${JSON.stringify({ slots })}`, 'smooth', SLOT_SCHEMA)
       verdict = validateSlots(smooth, p)
       if (!verdict.ok) return floor('could not rejoin after removing claims')
       slots = verdict.slots!

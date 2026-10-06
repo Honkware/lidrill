@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { templateFloor } from './floor'
-import { narrate, prune, type Caller, type LlmCall } from './narrate'
-import { buildPacket, dedupeKey, nullMoveFen, packetHash, packetProblems, validReport, type EngineReport, type EngineRun, type Packet } from './packet'
+import { BUDGET_USD, MODELS, narrate, prune, SMOOTH_MODEL, type Caller, type LlmCall } from './narrate'
+import { buildPacket, dedupeKey, nullMoveFen, packetHash, packetProblems, stampTier, validPacket, validReport, type Certificate, type EngineReport, type EngineRun, type Packet } from './packet'
 import { renderSlot, renderText, type Slot } from './render'
 import { validateSlots } from './slots'
 
@@ -147,6 +147,24 @@ describe('packet', () => {
     expect(a).toBe(b)
     expect(a).not.toBe(await packetHash({ fen: forkFen, solution: ['d5c7'], band: 'advanced' }))
     expect(dedupeKey({ fen: forkFen, occurrenceCount: 1, band: 'club', kind: 'missed-win' })).toContain('|club|missed-win|w')
+  })
+
+  it('carries and stamps the certification tier', async () => {
+    const p = packetOf(forkReport())
+    // Built from a browser report: client-lite by default
+    expect(p.meta.certification.tier).toBe('client-lite')
+    expect(p.meta.certification.policyVersion).toBe('cert/1.0')
+    stampTier(p, 'server')
+    expect(p.meta.certification.tier).toBe('server')
+    expect(p.meta.certification.policyVersion).toBe('cert/1.0-server')
+    p.meta.packetHash = await packetHash({ fen: forkFen, solution: ['d5c7'], band: 'club' })
+    const roundTrip = JSON.parse(JSON.stringify(p)) as Packet
+    expect(validPacket(roundTrip)).toBeTruthy()
+    // The tier is required on stored packets; a packet without one is a miss
+    delete (roundTrip.meta.certification as { tier?: string }).tier
+    expect(validPacket(roundTrip)).toBeUndefined()
+    expect(validPacket({ ...roundTrip, schema: 'lidrill-packet/0.0' })).toBeUndefined()
+    expect(validPacket({ ...roundTrip, context: { band: 'grandmaster' } })).toBeUndefined()
   })
 })
 
@@ -337,6 +355,38 @@ describe('narrator pipeline', () => {
       return { json: { slots: good() }, cost: 0.001 }
     }
     expect((await narrate(p, call)).reason).toBe('claim check unavailable')
+  })
+
+  it('smooth rides the auto-router at cost_tier low, capped at the reservation; draft and decompose stay pinned', async () => {
+    // A present-tense claim about a hanging piece on b8 - empty after the
+    // game move - is pruned; it carried the no-threat ref, so the why slot
+    // then fails validation and the rejoin pass runs
+    const hang: Certificate = { id: 'c-hang', type: 'tactical', subject: 'best', side: 'b', targetSide: 'w', motif: 'hanging piece', payload: { square: 'b8', piece: 'rook' }, text: 'the rook on b8 was loose' }
+    p.certificates.push(hang)
+    p.claimAnchors.push('c-hang')
+    const why = 'They had {ref:c-nothreat} and their {ref:c-hang} was loose, so you were free to play {ref:best}. After {ref:pv1}, {ref:pv2} takes the rook.'
+    const draft = good().map(s => (s.slot === 'why' ? { ...s, text: why, refs: ['c-nothreat', 'c-hang', 'best', 'pv1', 'pv2'] } : s))
+    const claims = {
+      claims: [
+        { slot: 'whatHappened', text: 'You played {ref:played} and it cost {ref:swing}.', refs: ['played', 'swing'], tense: 'past' },
+        { slot: 'why', text: 'They had {ref:c-nothreat} and their {ref:c-hang} was loose', refs: ['c-nothreat', 'c-hang'], tense: 'present' },
+        { slot: 'why', text: 'so you were free to play {ref:best}', refs: ['best'], tense: 'past' },
+        { slot: 'why', text: 'After {ref:pv1}, {ref:pv2} takes the rook.', refs: ['pv1', 'pv2'], tense: 'past' },
+      ],
+    }
+    const { call, calls } = caller([{ slots: draft }, { slots: good() }], claims)
+    const n = await narrate(p, call)
+    expect(n.source).toBe('model')
+    expect(n.pruned).toBe(1)
+    expect(calls.map(c => c.pass)).toEqual(['draft', 'decompose', 'smooth'])
+    expect(calls[0].model).toBe(MODELS.draft.model) // pinned
+    expect(calls[1].model).toBe(MODELS.lint.model) // pinned
+    const smooth = calls[2]
+    expect(smooth.model).toBe(SMOOTH_MODEL)
+    expect(smooth.routing?.maxPrice).toBeGreaterThan(0)
+    expect(smooth.routing!.maxPrice).toBeLessThan(BUDGET_USD)
+    // the served model is recorded per response, the router's pick included
+    expect(n.models).toEqual([MODELS.draft.model, MODELS.lint.model, SMOOTH_MODEL])
   })
 })
 
