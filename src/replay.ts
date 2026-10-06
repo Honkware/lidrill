@@ -4,6 +4,7 @@ import type { Key } from '@lichess-org/chessground/types'
 import { Chess } from 'chessops/chess'
 import { makeFen } from 'chessops/fen'
 import { parseUci } from 'chessops/util'
+import type { Engine } from './analysis/engine'
 import { Drill } from './drill'
 import type { Game, Puzzle } from './db'
 
@@ -26,7 +27,10 @@ export class Replay {
   private timer?: ReturnType<typeof setTimeout>
   private redraw: () => void
 
-  constructor(game: Game, stops: Puzzle[], redraw: () => void) {
+  engine?: Engine
+
+  constructor(game: Game, stops: Puzzle[], redraw: () => void, engine?: Engine) {
+    this.engine = engine
     this.game = game
     this.stops = [...stops].sort((a, b) => a.ply - b.ply)
     this.redraw = redraw
@@ -116,8 +120,9 @@ export class Replay {
       this.state = 'stop'
       this.drill = new Drill(this.current!, this.redraw, {
         record: false,
-        onFinish: solved => {
-          this.results.push(solved)
+        engine: this.engine,
+        onFinish: outcome => {
+          this.results.push(outcome === 'clean' || outcome === 'hinted')
           this.state = 'between'
         },
       })

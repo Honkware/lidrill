@@ -68,11 +68,14 @@ export interface Puzzle {
   // are the external tier, capped at 30% of a day's queue.
   source?: PuzzleSource
   themes?: string[] // Lichess puzzle themes
+  before?: string // Lichess puzzles: the FEN before the opponent's last move, to animate it in
+  lastMove?: string
   rating?: number // Lichess puzzle rating
   ply: number // the position before this ply is the puzzle
   fen: string
   played: string // UCI of what the player actually played
   solution: string[] // UCI, player and opponent moves alternating
+  explanation?: string // the "Why?" text, kept so it's only generated once
   // "Hold" puzzles: every first move that keeps the position (one-move only)
   alternatives?: string[]
   solutionLen: number // player moves in the solution

@@ -2,16 +2,57 @@ import type { VNode } from 'snabbdom'
 import type { Ctrl } from '../ctrl'
 import type { Drill } from '../drill'
 import { el } from '../el'
-import { board, button, icon, moveInput, pawnsWorth, plural, topBar } from './ui'
+import { board, button, icon, moveInput, pawnsWorth, topBar } from './ui'
 
 export function drillView(ctrl: Ctrl): VNode {
   const d = ctrl.drill
   if (!d) return el('p', 'p-4 text-dim', 'Loading…')
-  const title = ctrl.queueLeft ? `${plural(ctrl.queueLeft, 'puzzle')} left after this` : 'Last one today'
+  const top = topBar("Today's puzzles", () => ctrl.go('today'))
   return el('div', 'md:grid md:grid-cols-[auto_minmax(0,1fr)] md:gap-6 md:pt-4', [
-    el('div', [el('div', 'md:hidden', [topBar(title, () => ctrl.go('today'))]), board(d.puzzle.id, e => d.mount(e))]),
-    el('aside', 'space-y-4 px-4 pb-8 pt-3 md:px-0 md:pt-0', [el('div', 'hidden md:block', [topBar(title, () => ctrl.go('today'))]), side(ctrl, d)]),
+    el('div', [el('div', 'md:hidden', [top]), boardWithWheel(d)]),
+    el('aside', 'space-y-4 px-4 pb-8 pt-3 md:px-0 md:pt-0', [el('div', 'hidden md:block', [top]), sessionRow(ctrl), side(ctrl, d)]),
   ])
+}
+
+// One square per puzzle in today's run: green solved, amber with the hint,
+// red missed, outlined for the current one (as Lichess's session row)
+function sessionRow(ctrl: Ctrl): VNode {
+  const done = ctrl.session
+  const total = done.length + 1 + ctrl.queueLeft
+  return el(
+    'div',
+    'flex flex-wrap gap-1',
+    { attrs: { 'aria-label': `${done.length} of ${total} done` } },
+    Array.from({ length: total }, (_, i) => {
+      const r = done[i]
+      return el('span', 'size-3 rounded-sm', {
+        class: {
+          'bg-accent': r === 'clean',
+          'bg-warn': r === 'hinted',
+          'bg-bad': r === 'missed' || r === 'shown',
+          'bg-raised': !r,
+          'ring-2': i === done.length,
+          'ring-fg': i === done.length,
+        },
+      })
+    }),
+  )
+}
+
+// Mouse wheel over the board steps through the moves once the puzzle is over
+function boardWithWheel(d: Drill): VNode {
+  const b = board(d.puzzle.id, e => d.mount(e))
+  b.data = {
+    ...b.data,
+    on: {
+      wheel: (e: WheelEvent) => {
+        if (d.state !== 'view' || e.ctrlKey) return
+        e.preventDefault()
+        d.go(d.cursor + (e.deltaY > 0 ? 1 : -1))
+      },
+    },
+  }
+  return b
 }
 
 export function drillContext(d: Drill): VNode | null {
@@ -29,46 +70,141 @@ export function drillContext(d: Drill): VNode | null {
   ])
 }
 
-// The prompt and feedback under the board, shared with Turning Points
-export function puzzleSide(d: Drill, after: VNode[]): VNode {
-  if (d.state === 'playing')
-    return el('div', 'space-y-3', [
-      el('p', 'font-display text-xl', d.puzzle.alternatives ? `Find a move that holds for ${d.color}` : `Find the best move for ${d.color}`),
-      d.puzzle.alternatives && d.step === 0 ? el('p', 'text-sm text-dim', `In the game your move lost material. ${d.puzzle.alternatives.length} moves would have kept the position.`) : null,
-      d.step > 0 ? el('p', 'text-sm text-accent', 'Good. Keep going.') : null,
-      drillContext(d),
-      moveInput(t => d.typeMove(t)),
-      d.hinted
-        ? el('p', 'text-sm text-warn', 'The highlighted piece moves. A solve now counts as a hard one.')
-        : el('button', 'inline-flex min-h-11 items-center gap-2 rounded-lg px-1 text-dim', { attrs: { type: 'button' }, on: { click: () => d.hint() } }, [icon('hint', 18), 'Hint']),
-    ])
-  const solved = d.state === 'solved'
-  const p = d.puzzle
+const feedbackBox = (tone: 'good' | 'bad' | 'plain', title: string, text?: string | VNode | null, extra?: VNode | null) =>
+  el('div', 'rounded-xl bg-surface p-4', { class: { 'border-l-4': tone !== 'plain', 'border-accent': tone === 'good', 'border-bad': tone === 'bad' } }, [
+    el('div', 'flex items-start justify-between gap-3', [
+      el('p', 'font-display text-xl', { class: { 'text-accent': tone === 'good', 'text-bad': tone === 'bad' } }, title),
+      extra ?? null,
+    ]),
+    text ? el('p', 'mt-1 text-sm text-dim', [text]) : null,
+  ])
+
+function playing(d: Drill): VNode {
+  const hold = !!d.puzzle.alternatives
+  const box =
+    d.feedback === 'fail'
+      ? feedbackBox('bad', '✗ Not the move', `${d.misses.length > 1 ? `Tried ${d.misses.join(', ')}. ` : ''}Try something else.`)
+      : d.feedback === 'good'
+        ? feedbackBox('good', '✓ Best move', 'Keep going…')
+        : feedbackBox(
+            'plain',
+            hold ? `Find a move that holds for ${d.color}` : `Find the best move for ${d.color}`,
+            hold && d.step === 0 ? `Your move in the game lost material. ${d.puzzle.alternatives!.length} moves would have kept the position.` : null,
+          )
   return el('div', 'space-y-3', [
-    el(
-      'p',
-      'font-display text-xl',
-      { class: { 'text-accent': solved, 'text-bad': !solved } },
-      solved ? (d.hinted ? 'Solved with the hint' : 'Solved') : p.alternatives ? `${d.holdingSans.join(' or ')} held` : `Best was ${d.sanAt(p.solution[0])}`,
-    ),
-    solved && p.alternatives ? el('p', 'text-sm text-dim', `Any of ${d.holdingSans.join(', ')} would do.`) : null,
+    box,
+    el('div', 'flex flex-wrap gap-2', [
+      el(
+        'button',
+        'inline-flex min-h-11 items-center gap-2 rounded-lg bg-raised px-4 text-sm font-medium',
+        { attrs: { type: 'button', disabled: !d.yourTurn }, class: { 'text-warn': d.showHint, 'opacity-50': !d.yourTurn }, on: { click: () => d.hint() } },
+        [icon('hint', 18), d.showHint ? 'Hide hint' : 'Hint'],
+      ),
+      d.canViewSolution ? button('View the solution', () => d.viewSolution(), 'plain') : null,
+    ]),
+    // Typing moves is for keyboards; on a phone it's clutter
+    el('div', 'hidden md:block', [moveInput(t => d.typeMove(t))]),
     drillContext(d),
-    p.played ? el('p', 'text-sm', `In the game you played ${d.sanAt(p.played)}, which gave away about ${pawnsWorth(p.swingCp)}.`) : null,
+  ])
+}
+
+const TITLES = {
+  clean: ['good', 'Solved'],
+  hinted: ['good', 'Solved with the hint'],
+  missed: ['bad', 'Puzzle complete'],
+  shown: ['bad', 'Solution shown'],
+} as const
+
+// The line from the puzzle position on: ✓ for moves the player found,
+// greyed for the shown solution, plain for free play afterwards
+function moveLine(d: Drill): VNode {
+  const items: VNode[] = []
+  d.nodes.forEach((n, i) => {
+    if (!n.san || i < d.start) return
+    items.push(
+      el(
+        'button',
+        'rounded px-2 py-1 text-sm',
+        {
+          attrs: { type: 'button' },
+          class: { 'bg-raised': d.cursor === i, 'text-accent': !!n.mark, 'text-dim': !!n.solution || i === d.start },
+          on: { click: () => d.go(i) },
+        },
+        `${n.san}${n.mark ? ' ✓' : ''}`,
+      ),
+    )
+  })
+  if (d.misses.length) items.push(el('span', 'px-2 text-sm text-bad', `✗ ${d.misses.join(', ')}`))
+  return el('div', 'flex flex-wrap items-center gap-1', items)
+}
+
+const navButton = (name: string, labelText: string, onClick: () => void) =>
+  el('button', 'grid size-11 place-items-center rounded-lg text-dim active:bg-raised', { attrs: { type: 'button', 'aria-label': labelText }, on: { click: onClick } }, [icon(name)])
+
+function whyPart(d: Drill): VNode | null {
+  const w = d.why
+  if (!w) return null
+  if (w.loading) return el('p', 'mt-3 animate-pulse text-sm text-dim', 'Working it out…')
+  if (w.error) return el('p', 'mt-3 text-sm text-bad', w.error)
+  return el('div', 'mt-3 border-t border-raised pt-3', [
+    el('p', 'text-sm', w.text ?? ''),
+    el('p', 'mt-1 text-xs text-dim', 'Written by an AI model from Stockfish’s lines.'),
+  ])
+}
+
+// Puts the explanation inside the result card
+function whyCard(box: VNode, why: VNode | null): VNode {
+  if (why) box.children = [...(box.children ?? []), why]
+  return box
+}
+
+// Over: one card with the result, the answer, the game move and "Why?";
+// one card with the line to step through and Stockfish's view
+export function puzzleSide(d: Drill, after: (VNode | null)[]): VNode {
+  if (d.state === 'playing') return playing(d)
+  const p = d.puzzle
+  const [tone, title] = TITLES[d.outcome ?? 'clean']
+  const answer = p.alternatives ? `${d.holdingSans.join(' or ')} held.` : d.outcome === 'clean' ? '' : `The move was ${d.sanAt(p.solution[0])}.`
+  const game = p.played ? ` In the game: ${d.sanAt(p.played)}, giving away about ${pawnsWorth(p.swingCp)}.` : ''
+  const why = d.why ? null : el('button', 'shrink-0 rounded-full bg-raised px-3 py-1 text-sm font-medium', { attrs: { type: 'button' }, on: { click: () => d.explain() } }, 'Why?')
+  return el('div', 'space-y-3', [
+    whyCard(feedbackBox(tone, title, `${answer}${game}`.trim() || null, why), whyPart(d)),
+    el('div', 'rounded-xl bg-surface p-2', [
+      moveLine(d),
+      el('div', 'mt-1 flex items-center', [
+        navButton('first', 'Puzzle start', () => d.go(d.start)),
+        navButton('prev', 'Previous move', () => d.go(d.cursor - 1)),
+        navButton('next', 'Next move', () => d.go(d.cursor + 1)),
+        navButton('last', 'Last move', () => d.go(d.nodes.length - 1)),
+        d.evalText ? el('span', 'ml-auto pr-2 text-xs tabular-nums text-dim', { attrs: { title: 'Stockfish, on this device' } }, d.evalText) : null,
+      ]),
+    ]),
     ...after,
+    drillContext(d),
   ])
 }
 
 function side(ctrl: Ctrl, d: Drill): VNode {
+  if (d.state === 'playing') return puzzleSide(d, [])
   return puzzleSide(d, [
-    d.state === 'failed' && d.puzzle.source !== 'lichess'
-      ? el('label', 'block', [
-          el('span', 'text-sm text-dim', 'Why did you miss it?'),
-          el('textarea', 'mt-1 block w-full rounded-lg bg-raised px-3 py-2', {
-            attrs: { rows: 2, placeholder: "e.g. didn't check his checks" },
-            on: { change: e => ctrl.saveWhy((e.target as HTMLTextAreaElement).value) },
-          }),
-        ])
-      : null,
-    el('div', 'grid', [button(ctrl.queueLeft ? 'Next' : 'Done', () => ctrl.next())]),
-  ] as VNode[])
+    el('div', 'grid', [button(ctrl.queueLeft ? 'Continue' : 'Done', () => ctrl.next())]),
+    el('div', 'flex flex-wrap items-center justify-between gap-2', [
+      el('label', 'flex items-center gap-2 text-sm text-dim', [
+        el('input', 'size-4 accent-accent', { attrs: { type: 'checkbox' }, props: { checked: ctrl.autoNext }, on: { change: e => ctrl.setAutoNext((e.target as HTMLInputElement).checked) } }),
+        'Auto-continue after a solve',
+      ]),
+      d.failed && d.puzzle.source !== 'lichess' ? noteToggle(ctrl) : null,
+    ]),
+  ])
+}
+
+// "Why did you miss it?" folded away until wanted
+function noteToggle(ctrl: Ctrl): VNode {
+  return el('details', 'w-full text-sm', [
+    el('summary', 'cursor-pointer py-1 text-dim', 'Note why you missed it'),
+    el('textarea', 'mt-2 block w-full rounded-lg bg-raised px-3 py-2', {
+      attrs: { rows: 2, placeholder: "e.g. didn't check his checks" },
+      on: { change: e => ctrl.saveWhy((e.target as HTMLTextAreaElement).value) },
+    }),
+  ])
 }

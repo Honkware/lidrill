@@ -25,7 +25,7 @@ export const label = (text: string) => el('p', 'text-xs font-medium uppercase tr
 
 export const pct = (x?: number) => (x === undefined ? '–' : `${Math.round(x * 100)}%`)
 
-export const pawns = (cp: number) => `${cp >= 0 ? '+' : '−'}${(Math.abs(cp) / 100).toFixed(1)}`
+export { pawns } from '../format'
 
 export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 

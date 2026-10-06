@@ -2,7 +2,7 @@ import type { Progress } from './analysis/queue'
 import { finishSignIn, signOut, startSignIn } from './auth'
 import { deleteAllData, exportData, importData } from './backup'
 import { db, type Auth, type Game, type JournalEntry, type Practice, type Profile } from './db'
-import { Drill } from './drill'
+import { Drill, type Outcome } from './drill'
 import { GameView } from './gameview'
 import { fetchLook, PREFERENCE_SCOPE } from './lichess/api'
 import { fetchStudyLines, listStudies, STUDY_READ_SCOPE, studyCompliance, type StudyInfo } from './lichess/repertoire'
@@ -64,6 +64,8 @@ export class Ctrl {
   reviewList?: ReviewRow[]
   practiceList?: Practice[]
   drill?: Drill
+  session: Outcome[] = [] // today's run so far
+  autoNext = readFlag('lidrill.autoNext')
   queueLeft = 0
   replay?: Replay
   gameView?: GameView
@@ -83,6 +85,7 @@ export class Ctrl {
   constructor(redraw: () => void) {
     this.redraw = redraw
     window.addEventListener('hashchange', () => this.route())
+    window.addEventListener('keydown', e => this.onKey(e))
     this.boot()
   }
 
@@ -309,6 +312,7 @@ export class Ctrl {
 
   async startDrill() {
     this.queue = (await dueQueue()).puzzles.map(p => p.id)
+    this.session = []
     this.go('drill')
   }
 
@@ -333,7 +337,38 @@ export class Ctrl {
       this.notice = { text: 'Done for today.' }
       return this.go('today')
     }
-    this.drill = new Drill(puzzle, this.redraw)
+    this.drill = new Drill(puzzle, this.redraw, {
+      record: true,
+      engine: getEngine(),
+      onFinish: outcome => {
+        this.session.push(outcome)
+        const drill = this.drill
+        if (this.autoNext && (outcome === 'clean' || outcome === 'hinted'))
+          setTimeout(() => this.drill === drill && this.next(), 700)
+      },
+    })
+  }
+
+  setAutoNext(on: boolean) {
+    this.autoNext = on
+    writeFlag('lidrill.autoNext', on)
+  }
+
+  // Lichess's puzzle keys: arrows or j/k to step, Home/End, f to flip, n to
+  // move on
+  private onKey(e: KeyboardEvent) {
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.ctrlKey || e.metaKey || e.altKey) return
+    const d = this.screen === 'drill' ? this.drill : this.screen === 'replay' ? this.replay?.drill : undefined
+    if (!d) return
+    const key = e.key
+    if (d.state === 'view' && (key === 'ArrowLeft' || key === 'k')) d.go(d.cursor - 1)
+    else if (d.state === 'view' && (key === 'ArrowRight' || key === 'j')) d.go(d.cursor + 1)
+    else if (d.state === 'view' && key === 'Home') d.go(d.start)
+    else if (d.state === 'view' && key === 'End') d.go(d.nodes.length - 1)
+    else if (key === 'f') d.flip()
+    else if (this.screen === 'drill' && d.state === 'view' && key === 'n') this.next()
+    else return
+    e.preventDefault()
   }
 
   saveWhy(text: string) {
@@ -367,7 +402,7 @@ export class Ctrl {
     const stops = await db.puzzles.where('gameId').equals(id).toArray()
     if (!game) return void (this.screen = 'review')
     this.screen = 'replay'
-    this.replay = new Replay(game, stops, this.redraw)
+    this.replay = new Replay(game, stops, this.redraw, getEngine())
   }
 
   private async openPractice(id: string) {
@@ -517,5 +552,23 @@ export class Ctrl {
   dismissNotice() {
     this.notice = undefined
     this.redraw()
+  }
+}
+
+// Per-browser preferences; storage can be off (private mode), which just
+// means the default
+function readFlag(key: string): boolean {
+  try {
+    return localStorage.getItem(key) === '1'
+  } catch {
+    return false
+  }
+}
+
+function writeFlag(key: string, on: boolean) {
+  try {
+    localStorage.setItem(key, on ? '1' : '0')
+  } catch {
+    // not saved; fine
   }
 }

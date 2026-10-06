@@ -1,6 +1,7 @@
 import { Chess } from 'chessops/chess'
 import { makeFen } from 'chessops/fen'
 import { parseSan } from 'chessops/san'
+import { makeUci } from 'chessops/util'
 import { createEmptyCard } from 'ts-fsrs'
 import type { Puzzle, PuzzleDashboardSnapshot, PuzzleTag } from '../db'
 import { SignInExpired } from '../sync/lichess'
@@ -63,8 +64,9 @@ function tagFor(themes: string[]): PuzzleTag {
   return 'hang'
 }
 
-function lichessPuzzle(id: string, fen: string, solution: string[], themes: string[], rating: number, now: Date): Puzzle {
+function lichessPuzzle(id: string, fen: string, solution: string[], themes: string[], rating: number, now: Date, intro: Pick<Puzzle, 'before' | 'lastMove'> = {}): Puzzle {
   return {
+    ...intro,
     id: `lichess:${id}`,
     gameId: '',
     source: 'lichess',
@@ -85,7 +87,7 @@ function lichessPuzzle(id: string, fen: string, solution: string[], themes: stri
 interface Activity {
   date: number
   win: boolean
-  puzzle: { id: string; fen: string; solution: string[]; themes: string[]; rating: number }
+  puzzle: { id: string; fen: string; solution: string[]; themes: string[]; rating: number; lastMove?: string }
 }
 
 // Puzzles the player failed on Lichess and hasn't solved since, newest first.
@@ -96,7 +98,7 @@ export function failedPuzzles(activity: Activity[], now: Date, max = 60): Puzzle
   for (const a of [...activity].sort((x, y) => y.date - x.date)) {
     if (a.win) solved.add(a.puzzle.id)
     else if (!solved.has(a.puzzle.id) && !out.has(a.puzzle.id))
-      out.set(a.puzzle.id, lichessPuzzle(a.puzzle.id, a.puzzle.fen, a.puzzle.solution, a.puzzle.themes, a.puzzle.rating, now))
+      out.set(a.puzzle.id, lichessPuzzle(a.puzzle.id, a.puzzle.fen, a.puzzle.solution, a.puzzle.themes, a.puzzle.rating, now, { lastMove: a.puzzle.lastMove }))
   }
   return [...out.values()].slice(0, max)
 }
@@ -121,12 +123,16 @@ interface BatchPuzzle {
 // Batch puzzles come with the game's moves up to the puzzle instead of a FEN
 export function fromBatch(b: BatchPuzzle, now: Date): Puzzle | undefined {
   const pos = Chess.default()
+  let before = ''
+  let lastMove = ''
   for (const san of b.game.pgn.split(' ').filter(Boolean)) {
     const move = parseSan(pos, san)
     if (!move) return undefined
+    before = makeFen(pos.toSetup())
+    lastMove = makeUci(move)
     pos.play(move)
   }
-  return lichessPuzzle(b.puzzle.id, makeFen(pos.toSetup()), b.puzzle.solution, b.puzzle.themes, b.puzzle.rating, now)
+  return lichessPuzzle(b.puzzle.id, makeFen(pos.toSetup()), b.puzzle.solution, b.puzzle.themes, b.puzzle.rating, now, { before, lastMove })
 }
 
 // New puzzles in one theme the player hasn't seen on Lichess (needs a token)
