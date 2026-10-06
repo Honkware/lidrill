@@ -47,8 +47,14 @@ first time you use the feature that needs them.
 assets (`wrangler.jsonc`, which also binds lidrill.org). Wrangler reads
 `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` from the environment.
 The CSP and other headers are in `public/_headers`. The Worker
-(`worker/index.ts`) only handles `/api/explain`; it needs the secret
-`OPENROUTER_API_KEY` (`wrangler secret put OPENROUTER_API_KEY`).
+(`worker/index.ts`) handles `/api/explain` (the legacy report-in shape and
+the slim `{"v":2, packetHash, band}` shape) and `/api/packet` (the packet
+store); it needs the secret `OPENROUTER_API_KEY` (`wrangler secret put
+OPENROUTER_API_KEY`). The `PACKETS` KV binding holds built packets, keyed by
+packet hash with a 30-day TTL: the checked-in id is a local dev id (wrangler
+dev emulates KV), so before deploying run `wrangler kv namespace create
+PACKETS` (and once more with `--preview` for the preview id) and paste the
+real ids into `wrangler.jsonc`.
 
 The design and its reasoning are in [docs/spec.md].
 

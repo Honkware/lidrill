@@ -1,5 +1,6 @@
 import type { Progress } from './analysis/queue'
 import { finishSignIn, signOut, startSignIn } from './auth'
+import { backfillPackets } from './backfill'
 import { deleteAllData, exportData, importData, sameUser } from './backup'
 import { db, type Auth, type Game, type JournalEntry, type Practice, type Profile } from './db'
 import { Drill, type Outcome } from './drill'
@@ -292,7 +293,12 @@ export class Ctrl {
     }
     this.syncing = false
     this.refresh(true)
-    if (!this.abort.signal.aborted) void precertifyDue(this.abort.signal)
+    if (!this.abort.signal.aborted) {
+      void precertifyDue(this.abort.signal)
+      // One-time migration: stamp tiers on old rows and upload packets
+      // in throttled idle slices (status shares the sync line)
+      void backfillPackets(s => ((this.status = s), this.redraw()), this.abort.signal)
+    }
   }
 
   private async signInExpired(e: unknown) {

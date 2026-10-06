@@ -12,7 +12,7 @@ import { calibrate } from './report'
 import { SignInExpired } from './sync/lichess'
 import { sync } from './sync/sync'
 import { DAILY_CAP, dueQueue } from './train'
-import { precertify } from './explain'
+import { precertify, uploadPacketFor } from './explain'
 
 export interface Accounts {
   lichessUser?: string
@@ -221,6 +221,7 @@ export async function syncAndAnalyze(
 
 // "Why?" waits for nobody: background certification pauses while one runs
 let explaining = 0
+export const isExplaining = () => explaining > 0
 let backgroundBusy = false
 let cutShort = false
 export async function whileExplaining<T>(f: () => Promise<T>): Promise<T> {
@@ -251,6 +252,10 @@ export async function precertifyDue(signal: AbortSignal, now = new Date()): Prom
     cutShort = false
     try {
       await precertify(p, engines, () => cutShort)
+      // Sync-time packet build: the certified report goes
+      // to the packet store, fire-and-forget; the first player to hit a
+      // unique position builds the packet for everyone
+      if (!cutShort) void uploadPacketFor(p, engines)
     } catch (e) {
       console.warn(e)
       return
