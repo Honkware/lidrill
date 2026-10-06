@@ -3,7 +3,7 @@ import { makeFen, parseFen } from 'chessops/fen'
 import { parseUci } from 'chessops/util'
 import type { CertifiedRun, Engine } from './analysis/engine'
 import { db, type Band, type ExplanationRow, type Game, type Puzzle } from './db'
-import { CERT, dedupeKey, nullMoveFen, PROMPT_VERSION, REPORT_SCHEMA, type EngineReport, type Packet, type PuzzleKind } from './server/packet'
+import { CERT, dedupeKey, nullMoveFen, packetHash, PROMPT_VERSION, REPORT_SCHEMA, type EngineReport, type Packet, type PuzzleKind } from './server/packet'
 import { gameState } from './server/gamestate'
 import type { Slot } from './server/render'
 import { sha256Hex, solve } from './server/sha256'
@@ -13,7 +13,7 @@ import { sha256Hex, solve } from './server/sha256'
 // narrator word it, checks it, and sends back the four slots in ref form
 // with the packet that renders them. Stored per (puzzle, first wrong try).
 
-export const EXPLAIN_VERSION = 9
+export const EXPLAIN_VERSION = 10
 
 export interface ExplainContext {
   band: Band
@@ -121,6 +121,39 @@ async function proof(body: string): Promise<string> {
   throw new Error('No explanation right now. Try again later.')
 }
 
+// Fire-and-forget packet upload: after a certification the
+// report goes to the packet store so the slim /api/explain can serve the
+// position without the engine chain. Failures change nothing - the next
+// build retries, and KV dedupe makes repeats harmless. Resolves to whether
+// the packet is stored (true includes the already-stored dedupe hit).
+export function uploadPacket(report: EngineReport): Promise<boolean> {
+  const body = JSON.stringify({ ...report, tier: 'client-lite' })
+  return (async () => {
+    try {
+      const res = await fetch('/api/packet', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-lidrill-proof': await proof(body) }, body })
+      return res.ok
+    } catch {
+      return false
+    }
+  })()
+}
+
+// Which habits the packet build should avoid repeating: the three newest
+// explanations' habit ids, oldest first
+export const recentHabits = async (): Promise<string[]> => (await db.explanations.orderBy('createdAt').reverse().limit(3).toArray()).map(e => e.habitId).reverse()
+
+// The sync-time build: from the cached certification runs
+// (no new engine work when precertify already covered the puzzle) build the
+// report and upload it. Returns whether the packet is stored.
+export async function uploadPacketFor(p: Puzzle, engines: Engine[]): Promise<boolean> {
+  const saved = await db.certs.get(p.id)
+  if (saved?.version !== CERT_RUN_VERSION) return false
+  const game = p.gameId ? await db.games.get(p.gameId) : undefined
+  const ctx = await contextFor(p, game)
+  const report = await certifyReport(p, engines, ctx, undefined, await recentHabits())
+  return uploadPacket(report)
+}
+
 const WEEK = 7 * 24 * 3600 * 1000
 
 // What the packet needs from the rest of the app: the band, the game's
@@ -153,32 +186,70 @@ export interface ExplainResult {
   floor: boolean
 }
 
+interface ExplainResponse {
+  slots?: Slot[]
+  packet?: Packet
+  source?: string
+  version?: number
+  models?: string[]
+  error?: string
+}
+
+// The slim shape: one cheap request carrying only the
+// packet reference. A miss, a band/tried mismatch, or any failure resolves
+// undefined and the caller falls back to the certify-and-POST path - the
+// legacy path is the safety net, not a parallel code path.
+async function explainSlim(p: Puzzle, band: Band, tried?: string): Promise<ExplainResponse | undefined> {
+  try {
+    const hash = await packetHash({ fen: p.fen, solution: p.solution, band })
+    const body = JSON.stringify({ v: 2, packetHash: hash, band, ...(tried ? { tried } : {}) })
+    const res = await fetch('/api/explain', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-lidrill-proof': await proof(body) }, body })
+    if (!res.ok) return undefined
+    const data = (await res.json()) as ExplainResponse
+    return data.slots && data.packet ? data : undefined
+  } catch {
+    return undefined
+  }
+}
+
 export async function explain(p: Puzzle, engines: Engine[], ctx: ExplainContext, tried?: string, progress?: Progress): Promise<ExplainResult> {
   const id = rowId(p.id, tried)
   const saved = await db.explanations.get(id)
   if (isCurrent(saved, ctx.band)) return { slots: saved.slots, packet: saved.packet, floor: saved.floor }
+  const recent = await recentHabits()
+
+  // Slim first: no engine work when the packet is already stored
+  const slim = await explainSlim(p, ctx.band, tried)
+  if (slim) return storeRow(id, p, ctx, tried, slim)
+
+  // Fail closed to the certify-and-POST path on a packet-miss or any failure
   if (!engines.length) throw new Error('Stockfish isn’t ready yet.')
-  const recent = (await db.explanations.orderBy('createdAt').reverse().limit(3).toArray()).map(e => e.habitId).reverse()
   const report = await certifyReport(p, engines, ctx, tried, recent, progress)
+  void uploadPacket(report)
   const body = JSON.stringify(report)
   const res = await fetch('/api/explain', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-lidrill-proof': await proof(body) }, body })
-  const data = (await res.json().catch(() => ({}))) as { slots?: Slot[]; packet?: Packet; source?: string; version?: number; models?: string[]; error?: string }
+  const data = (await res.json().catch(() => ({}))) as ExplainResponse
   if (!res.ok || !data.slots || !data.packet) throw new Error(data.error ?? 'No explanation right now. Try again later.')
+  return storeRow(id, p, ctx, tried, data)
+}
+
+async function storeRow(id: string, p: Puzzle, ctx: ExplainContext, tried: string | undefined, data: ExplainResponse): Promise<ExplainResult> {
   const row: ExplanationRow = {
     id,
     puzzleId: p.id,
     tried,
-    dedupeKey: dedupeKey({ fen: p.fen, occurrenceCount: gameState(Chess.fromSetup(parseFen(p.fen).unwrap()).unwrap(), ctx.history).occurrenceCount, band: ctx.band, kind: report.kind }),
-    packetHash: data.packet.meta.packetHash,
+    dedupeKey: dedupeKey({ fen: p.fen, occurrenceCount: gameState(Chess.fromSetup(parseFen(p.fen).unwrap()).unwrap(), ctx.history).occurrenceCount, band: ctx.band, kind: kindOf(p) }),
+    packetHash: data.packet!.meta.packetHash,
     band: ctx.band,
-    slots: data.slots,
+    slots: data.slots!,
     floor: data.source !== 'model',
     models: Array.isArray(data.models) ? data.models.slice(0, 5).map(String) : undefined,
-    promptVersion: data.packet.meta.promptVersion,
+    certTier: data.packet!.meta.certification.tier ?? 'client-lite',
+    promptVersion: data.packet!.meta.promptVersion,
     version: data.version ?? EXPLAIN_VERSION,
-    habitId: data.packet.didactic.habitSlotId,
+    habitId: data.packet!.didactic.habitSlotId,
     createdAt: Date.now(),
-    packet: data.packet,
+    packet: data.packet!,
   }
   await db.explanations.put(row)
   return { slots: row.slots, packet: row.packet, floor: row.floor }

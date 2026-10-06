@@ -1,4 +1,4 @@
-import type { EngineRun, Packet } from './server/packet'
+import type { CertTier, EngineRun, Packet } from './server/packet'
 import type { Slot } from './server/render'
 import Dexie, { type EntityTable } from 'dexie'
 import type { Card } from 'ts-fsrs'
@@ -94,6 +94,7 @@ export interface ExplanationRow {
   slots: Slot[]
   floor: boolean // the fixed text, not the narrator's
   models?: string[] // which models the router used, when the narrator wrote it
+  certTier?: CertTier // which device certified the packet; rows from before are stamped client-lite by the backfill
   promptVersion: string
   version: number // EXPLAIN_VERSION when it was made
   habitId: string // for the next explanations' anti-repeat window
