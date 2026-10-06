@@ -1,0 +1,37 @@
+import type { Caller } from './narrate'
+
+// One OpenRouter call: pinned model, temperature, strict JSON schema, a
+// timeout, and the provider-reported cost for the budget
+export function openRouter(apiKey: string): Caller {
+  return async c => {
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      signal: AbortSignal.timeout(25_000),
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://lidrill.org', 'X-Title': 'lidrill' },
+      body: JSON.stringify({
+        model: c.model,
+        temperature: c.temperature,
+        max_tokens: c.maxTokens,
+        messages: [
+          { role: 'system', content: c.system },
+          { role: 'user', content: c.user },
+        ],
+        response_format: { type: 'json_schema', json_schema: { name: c.pass === 'decompose' ? 'claims' : 'slots', strict: true, schema: c.schema } },
+        provider: { require_parameters: true },
+        reasoning: { exclude: true, effort: 'low' },
+        usage: { include: true },
+      }),
+    })
+    const data = (await res.json().catch(() => ({}))) as { model?: string; usage?: { cost?: number }; choices?: { message?: { content?: string } }[] }
+    const cost = data.usage?.cost ?? 0
+    if (!res.ok) return { cost, model: data.model }
+    const content = data.choices?.[0]?.message?.content ?? ''
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(content.replace(/^```(?:json)?\s*|\s*```$/g, ''))
+    } catch {
+      parsed = undefined
+    }
+    return { json: parsed, cost, model: data.model }
+  }
+}

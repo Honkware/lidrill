@@ -1,5 +1,6 @@
 import { issue, verify } from '../src/server/guard'
-import { narrate, type Caller } from '../src/server/narrate'
+import { narrate } from '../src/server/narrate'
+import { openRouter } from '../src/server/openrouter'
 import { buildPacket, packetHash, packetProblems, validReport } from '../src/server/packet'
 import { templateFloor } from '../src/server/floor'
 import { sha256Hex } from '../src/server/sha256'
@@ -21,42 +22,6 @@ const ORIGINS = [/^https:\/\/(www\.)?lidrill\.org$/, /^https:\/\/lidrill\.lidril
 
 const json = (body: unknown, status = 200, extra: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...extra } })
-
-// One OpenRouter call: pinned model, temperature, strict JSON schema, a
-// timeout, and the provider-reported cost for the budget
-function openRouter(env: Env): Caller {
-  return async c => {
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      signal: AbortSignal.timeout(25_000),
-      headers: { Authorization: `Bearer ${env.OPENROUTER_API_KEY}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://lidrill.org', 'X-Title': 'lidrill' },
-      body: JSON.stringify({
-        model: c.model,
-        temperature: c.temperature,
-        max_tokens: c.maxTokens,
-        messages: [
-          { role: 'system', content: c.system },
-          { role: 'user', content: c.user },
-        ],
-        response_format: { type: 'json_schema', json_schema: { name: c.pass === 'decompose' ? 'claims' : 'slots', strict: true, schema: c.schema } },
-        provider: { require_parameters: true },
-        reasoning: { exclude: true, effort: 'low' },
-        usage: { include: true },
-      }),
-    })
-    const data = (await res.json().catch(() => ({}))) as { model?: string; usage?: { cost?: number }; choices?: { message?: { content?: string } }[] }
-    const cost = data.usage?.cost ?? 0
-    if (!res.ok) return { cost, model: data.model }
-    const content = data.choices?.[0]?.message?.content ?? ''
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(content.replace(/^```(?:json)?\s*|\s*```$/g, ''))
-    } catch {
-      parsed = undefined
-    }
-    return { json: parsed, cost, model: data.model }
-  }
-}
 
 async function challenge(request: Request, env: Env): Promise<Response> {
   const ip = request.headers.get('cf-connecting-ip') ?? 'unknown'
@@ -97,7 +62,7 @@ async function explain(request: Request, env: Env, ctx: { waitUntil(p: Promise<u
 
   // A packet that fails its own self-check never reaches the model
   const problems = packetProblems(packet)
-  const n = problems.length ? { slots: templateFloor(packet), source: 'floor' as const, reason: `packet self-check: ${problems[0]}`, calls: 0, cost: 0, models: [] } : await narrate(packet, openRouter(env))
+  const n = problems.length ? { slots: templateFloor(packet), source: 'floor' as const, reason: `packet self-check: ${problems[0]}`, calls: 0, cost: 0, models: [] } : await narrate(packet, openRouter(env.OPENROUTER_API_KEY))
   const response = json(
     { slots: n.slots, packet, source: n.source, reason: n.reason, models: n.models, calls: n.calls, cost: Number(n.cost.toFixed(5)), version: EXPLAIN_VERSION },
     200,

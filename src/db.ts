@@ -93,6 +93,7 @@ export interface ExplanationRow {
   band: Band
   slots: Slot[]
   floor: boolean // the fixed text, not the narrator's
+  models?: string[] // which models the router used, when the narrator wrote it
   promptVersion: string
   version: number // EXPLAIN_VERSION when it was made
   habitId: string // for the next explanations' anti-repeat window

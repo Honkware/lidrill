@@ -129,7 +129,7 @@ export async function explain(p: Puzzle, engine: Engine | undefined, ctx: Explai
   const report = await certifyReport(p, engine, ctx, tried, recent, progress)
   const body = JSON.stringify(report)
   const res = await fetch('/api/explain', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-lidrill-proof': await proof(body) }, body })
-  const data = (await res.json().catch(() => ({}))) as { slots?: Slot[]; packet?: Packet; source?: string; version?: number; error?: string }
+  const data = (await res.json().catch(() => ({}))) as { slots?: Slot[]; packet?: Packet; source?: string; version?: number; models?: string[]; error?: string }
   if (!res.ok || !data.slots || !data.packet) throw new Error(data.error ?? 'No explanation right now. Try again later.')
   const row: ExplanationRow = {
     id,
@@ -140,6 +140,7 @@ export async function explain(p: Puzzle, engine: Engine | undefined, ctx: Explai
     band: ctx.band,
     slots: data.slots,
     floor: data.source !== 'model',
+    models: Array.isArray(data.models) ? data.models.slice(0, 5).map(String) : undefined,
     promptVersion: data.packet.meta.promptVersion,
     version: data.version ?? EXPLAIN_VERSION,
     habitId: data.packet.didactic.habitSlotId,
