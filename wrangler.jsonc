@@ -17,5 +17,5 @@
     { "pattern": "lidrill.org", "custom_domain": true }
   ],
   "workers_dev": true,
-  "observability": { "enabled": false }
+  "observability": { "enabled": true }
 }

@@ -32,3 +32,6 @@ public/engine/
 !.dev.vars.example
 .env*
 !.env.example
+
+# stray build artifacts
+*.whl

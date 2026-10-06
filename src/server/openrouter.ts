@@ -25,7 +25,11 @@ export function openRouter(apiKey: string, timeoutMs = 45_000): Caller {
     const data = (await res.json().catch(() => ({}))) as { model?: string; usage?: { cost?: number }; choices?: { message?: { content?: string } }[] }
     const cost = data.usage?.cost ?? 0
     if (!res.ok) {
-      console.warn(`OpenRouter ${c.pass} ${res.status}: ${JSON.stringify(data).slice(0, 300)}`)
+      if (res.status === 403) {
+        console.warn(`ALERT OpenRouter 403 FORBIDDEN on ${c.pass} (${c.model}) - the key is rejected or this slug does not serve on it. Do not assume a retry will fix this. Body: ${JSON.stringify(data).slice(0, 300)}`)
+      } else {
+        console.warn(`OpenRouter ${c.pass} ${res.status}: ${JSON.stringify(data).slice(0, 300)}`)
+      }
       return { cost, model: data.model }
     }
     const content = data.choices?.[0]?.message?.content ?? ''

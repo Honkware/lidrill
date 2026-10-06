@@ -40,7 +40,8 @@ async function explain(request: Request, env: Env, ctx: { waitUntil(p: Promise<u
   const problem = await verify(env.POW_SECRET, ip, request.headers.get('x-lidrill-proof'), body)
   if (problem) return json({ error: `Request not accepted (${problem}). Try again.` }, 401)
 
-  const cacheKey = new Request(`https://lidrill.org/api/explain-cache/${sha256Hex(body)}`)
+  // Version in the key: an EXPLAIN_VERSION bump must not serve the old shape
+  const cacheKey = new Request(`https://lidrill.org/api/explain-cache/${sha256Hex(`${EXPLAIN_VERSION}.${body}`)}`)
   const cache = (caches as unknown as { default: Cache }).default
   const hit = await cache.match(cacheKey)
   if (hit) return hit
