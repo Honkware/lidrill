@@ -45,18 +45,21 @@ export function words(text: string): string[] {
 }
 
 // Sentences end at . ! or ? followed by a space or the end of the text. A
-// move number ("29." or "29...") does not end one, so notation reads as part
-// of its sentence.
+// move number ("29." or "29..." followed by a move) does not end one, so
+// notation reads as part of its sentence.
 export function sentences(text: string): string[] {
   const out: string[] = []
   let cur = ''
-  for (const tok of text.trim().split(/\s+/)) {
+  const toks = text.trim().split(/\s+/)
+  toks.forEach((tok, i) => {
     cur = cur ? `${cur} ${tok}` : tok
-    if (/[.!?]$/.test(tok) && !/^\d+\.+$/.test(tok)) {
+    // "29." before a move is a move number; "mate in 2." ends a sentence
+    const moveNumber = /^\d+\.+$/.test(tok) && /^([KQRBN]?[a-h]?[1-8]?x?[a-h][1-8]|O-O)/.test(toks[i + 1] ?? '')
+    if (/[.!?]$/.test(tok) && !moveNumber) {
       out.push(cur)
       cur = ''
     }
-  }
+  })
   if (cur) out.push(cur)
   return out.filter(s => words(s).length > 0)
 }

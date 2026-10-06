@@ -20,5 +20,6 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['fake-indexeddb/auto'],
+    exclude: ['**/node_modules/**', '**/dist/**'],
   },
 })
