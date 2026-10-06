@@ -3,8 +3,11 @@
   Referrer-Policy: strict-origin-when-cross-origin
   X-Content-Type-Options: nosniff
   Permissions-Policy: camera=(), microphone=(), geolocation=()
-  # Stops Cloudflare rewriting pages (it injects a Web Analytics beacon otherwise)
-  Cache-Control: no-transform
+  # no-transform stops Cloudflare rewriting pages (it injects a Web Analytics
+  # beacon otherwise); no-cache makes its edge revalidate, so a deploy shows
+  # up on the next load instead of whenever the cached copy expires
+  Cache-Control: no-cache, no-transform
 
 /assets/*
-  Cache-Control: public, max-age=31536000, immutable
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable, no-transform
