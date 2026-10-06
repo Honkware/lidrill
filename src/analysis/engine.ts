@@ -5,14 +5,31 @@ import type { Eval } from '../db'
 export interface UciEngine {
   send(cmd: string): void
   onLine(listener: (line: string) => void): void
+  onError?(listener: () => void): void
   terminate?(): void
 }
 
+// Single-threaded workers only. The threaded build (Stockfish 19 lite) was
+// tried under COOP/COEP and dropped: in a page only its first instance ever
+// answers (later ones take commands as a helper thread would), and it
+// crashed mid-search in the app. Parallel single-threaded workers get the
+// same throughput without either problem.
 export function workerEngine(url = '/engine/stockfish-19-lite-single.js'): UciEngine {
   const worker = new Worker(url)
   return {
     send: cmd => worker.postMessage(cmd),
     onLine: listener => worker.addEventListener('message', e => listener(String(e.data))),
+    onError: listener => {
+      // One report per worker: a crashing build can fire many error events
+      let reported = false
+      worker.addEventListener('error', e => {
+        e.preventDefault()
+        if (reported) return
+        reported = true
+        console.warn(`Stockfish failed: ${e.message || 'worker error'}`)
+        listener()
+      })
+    },
     terminate: () => worker.terminate(),
   }
 }
@@ -28,17 +45,24 @@ export interface SearchResult {
 // whether the hash is cleared first so a rerun is independent
 export interface CertifyOptions {
   depth: number
-  nodes: number
+  nodes: number // hard stop
+  movetime?: number // the time budget, ms
   multipv: number
   clearHash: boolean
   timeoutMs?: number
 }
 
+type LineEval = { type: 'cp' | 'mate'; value: number }
+
 export interface CertifiedRun {
-  lines: { pv: string[]; eval: { type: 'cp' | 'mate'; value: number } }[]
+  lines: { pv: string[]; eval: LineEval }[]
   depth: number
   nodes: number
   capped: boolean
+  // The best line two iterations earlier, for the stability check: the
+  // same search, so it costs nothing (a rerun with a cleared hash returns
+  // the identical answer on one thread, measured)
+  check?: { depth: number; pv: string[]; eval: LineEval }
 }
 
 export class EngineStalled extends Error {}
@@ -57,16 +81,35 @@ export class Engine {
     this.uci = this.start(typeof uci === 'function' ? uci() : uci)
   }
 
+  private failed: () => void = () => {}
+
   private start(uci: UciEngine): UciEngine {
     uci.onLine(line => this.listener(line))
+    // A crashed worker: fail the running search and start over
+    uci.onError?.(() => {
+      this.failed()
+      this.restart()
+    })
     uci.send('uci')
     uci.send('setoption name Hash value 32')
     return uci
   }
 
+  private restarts = 0
+
+  // Start a fresh worker, a few times at most and not in a tight loop: a
+  // build that can't run in this browser must not spin the page
   private restart() {
     this.uci.terminate?.()
-    if (this.make) this.uci = this.start(this.make())
+    if (!this.make || this.restarts >= 3) return
+    const delay = 500 * 2 ** this.restarts++
+    setTimeout(() => (this.uci = this.start(this.make!())), delay)
+  }
+
+  // Ends the running search early (UCI stop): it still answers, so callers
+  // that stop someone else's search must throw that answer away
+  stop() {
+    this.uci.send('stop')
   }
 
   certify(fen: string, o: CertifyOptions): Promise<CertifiedRun> {
@@ -75,16 +118,23 @@ export class Engine {
         const lines: CertifiedRun['lines'] = []
         let depth = 0
         let nodes = 0
+        const byDepth = new Map<number, { pv: string[]; eval: LineEval }>()
         const timer = setTimeout(() => {
           this.listener = () => {}
           this.restart()
           reject(new EngineStalled(`Stockfish stopped answering on ${fen}`))
         }, o.timeoutMs ?? 120_000)
+        this.failed = () => {
+          clearTimeout(timer)
+          this.listener = () => {}
+          reject(new EngineStalled(`Stockfish crashed on ${fen}`))
+        }
         const go = () => {
           this.listener = line => {
             if (line.startsWith('bestmove')) {
               clearTimeout(timer)
-              return resolve({ lines: lines.filter(Boolean), depth, nodes, capped: depth < o.depth })
+              const earlier = byDepth.get(depth - 2)
+              return resolve({ lines: lines.filter(Boolean), depth, nodes, capped: depth < o.depth, check: earlier && { depth: depth - 2, ...earlier } })
             }
             const parsed = parseInfo(line)
             if (!parsed) return
@@ -92,11 +142,14 @@ export class Engine {
             if (n) nodes = n
             // Only complete iterations count: the first line of a new depth
             if (parsed.multipv === 1) depth = parsed.depth
-            lines[parsed.multipv - 1] = { pv: parsed.pv, eval: parsed.eval.mate !== undefined ? { type: 'mate', value: parsed.eval.mate } : { type: 'cp', value: parsed.eval.cp ?? 0 } }
+            const entry = { pv: parsed.pv, eval: (parsed.eval.mate !== undefined ? { type: 'mate', value: parsed.eval.mate } : { type: 'cp', value: parsed.eval.cp ?? 0 }) as LineEval }
+            lines[parsed.multipv - 1] = entry
+            // A bound (lowerbound/upperbound) is a search still in progress
+            if (parsed.multipv === 1 && !/ (lower|upper)bound /.test(line)) byDepth.set(parsed.depth, entry)
           }
           this.uci.send(`setoption name MultiPV value ${o.multipv}`)
           this.uci.send(`position fen ${fen}`)
-          this.uci.send(`go depth ${o.depth} nodes ${o.nodes}`)
+          this.uci.send(`go depth ${o.depth} nodes ${o.nodes}${o.movetime ? ` movetime ${o.movetime}` : ''}`)
         }
         if (!o.clearHash) return go()
         // A cleared hash makes the second run independent of the first

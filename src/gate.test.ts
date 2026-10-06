@@ -14,7 +14,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { it } from 'vitest'
 import { analyzeMoves } from './analysis/analyze'
-import { Engine, type UciEngine } from './analysis/engine'
+import { Engine, type CertifyOptions, type UciEngine } from './analysis/engine'
 import type { Band, Game, Puzzle } from './db'
 import { certifyReport } from './explain'
 import { narrate } from './server/narrate'
@@ -36,7 +36,11 @@ const REPORTS = 'src/server/fixtures/gate-reports.json'
 async function certifyAll(): Promise<EngineReport[]> {
   const sf = await require('stockfish')('lite-single')
   const uci: UciEngine = { send: c => sf.sendCommand(c), onLine: l => (sf.listener = l) }
-  const engine = new Engine(uci)
+  const sfEngine = new Engine(uci)
+  // Node can't run the threaded build: a node budget stands in for the
+  // browser's time budget on three threads (about 6M nodes in 6 s)
+  const nodes = Number(process.env.GATE_NODES ?? 6_000_000)
+  const engine = { certify: (fen: string, o: CertifyOptions) => sfEngine.certify(fen, { ...o, movetime: undefined, nodes }), search: sfEngine.search.bind(sfEngine), searchLines: sfEngine.searchLines.bind(sfEngine) } as unknown as Engine
 
   const games = readFileSync('src/sync/fixtures/player_01.ndjson', 'utf8')
     .trim()
@@ -60,7 +64,7 @@ async function certifyAll(): Promise<EngineReport[]> {
   const t0 = Date.now()
   for (const [i, p] of hardest.entries()) {
     const t = Date.now()
-    const report = await certifyReport(p, engine, { band: 'beginner', opening: p.game.opening, eco: p.game.eco }, undefined, [])
+    const report = await certifyReport(p, [engine], { band: 'beginner', opening: p.game.opening, eco: p.game.eco }, undefined, [])
     reports.push(report)
     console.error(`certified ${i + 1}/${hardest.length} ${p.id} in ${((Date.now() - t) / 1000).toFixed(1)} s`)
   }

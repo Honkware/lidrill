@@ -54,7 +54,7 @@ export async function importData(text: string, signedInAs?: string): Promise<voi
 
 // Everything except the sign-in, which has its own button
 export async function deleteAllData(): Promise<void> {
-  await db.transaction('rw', [...TABLES, 'explorer'].map(t => db.table(t)), async () => {
-    for (const name of [...TABLES, 'explorer']) await db.table(name).clear()
+  await db.transaction('rw', [...TABLES, 'explorer', 'certs'].map(t => db.table(t)), async () => {
+    for (const name of [...TABLES, 'explorer', 'certs']) await db.table(name).clear()
   })
 }

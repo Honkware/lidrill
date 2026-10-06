@@ -28,7 +28,7 @@ export function templateFloor(p: Packet): Slot[] {
   const why: string[] = []
   if (p.threatStatus === 'certified' && p.threat) why.push(`They threatened ${ref('threat')}.`)
   else if (p.threatStatus === 'certifiedNull') why.push(`They had NO_THREAT, so the point was ${ref('best')}.`)
-  else if (p.position.check.before && has('check')) why.push(`You had to answer ${ref('check')}.`)
+  else if (p.position.check.before && has('check')) why.push(`They gave ${ref('check')}, so the reply came first.`)
   if (has('c-mate') && p.best.pv.length > 2) why.push(`After ${ref('best')} and ${ref('pv1')}, ${ref('pv2')} follows: ${ref('c-mate')}.`)
   else if (has('c-mate')) why.push(`${ref('best')} gives ${ref('c-mate')}.`)
   else if (p.best.pv.length > 2) why.push(`${ref('best')} is met by ${ref('pv1')}, then ${ref('pv2')}.`)

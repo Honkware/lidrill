@@ -9,7 +9,7 @@ import { fetchStudyLines, listStudies, STUDY_READ_SCOPE, studyCompliance, type S
 import { STUDY_SCOPE, sendToStudy } from './lichess/study'
 import { applyLook, BOARDS, PIECE_SETS } from './look'
 import { compliance, openingTable, repertoireTargets, streak, type OpeningRow, type Streak } from './metrics'
-import { forgetLichessAccount, getEngine, saveProfile, syncAndAnalyze } from './pipeline'
+import { forgetLichessAccount, getEngine, precertifyDue, saveProfile, syncAndAnalyze } from './pipeline'
 import { PracticeRun } from './practice'
 import { Replay } from './replay'
 import { weekReport, weeklyZeroHang, type WeekReport } from './report'
@@ -292,6 +292,7 @@ export class Ctrl {
     }
     this.syncing = false
     this.refresh(true)
+    if (!this.abort.signal.aborted) void precertifyDue(this.abort.signal)
   }
 
   private async signInExpired(e: unknown) {

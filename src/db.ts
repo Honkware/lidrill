@@ -1,4 +1,4 @@
-import type { Packet } from './server/packet'
+import type { EngineRun, Packet } from './server/packet'
 import type { Slot } from './server/render'
 import Dexie, { type EntityTable } from 'dexie'
 import type { Card } from 'ts-fsrs'
@@ -188,6 +188,15 @@ export interface Review {
   source?: 'queue' | 'replay' // missing on older rows: 'queue'
 }
 
+// Stockfish's certification runs for a puzzle, done ahead in idle time so
+// "Why?" only has to check the player's wrong try (a cache, not exported)
+export interface CertRow {
+  puzzleId: string
+  version: string
+  runs: Record<string, EngineRun[]> // best, threat, played
+  createdAt: number
+}
+
 // One Turning Points run: its stops are ordinary review rows, so
 // the scheduler counts them; this row is the score for the end screen
 export interface ReplaySession {
@@ -221,6 +230,7 @@ class LidrillDb extends Dexie {
   practice!: EntityTable<Practice, 'id'>
   explanations!: EntityTable<ExplanationRow, 'id'>
   replaySessions!: EntityTable<ReplaySession, 'id'>
+  certs!: EntityTable<CertRow, 'puzzleId'>
 
   constructor() {
     super('lidrill')
@@ -247,6 +257,7 @@ class LidrillDb extends Dexie {
     this.version(6).stores({
       explanations: 'id, puzzleId, createdAt, dedupeKey',
       replaySessions: '++id, gameId, at',
+      certs: 'puzzleId, createdAt',
     })
   }
 }

@@ -1,5 +1,5 @@
 import { createEmptyCard } from 'ts-fsrs'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CertifyOptions, Engine } from './analysis/engine'
 import { db, type Puzzle } from './db'
 import { certifyReport, explain, isCurrent, kindOf, rowId } from './explain'
@@ -20,20 +20,26 @@ const fakeEngine = (calls: [string, CertifyOptions][] = []) =>
           : f.includes(' b ') && f.startsWith('r3k3/8/8/3N4')
             ? [{ pv: ['a8a1'], eval: { type: 'cp' as const, value: -500 } }, { pv: ['a8b8'], eval: { type: 'cp' as const, value: -505 } }]
             : [{ pv: ['a8a2'], eval: { type: 'cp' as const, value: 0 } }]
-      return { lines: lines.slice(0, o.multipv), depth: 24, nodes: 900_000, capped: false }
+      return { lines: lines.slice(0, o.multipv), depth: 24, nodes: 900_000, capped: false, check: { depth: 22, ...lines[0] } }
     },
   }) as unknown as Engine
 
+beforeEach(async () => {
+  await db.certs.clear()
+  await db.explanations.clear()
+})
 afterEach(() => vi.unstubAllGlobals())
 
 describe('certification report', () => {
-  it('runs every position twice with a cleared hash and the policy caps', async () => {
+  it('runs each position once, within the time budget, and caches the runs for next time', async () => {
     const calls: [string, CertifyOptions][] = []
-    const report = await certifyReport(puzzle, fakeEngine(calls), { band: 'club' }, undefined, [])
-    expect(calls).toHaveLength(6) // answer, threat, game move × 2
-    expect(calls.every(([, o]) => o.depth === 24 && o.nodes === 2_000_000 && o.clearHash)).toBe(true)
-    expect(calls[0][1].multipv).toBe(2)
-    expect(calls[2][1].multipv).toBe(3)
+    const report = await certifyReport(puzzle, [fakeEngine(calls)], { band: 'club' }, undefined, [])
+    expect(calls).toHaveLength(3) // answer, threat, game move
+    expect(calls.every(([, o]) => o.depth === 24 && o.movetime! > 0 && o.clearHash)).toBe(true)
+    expect(calls.map(([, o]) => o.multipv)).toEqual([2, 3, 1])
+    calls.length = 0
+    await certifyReport(puzzle, [fakeEngine(calls)], { band: 'club' }, 'd5f6', [])
+    expect(calls.map(([f]) => f)).toHaveLength(1) // only the wrong try is new
     const ok = validReport(JSON.parse(JSON.stringify(report)))
     expect(ok).toBeTruthy()
     const built = buildPacket(ok!)
@@ -41,8 +47,8 @@ describe('certification report', () => {
   })
 
   it('adds the wrong try, unless it is the game move or an answer', async () => {
-    expect((await certifyReport(puzzle, fakeEngine(), { band: 'club' }, 'd5f6', [])).tried?.uci).toBe('d5f6')
-    expect((await certifyReport(puzzle, fakeEngine(), { band: 'club' }, 'e1e2', [])).tried).toBeUndefined()
+    expect((await certifyReport(puzzle, [fakeEngine()], { band: 'club' }, 'd5f6', [])).tried?.uci).toBe('d5f6')
+    expect((await certifyReport(puzzle, [fakeEngine()], { band: 'club' }, 'e1e2', [])).tried).toBeUndefined()
   })
 
   it('maps puzzles to their kind', () => {
@@ -55,7 +61,6 @@ describe('certification report', () => {
 
 describe('explain', () => {
   it('certifies, proves the request, stores ref form with the packet, and serves the cache after', async () => {
-    await db.explanations.clear()
     const sent: { url: string; headers?: Record<string, string>; body?: string }[] = []
     vi.stubGlobal('fetch', async (url: string, init?: { headers?: Record<string, string>; body?: string }) => {
       sent.push({ url, ...init })
@@ -65,7 +70,7 @@ describe('explain', () => {
       if (!built.ok) throw new Error(built.error)
       return new Response(JSON.stringify({ slots: templateFloor(built.packet), packet: built.packet, source: 'floor', version: 9 }))
     })
-    const e = await explain(puzzle, fakeEngine(), { band: 'club' })
+    const e = await explain(puzzle, [fakeEngine()], { band: 'club' })
     expect(e.floor).toBe(true)
     expect(sent[1].headers!['x-lidrill-proof']).toMatch(/^abc\.\d+\.4\.s\.\d+$/)
     const row = await db.explanations.get(rowId(puzzle.id))
@@ -73,7 +78,7 @@ describe('explain', () => {
     expect(isCurrent(row, 'club')).toBe(true)
     expect(isCurrent(row, 'advanced')).toBe(false) // another band asks again
     sent.length = 0
-    await explain(puzzle, fakeEngine(), { band: 'club' })
+    await explain(puzzle, [fakeEngine()], { band: 'club' })
     expect(sent).toEqual([])
   })
 })

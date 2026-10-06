@@ -95,8 +95,14 @@ describe('packet', () => {
     expect(flip.meta.certification.refusals).toContain('best move differs between runs')
     const wobble = packetOf(forkReport({ best: [forkReport().best[0], run([{ pv: ['d5c7', 'e8d7', 'c7a8'], eval: cp(400) }, { pv: ['e1e2'], eval: cp(0) }])] }))
     expect(wobble.meta.certification.refusals.join()).toMatch(/range/)
-    const capped = packetOf(forkReport({ best: forkReport().best.map(r => ({ ...r, capped: true })) }))
-    expect(capped.meta.certification.status).toBe('refused')
+    // One run: the second opinion is the same search two iterations earlier
+    const one = forkReport().best[0]
+    expect(packetOf(forkReport({ best: [{ ...one, check: { depth: 22, pv: one.lines[0].pv, eval: cp(490) } }] })).meta.certification.status).toBe('certified')
+    expect(packetOf(forkReport({ best: [{ ...one, check: { depth: 22, pv: ['e1e2'], eval: cp(490) } }] })).meta.certification.refusals).toContain('best move differs between runs')
+    expect(packetOf(forkReport({ best: [{ ...one, check: { depth: 22, pv: one.lines[0].pv, eval: cp(300) } }] })).meta.certification.refusals.join()).toMatch(/range/)
+    expect(packetOf(forkReport({ best: [one] })).meta.certification.refusals).toContain('no second opinion')
+    // Stopped by the time budget short of depth 24 is fine; below 22 is not
+    expect(packetOf(forkReport({ best: forkReport().best.map(r => ({ ...r, depth: 22, capped: true })) })).meta.certification.status).toBe('certified')
     const close = packetOf(forkReport({ best: forkReport().best.map(r => ({ ...r, lines: [r.lines[0], { pv: ['e1e2'], eval: cp(450) }] })) }))
     expect(close.best.unique).toBe(false)
     expect(close.certificates.some(c => c.id === 'c-forced')).toBe(false)

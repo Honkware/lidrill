@@ -11,7 +11,8 @@ import { GENERATOR_VERSION, generatePuzzles } from './puzzles/generate'
 import { calibrate } from './report'
 import { SignInExpired } from './sync/lichess'
 import { sync } from './sync/sync'
-import { DAILY_CAP } from './train'
+import { DAILY_CAP, dueQueue } from './train'
+import { precertify } from './explain'
 
 export interface Accounts {
   lichessUser?: string
@@ -25,6 +26,12 @@ export interface Accounts {
 // the page; four is plenty and keeps phones from cooking.
 let engine: Engine | undefined
 export const getEngine = () => (engine ??= new Engine(() => workerEngine()))
+
+// Engines for "Why?" certification, apart from the drill's and the analysis
+// pool's so neither waits behind a certification: up to three
+// single-threaded workers that take a puzzle's searches side by side
+let certEngines: Engine[] | undefined
+export const getCertEngines = () => (certEngines ??= Array.from({ length: Math.min(3, poolSize()) }, () => new Engine(() => workerEngine())))
 
 let pool: Engine[] | undefined
 export const poolSize = () => Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 2) - 1))
@@ -210,4 +217,45 @@ export async function syncAndAnalyze(
   )
   if (signal.aborted) return
   onStatus('Done.')
+}
+
+// "Why?" waits for nobody: background certification pauses while one runs
+let explaining = 0
+let backgroundBusy = false
+let cutShort = false
+export async function whileExplaining<T>(f: () => Promise<T>): Promise<T> {
+  explaining++
+  // Don't make the player wait behind a background search: stop it (and
+  // throw its result away)
+  if (backgroundBusy) {
+    cutShort = true
+    for (const e of getCertEngines()) e.stop()
+  }
+  try {
+    return await f()
+  } finally {
+    explaining--
+  }
+}
+
+// Certify today's and tomorrow's queue in idle time (import-time
+// batching), so tapping "Why?" after a puzzle only checks the wrong try
+export async function precertifyDue(signal: AbortSignal, now = new Date()): Promise<void> {
+  const soon = new Date(+now + 24 * 3600 * 1000)
+  const queue = (await dueQueue(soon)).puzzles
+  const engines = getCertEngines()
+  for (const p of queue) {
+    while (explaining > 0 && !signal.aborted) await new Promise(r => setTimeout(r, 1000))
+    if (signal.aborted) return
+    backgroundBusy = true
+    cutShort = false
+    try {
+      await precertify(p, engines, () => cutShort)
+    } catch (e) {
+      console.warn(e)
+      return
+    } finally {
+      backgroundBusy = false
+    }
+  }
 }

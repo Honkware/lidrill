@@ -37,6 +37,7 @@ export interface DrillOptions {
   record: boolean
   source?: 'queue' | 'replay'
   engine?: Engine // evals in view mode
+  certEngines?: Engine[] // for "Why?"; the app's certification engines by default
   onFinish?: (outcome: Outcome) => void
 }
 
@@ -400,10 +401,14 @@ export class Drill {
     this.redraw()
     try {
       const ctx = await contextFor(this.puzzle, this.game)
-      const e = await explain(this.puzzle, this.opts.engine, ctx, this.firstTry, (done, total) => {
-        if (this.why?.loading) this.why = { loading: true, progress: [done, total] }
-        this.redraw()
-      })
+      const pipeline = await import('./pipeline')
+      const engines = this.opts.certEngines ?? pipeline.getCertEngines()
+      const e = await pipeline.whileExplaining(() =>
+        explain(this.puzzle, engines, ctx, this.firstTry, (done, total) => {
+          if (this.why?.loading) this.why = { loading: true, progress: [done, total] }
+          this.redraw()
+        }),
+      )
       this.why = { slots: e.slots.map(s => ({ slot: s.slot, segments: renderSlot(s, e.packet) })), floor: e.floor }
     } catch (e) {
       this.why = { error: (e as Error).message }

@@ -39,7 +39,12 @@ export const CERT = {
   instabCp: 50, // τ_instab: run-to-run range above this is unstable
   nullCp: 50, // τ_null: "no threat" only below the eval noise floor, every band
   kMax: 8,
-  nodesCap: 2_000_000,
+  // measured 2M nodes reaching depth 21 (median) on one thread, so 68%
+  // of hard positions were refused; depth 22 took 3.7M nodes (median) and
+  // 9.4M (p90). So a time budget per search with a hard node stop: the
+  // searches run side by side, mostly ahead of time in idle moments.
+  nodesCap: 12_000_000,
+  budgetMs: { best: 15000, threat: 15000, line: 8000 },
   multipv: 2,
   threatMultipv: 3,
   margin: { beginner: 150, club: 100, advanced: 80 } as Record<Band, number>,
@@ -62,7 +67,8 @@ export interface EngineRun {
   lines: EngineLine[] // MultiPV order, best first
   depth: number // depth reached
   nodes: number
-  capped: boolean // stopped by the node cap before the target depth
+  capped: boolean // stopped by the budget before the target depth
+  check?: { depth: number; pv: string[]; eval: RawEval } // the best line two iterations earlier
 }
 
 export interface EngineReport {
@@ -319,7 +325,17 @@ function validRun(run: unknown, maxLines: number): run is EngineRun {
     r.depth >= 0 &&
     r.depth <= 99 &&
     Number.isFinite(r.nodes) &&
-    typeof r.capped === 'boolean'
+    typeof r.capped === 'boolean' &&
+    (r.check === undefined ||
+      (!!r.check &&
+        Number.isInteger(r.check.depth) &&
+        Array.isArray(r.check.pv) &&
+        r.check.pv.length >= 1 &&
+        r.check.pv.length <= 24 &&
+        r.check.pv.every(u => typeof u === 'string' && UCI.test(u)) &&
+        !!r.check.eval &&
+        (r.check.eval.type === 'cp' || r.check.eval.type === 'mate') &&
+        Number.isInteger(r.check.eval.value)))
   )
 }
 
@@ -377,7 +393,15 @@ interface RunPair {
   a: EngineRun
   b?: EngineRun
 }
-const pair = (rs: EngineRun[]): RunPair => ({ a: rs[0], b: rs[1] })
+// The second opinion: a second run if there is one, else the same search two
+// iterations earlier (a cleared-hash rerun on one thread is identical, so
+// the iteration check is the one that can disagree)
+const pair = (rs: EngineRun[]): RunPair => {
+  const a = rs[0]
+  if (rs[1]) return { a, b: rs[1] }
+  if (!a.check) return { a }
+  return { a, b: { lines: [{ pv: a.check.pv, eval: a.check.eval }], depth: a.depth, nodes: a.nodes, capped: false } }
+}
 
 // The same best move, both runs deep enough, uncapped, and evals within τ_instab
 function stability(p: RunPair, flip: boolean) {
@@ -387,7 +411,7 @@ function stability(p: RunPair, flip: boolean) {
   const sameMove = !!p.b && p.b.lines[0].pv[0] === p.a.lines[0].pv[0]
   const range: [number, number] = eb ? [Math.min(cpOf(ea), cpOf(eb)), Math.max(cpOf(ea), cpOf(eb))] : [cpOf(ea), cpOf(ea)]
   const mateBoth = ea.type === 'mate' && !!eb && eb.type === 'mate' && Math.sign(ea.value) === Math.sign(eb.value)
-  const stable = !!eb && sameMove && !p.a.capped && !p.b!.capped && reached >= CERT.refuseDepth && (mateBoth || range[1] - range[0] <= CERT.instabCp)
+  const stable = !!eb && sameMove && reached >= CERT.refuseDepth && (mateBoth || range[1] - range[0] <= CERT.instabCp)
   const typed: TypedEval = { type: ea.type, value: ea.type === 'mate' && eb?.type === 'mate' ? (ea.value > 0 ? Math.max(ea.value, eb.value) : Math.min(ea.value, eb.value)) : ea.value, range: ea.type === 'cp' ? range : undefined, stable, reachedDepth: reached }
   return { typed, reached, sameMove, stable, mateBoth, capped: p.a.capped || !!p.b?.capped }
 }
@@ -413,8 +437,7 @@ export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION
   const best = pair(report.best)
   const bs = stability(best, false)
   if (bs.reached < CERT.refuseDepth) refusals.push(`depth ${bs.reached} < ${CERT.refuseDepth}`)
-  if (bs.capped) refusals.push('node cap reached before the target depth')
-  if (!best.b) refusals.push('single run')
+  if (!best.b) refusals.push('no second opinion')
   else if (!bs.sameMove) refusals.push('best move differs between runs')
   else if (!bs.stable && !bs.capped && bs.reached >= CERT.refuseDepth) refusals.push(`eval range over ${CERT.instabCp} cp`)
   const accepted = report.holding?.length ? report.holding : [report.solution[0]]
@@ -577,7 +600,7 @@ export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION
   const pvEnd = fromFen(pv[pv.length - 1].fenAfter)!
   const matAfter = played ? materialOf(fromFen((played.reply.at(-1) ?? played).fenAfter)!, player) : materialOf(pvEnd, player)
 
-  const status: Packet['meta']['certification']['status'] = refusals.length === 0 ? 'certified' : refusals.some(r => /depth|cap|differs|not the puzzle|single run|range/.test(r)) ? 'refused' : 'partial'
+  const status: Packet['meta']['certification']['status'] = refusals.length === 0 ? 'certified' : refusals.some(r => /depth|differs|not the puzzle|second opinion|range/.test(r)) ? 'refused' : 'partial'
   const holding = (report.holding ?? []).flatMap((u, i) => {
     const l = uciLine(fen, [u])
     return l ? [{ id: `hold${i + 1}`, san: l.sans[0], uci: u }] : []
