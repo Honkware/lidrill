@@ -1,4 +1,5 @@
 import type { Game, Result } from '../db'
+import { FIRST_SYNC_MAX } from './lichess'
 import { pgnHeader, pgnMoves } from './pgn'
 
 interface ChesscomPlayer {
@@ -61,14 +62,22 @@ export async function fetchChesscomGames(
 ): Promise<{ games: Game[]; doneMonths: string[] }> {
   const base = `https://api.chess.com/pub/player/${encodeURIComponent(user.toLowerCase())}/games`
   const res = await fetchFn(`${base}/archives`, { cache: 'no-cache' })
-  if (!res.ok) throw new Error(`chess.com archives: HTTP ${res.status}`)
+  if (res.status === 404) throw new Error(`Chess.com has no player "${user}". Check the spelling.`)
+  if (!res.ok) throw new Error(`Chess.com didn't answer (HTTP ${res.status}). Try again in a minute.`)
   const { archives } = (await res.json()) as { archives: string[] }
   const current = `${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}`
   const done = new Set(doneMonths)
+  const firstSync = doneMonths.length === 0
   const games: Game[] = []
-  for (const url of archives) {
+  // Newest first, so a first sync can stop once it has enough games
+  for (const url of [...archives].reverse()) {
     const month = url.split('/games/')[1]
     if (done.has(month)) continue
+    if (firstSync && games.length >= FIRST_SYNC_MAX) {
+      // Older history is left out on purpose, same cap as Lichess
+      done.add(month)
+      continue
+    }
     const monthRes = await fetchFn(url, { cache: 'no-cache' })
     if (!monthRes.ok) throw new Error(`chess.com ${month}: HTTP ${monthRes.status}`)
     const data = (await monthRes.json()) as { games: ChesscomGame[] }

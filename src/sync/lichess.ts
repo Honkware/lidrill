@@ -17,9 +17,14 @@ interface LichessGame {
 
 const SKIPPED_STATUS = new Set(['created', 'started', 'aborted', 'noStart', 'unknownFinish'])
 
+// First import stops at the newest FIRST_SYNC_MAX games; at ~6 s of analysis
+// each that's already 20 minutes of engine time.
+export const FIRST_SYNC_MAX = 200
+
 export function exportUrl(user: string, since?: number): string {
   const params = new URLSearchParams({ pgnInJson: 'true', clocks: 'true', opening: 'true', finished: 'true' })
   if (since) params.set('since', String(since))
+  else params.set('max', String(FIRST_SYNC_MAX))
   return `https://lichess.org/api/games/user/${encodeURIComponent(user)}?${params}`
 }
 
@@ -58,7 +63,8 @@ export async function* fetchLichessGames(
   const res = await fetchFn(exportUrl(user, since), {
     headers: { Accept: 'application/x-ndjson', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
   })
-  if (!res.ok || !res.body) throw new Error(`lichess export: HTTP ${res.status}`)
+  if (res.status === 404) throw new Error(`Lichess has no games for "${user}". Check the spelling, or sign in if your games are private.`)
+  if (!res.ok || !res.body) throw new Error(`Lichess export failed (HTTP ${res.status}). Try again in a minute.`)
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
   let buffer = ''
   for (;;) {

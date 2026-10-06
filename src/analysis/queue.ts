@@ -1,4 +1,4 @@
-import { db } from '../db'
+import { db, type Game } from '../db'
 import { analyzeMoves, type AnalyzeOptions } from './analyze'
 import type { Engine } from './engine'
 
@@ -15,6 +15,7 @@ export async function runQueue(
   opts: AnalyzeOptions,
   onProgress: (p: Progress) => void,
   signal?: AbortSignal,
+  onGame?: (game: Game) => Promise<void>,
 ): Promise<void> {
   const pending = await db.games.filter(g => g.analyzedAt === undefined).toArray()
   pending.sort((a, b) => b.playedAt - a.playedAt)
@@ -24,7 +25,9 @@ export async function runQueue(
     if (signal?.aborted) return
     const moves = await analyzeMoves(game.moves, engine, opts)
     if (signal?.aborted) return
-    await db.games.update(game.id, { moves, analyzedAt: Date.now() })
+    const analyzed = { ...game, moves, analyzedAt: Date.now() }
+    await db.games.put(analyzed)
+    await onGame?.(analyzed)
     onProgress({ done: i + 1, total })
   }
 }

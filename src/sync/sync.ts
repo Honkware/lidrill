@@ -15,7 +15,7 @@ export interface SyncOptions {
 async function addNew(games: Game[]): Promise<number> {
   if (!games.length) return 0
   const existing = new Set(await db.games.where('id').anyOf(games.map(g => g.id)).primaryKeys())
-  const fresh = games.filter(g => !existing.has(g.id))
+  const fresh = [...new Map(games.map(g => [g.id, g])).values()].filter(g => !existing.has(g.id))
   await db.games.bulkAdd(fresh)
   return fresh.length
 }

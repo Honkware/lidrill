@@ -30,6 +30,8 @@ describe('lichess', () => {
   it('asks only for games after the last sync', () => {
     expect(exportUrl('Foo', 1700000000001)).toContain('since=1700000000001')
     expect(exportUrl('Foo')).not.toContain('since')
+    expect(exportUrl('Foo')).toContain('max=200')
+    expect(exportUrl('Foo', 1)).not.toContain('max=')
   })
 })
 
@@ -100,5 +102,23 @@ describe('incremental sync', () => {
     await sync({ chesscomUser: 'Hikaru', fetchFn, now })
     // September is done, so only the archive list and October are fetched
     expect(requested).toEqual([`${base}/archives`, `${base}/2026/10`])
+  })
+
+  it('stops a first chess.com sync once it has enough games', async () => {
+    const base = 'https://api.chess.com/pub/player/hikaru/games'
+    const month = (m: string) => ({
+      games: Array.from({ length: 70 }, (_, i) => ({ ...chesscom.games[i % 3], url: `https://www.chess.com/game/live/${m}-${i}` })),
+    })
+    const months = ['2026/05', '2026/06', '2026/07', '2026/08', '2026/09']
+    const requested: string[] = []
+    const fetchFn = (async (url: string) => {
+      requested.push(url)
+      if (url.endsWith('/archives')) return Response.json({ archives: months.map(m => `${base}/${m}`) })
+      return Response.json(month(url.split('/games/')[1]))
+    }) as typeof fetch
+    await sync({ chesscomUser: 'Hikaru', fetchFn, now: new Date('2026-10-06T00:00:00Z') })
+    // 70 a month: three months reach 200, the two oldest are skipped
+    expect(requested.filter(u => !u.endsWith('/archives'))).toEqual([`${base}/2026/09`, `${base}/2026/08`, `${base}/2026/07`])
+    expect(await db.games.count()).toBe(210)
   })
 })

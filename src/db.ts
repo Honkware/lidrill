@@ -77,11 +77,20 @@ export interface Profile {
   marginCp: number
 }
 
+export interface Review {
+  id?: number
+  puzzleId: string
+  at: number
+  solved: boolean
+  whyMissed?: string
+}
+
 class LidrillDb extends Dexie {
   games!: EntityTable<Game, 'id'>
   syncState!: EntityTable<SyncState, 'site'>
   puzzles!: EntityTable<Puzzle, 'id'>
   profile!: EntityTable<Profile, 'id'>
+  reviews!: EntityTable<Review, 'id'>
 
   constructor() {
     super('lidrill')
@@ -92,6 +101,9 @@ class LidrillDb extends Dexie {
     this.version(2).stores({
       puzzles: 'id, gameId, card.due, type',
       profile: 'id',
+    })
+    this.version(3).stores({
+      reviews: '++id, puzzleId, at',
     })
   }
 }
