@@ -19,6 +19,7 @@ export interface SearchResult {
   eval: Eval // side to move's point of view, as UCI reports it
   pv: string[]
   depth: number
+  multipv: number
 }
 
 // Runs searches one at a time; UCI has no request ids, so overlapping
@@ -36,14 +37,20 @@ export class Engine {
   }
 
   search(fen: string, depth: number): Promise<SearchResult> {
+    return this.searchLines(fen, depth, 1).then(lines => lines[0] ?? { eval: { cp: 0 }, pv: [], depth: 0 })
+  }
+
+  // The best `count` lines, best first (UCI MultiPV)
+  searchLines(fen: string, depth: number, count: number): Promise<SearchResult[]> {
     const run = () =>
-      new Promise<SearchResult>(resolve => {
-        let last: SearchResult = { eval: { cp: 0 }, pv: [], depth: 0 }
+      new Promise<SearchResult[]>(resolve => {
+        const lines: SearchResult[] = []
         this.listener = line => {
-          if (line.startsWith('bestmove')) return resolve(last)
+          if (line.startsWith('bestmove')) return resolve(lines.filter(Boolean))
           const parsed = parseInfo(line)
-          if (parsed) last = parsed
+          if (parsed) lines[parsed.multipv - 1] = parsed
         }
+        this.uci.send(`setoption name MultiPV value ${count}`)
         this.uci.send(`position fen ${fen}`)
         this.uci.send(`go depth ${depth}`)
       })
@@ -55,9 +62,6 @@ export class Engine {
 
 export function parseInfo(line: string): SearchResult | null {
   if (!line.startsWith('info ') || !line.includes(' pv ')) return null
-  // Only the principal line; multipv 2+ lines are read by the puzzle verifier
-  const multipv = line.match(/ multipv (\d+)/)
-  if (multipv && multipv[1] !== '1') return null
   const score = line.match(/ score (cp|mate) (-?\d+)/)
   const depth = line.match(/ depth (\d+)/)
   if (!score || !depth) return null
@@ -66,5 +70,6 @@ export function parseInfo(line: string): SearchResult | null {
     eval: score[1] === 'cp' ? { cp: value } : { mate: value },
     pv: line.split(' pv ')[1].trim().split(' '),
     depth: parseInt(depth[1]),
+    multipv: parseInt(line.match(/ multipv (\d+)/)?.[1] ?? '1'),
   }
 }

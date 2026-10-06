@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
+import type { Card } from 'ts-fsrs'
 
 export type Site = 'lichess' | 'chesscom'
 export type Result = 'win' | 'loss' | 'draw'
@@ -47,15 +48,50 @@ export interface SyncState {
   doneMonths: string[]
 }
 
+export type PuzzleType = 'hang' | 'missed-win' | 'conversion'
+export type PuzzleTag = 'hang' | 'mate' | 'defensive'
+
+export interface Puzzle {
+  id: string // `${gameId}:${ply}`
+  gameId: string
+  ply: number // the position before this ply is the puzzle
+  fen: string
+  played: string // UCI of what the player actually played
+  solution: string[] // UCI, player and opponent moves alternating
+  solutionLen: number // player moves in the solution
+  type: PuzzleType
+  tag: PuzzleTag
+  swingCp: number
+  card: Card
+}
+
+export type Band = 'beginner' | 'club' | 'advanced'
+
+export interface Profile {
+  id: 'me'
+  lichessUser?: string
+  chesscomUser?: string
+  band: Band
+  bandHistory: { band: Band; at: number }[]
+  swingThresholdCp: number
+  marginCp: number
+}
+
 class LidrillDb extends Dexie {
   games!: EntityTable<Game, 'id'>
   syncState!: EntityTable<SyncState, 'site'>
+  puzzles!: EntityTable<Puzzle, 'id'>
+  profile!: EntityTable<Profile, 'id'>
 
   constructor() {
     super('lidrill')
     this.version(1).stores({
       games: 'id, site, playedAt, analyzedAt',
       syncState: 'site',
+    })
+    this.version(2).stores({
+      puzzles: 'id, gameId, card.due, type',
+      profile: 'id',
     })
   }
 }

@@ -24,14 +24,15 @@ function sharedEngine(): Promise<Engine> {
 }
 
 describe('parseInfo', () => {
-  it('reads cp and mate lines and ignores secondary pvs', () => {
+  it('reads cp, mate and multipv lines', () => {
     expect(parseInfo('info depth 12 seldepth 18 multipv 1 score cp -34 nodes 1 nps 1 pv e7e5 g1f3')).toEqual({
       eval: { cp: -34 },
       pv: ['e7e5', 'g1f3'],
       depth: 12,
+      multipv: 1,
     })
     expect(parseInfo('info depth 5 multipv 1 score mate 2 pv h5f7')!.eval).toEqual({ mate: 2 })
-    expect(parseInfo('info depth 12 multipv 2 score cp 10 pv d7d5')).toBeNull()
+    expect(parseInfo('info depth 12 multipv 2 score cp 10 pv d7d5')!.multipv).toBe(2)
     expect(parseInfo('info string NNUE enabled')).toBeNull()
   })
 })
