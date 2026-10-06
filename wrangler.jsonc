@@ -2,7 +2,16 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "lidrill",
   "compatibility_date": "2026-10-01",
-  "assets": { "directory": "./dist", "not_found_handling": "single-page-application" },
+  // Static assets, plus a small Worker for /api/* (see worker/index.ts)
+  "main": "worker/index.ts",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  // Per-visitor cap on explanations; the OpenRouter key is a Worker secret
+  "ratelimits": [{ "name": "EXPLAIN_LIMIT", "namespace_id": "1001", "simple": { "limit": 8, "period": 60 } }],
   "routes": [
     // www.lidrill.org is a proxied DNS record that a zone redirect rule sends here
     { "pattern": "lidrill.org", "custom_domain": true }

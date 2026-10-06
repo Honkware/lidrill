@@ -111,6 +111,7 @@ export function settingsView(ctrl: Ctrl): VNode {
       [
         label('Your data'),
         el('p', 'text-sm text-dim', 'Everything lives in this browser. Export it to keep a copy or move to another device. The Lichess sign-in is never in the file.'),
+        el('p', 'text-sm text-dim', '"Why?" after a puzzle sends that position and Stockfish\'s lines, nothing else, through lidrill\'s server to an AI model (via OpenRouter).'),
         el('div', 'flex flex-wrap gap-2', [
           button('Export', () => ctrl.exportFile(), 'plain'),
           el('label', 'inline-flex min-h-11 cursor-pointer items-center rounded-lg bg-raised px-4 font-medium', [
