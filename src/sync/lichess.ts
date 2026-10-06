@@ -53,6 +53,12 @@ export function fromLichess(g: LichessGame, user: string): Game | null {
   }
 }
 
+export class SignInExpired extends Error {
+  constructor() {
+    super('Your Lichess sign-in has expired. Sign in again to keep syncing.')
+  }
+}
+
 // Streams the export so a long history doesn't sit in memory as one string.
 export async function* fetchLichessGames(
   user: string,
@@ -63,7 +69,8 @@ export async function* fetchLichessGames(
   const res = await fetchFn(exportUrl(user, since), {
     headers: { Accept: 'application/x-ndjson', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
   })
-  if (res.status === 404) throw new Error(`Lichess has no games for "${user}". Check the spelling, or sign in if your games are private.`)
+  if (res.status === 401) throw new SignInExpired()
+  if (res.status === 404) throw new Error(`Lichess couldn't find the account "${user}".`)
   if (!res.ok || !res.body) throw new Error(`Lichess export failed (HTTP ${res.status}). Try again in a minute.`)
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
   let buffer = ''

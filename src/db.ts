@@ -85,12 +85,22 @@ export interface Review {
   whyMissed?: string
 }
 
+// Never exported, never logged
+export interface Auth {
+  id: 'lichess'
+  username: string
+  token: string
+  scopes: string[]
+  grantedAt: number
+}
+
 class LidrillDb extends Dexie {
   games!: EntityTable<Game, 'id'>
   syncState!: EntityTable<SyncState, 'site'>
   puzzles!: EntityTable<Puzzle, 'id'>
   profile!: EntityTable<Profile, 'id'>
   reviews!: EntityTable<Review, 'id'>
+  auth!: EntityTable<Auth, 'id'>
 
   constructor() {
     super('lidrill')
@@ -104,6 +114,9 @@ class LidrillDb extends Dexie {
     })
     this.version(3).stores({
       reviews: '++id, puzzleId, at',
+    })
+    this.version(4).stores({
+      auth: 'id',
     })
   }
 }

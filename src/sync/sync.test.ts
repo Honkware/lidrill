@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '../db'
 import { fromChesscom } from './chesscom'
-import { exportUrl, fromLichess } from './lichess'
+import { exportUrl, fromLichess, SignInExpired } from './lichess'
 import { sync } from './sync'
 
 const lichessLines = readFileSync('src/sync/fixtures/lichess-sample.ndjson', 'utf8').trim().split('\n')
@@ -75,6 +75,16 @@ describe('incremental sync', () => {
     expect(urls[0]).not.toContain('since=')
     const newest = Math.max(...lichessLines.map(l => JSON.parse(l).createdAt))
     expect(urls[1]).toContain(`since=${newest + 1}`)
+  })
+
+  it('sends the token and reports a revoked one', async () => {
+    let auth: string | null = null
+    const fetchFn = (async (_url: string, init?: RequestInit) => {
+      auth = new Headers(init?.headers).get('Authorization')
+      return new Response('', { status: 401 })
+    }) as typeof fetch
+    await expect(sync({ lichessUser: 'penguingim1', lichessToken: 'lio_old', fetchFn })).rejects.toBeInstanceOf(SignInExpired)
+    expect(auth).toBe('Bearer lio_old')
   })
 
   it('never overwrites a stored game', async () => {
