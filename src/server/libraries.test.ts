@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Band } from '../db'
-import type { PuzzleKind } from './explain'
+import type { PuzzleKind } from './packet'
 import { family, HABITS, HABIT_LIB_VERSION, selectHabit, type Family } from './habits'
 import { MOTIF_KEYS, MOTIF_LIB_VERSION, motifEntry } from './motifLib'
 import { checkCeilings, fkGrade, READABILITY_VERSION, sentences, smog, syllables, words } from './readability'

@@ -1,5 +1,5 @@
 import type { Band } from '../db'
-import type { PuzzleKind } from './explain'
+import type { PuzzleKind } from './packet'
 
 // Habits to take into the next game, as fixed text. The narrator names a
 // habit by id and the renderer inserts the string as written, so the model

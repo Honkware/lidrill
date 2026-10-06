@@ -3,7 +3,7 @@ import { db, type Puzzle } from './db'
 // One-file export of everything lidrill knows. The Lichess token
 // is never in it, and the explorer cache is left out because it's only a
 // cache.
-const TABLES = ['games', 'puzzles', 'reviews', 'profile', 'syncState', 'journal', 'liPuzzle', 'practice'] as const
+const TABLES = ['games', 'puzzles', 'reviews', 'profile', 'syncState', 'journal', 'liPuzzle', 'practice', 'explanations'] as const
 type TableName = (typeof TABLES)[number]
 
 export interface Backup {

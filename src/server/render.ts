@@ -108,7 +108,7 @@ export function renderSlot(s: Slot, p: Packet): Segment[] {
     const words = renderRef(id, p) ?? ''
     const move = moves.get(id)
     if (move) out.push({ text: words, ref: id, link: { from: move.from, to: move.to, fen: move.fenBefore, after: move.fenAfter } })
-    else if (id.startsWith('c-')) out.push(...squareLinks(words, id))
+    else if (id.startsWith('c-')) out.push(...squareLinks(words, id, certPosition(id, p, moves)))
     else out.push({ text: words, ref: id })
     last = m.index + m[0].length
   }
@@ -116,12 +116,18 @@ export function renderSlot(s: Slot, p: Packet): Segment[] {
   return out
 }
 
-function squareLinks(text: string, ref: string): Segment[] {
+// The position a certificate's squares are about: after the move that shows it
+function certPosition(id: string, p: Packet, moves: Map<string, PvMove>): string | undefined {
+  const moveId = (p.certificates.find(c => c.id === id)?.payload as { moveId?: string } | undefined)?.moveId
+  return moveId ? moves.get(moveId)?.fenAfter : undefined
+}
+
+function squareLinks(text: string, ref: string, fen?: string): Segment[] {
   const out: Segment[] = []
   let last = 0
   for (const m of text.matchAll(SQUARE)) {
     if (m.index > last) out.push({ text: text.slice(last, m.index), ref })
-    out.push({ text: m[0], ref, link: { to: m[0] } })
+    out.push({ text: m[0], ref, link: { to: m[0], fen } })
     last = m.index + m[0].length
   }
   if (last < text.length) out.push({ text: text.slice(last), ref })

@@ -8,8 +8,10 @@ import { makeSan } from 'chessops/san'
 import { parseSquare, parseUci } from 'chessops/util'
 import type { Engine } from './analysis/engine'
 import { checkColor } from './checkColor'
-import { db, type ExplanationLink, type Game, type Puzzle } from './db'
-import { explain } from './explain'
+import { db, type Game, type Puzzle } from './db'
+import { contextFor, explain } from './explain'
+import { renderSlot, type BoardLink, type Segment } from './server/render'
+import type { SlotName } from './server/packet'
 import { pawns } from './format'
 import { recordAttempt } from './train'
 import { parseTyped } from './typed'
@@ -69,7 +71,7 @@ export class Drill {
   game?: Game
   reviewId?: number
   flipped = false
-  why?: { loading?: boolean; text?: string; links?: ExplanationLink[]; cue?: string; error?: string }
+  why?: { loading?: boolean; progress?: [number, number]; slots?: { slot: SlotName; segments: Segment[] }[]; floor?: boolean; error?: string }
   readonly puzzle: Puzzle
   private cg?: Api
   private owned = false
@@ -356,11 +358,11 @@ export class Drill {
 
   // While a word in the explanation is hovered or tapped: the position the
   // move is played from, with its arrow (or a circle for a square)
-  previewing?: ExplanationLink
+  previewing?: BoardLink
 
   // A move is played out on the board: its starting position appears, then
   // the move animates in. A square just gets a circle.
-  preview(target?: ExplanationLink) {
+  preview(target?: BoardLink) {
     this.previewing = target
     clearTimeout(this.previewTimer)
     // The panel marks the word being shown
@@ -380,7 +382,10 @@ export class Drill {
         this.cg?.set({ animation: { enabled: true }, fen: target.after, turnColor: after.turn, lastMove: [target.from as Key, target.to as Key], check: checkColor(after) })
       }, 180)
     } else {
-      this.cg?.set({ ...still, animation: { enabled: true }, fen: this.nodes[this.cursor].fen })
+      // A square: circled in the position it's about
+      const fen = target.fen ?? this.nodes[this.cursor].fen
+      const pos = Chess.fromSetup(parseFen(fen).unwrap()).unwrap()
+      this.cg?.set({ ...still, animation: { enabled: true }, fen, turnColor: pos.turn, check: checkColor(pos) })
       this.cg?.setAutoShapes([{ orig: target.to as Key, brush: 'green' }])
     }
   }
@@ -389,12 +394,16 @@ export class Drill {
 
   // "Why?": a short worded explanation built from the engine lines
   async explain() {
-    if (this.state !== 'view' || this.why?.loading || this.why?.text) return
+    if (this.state !== 'view' || this.why?.loading || this.why?.slots) return
     this.why = { loading: true }
     this.redraw()
     try {
-      const e = await explain(this.puzzle, this.opts.engine, this.firstTry)
-      this.why = { text: e.text, links: e.links, cue: e.cue }
+      const ctx = await contextFor(this.puzzle, this.game)
+      const e = await explain(this.puzzle, this.opts.engine, ctx, this.firstTry, (done, total) => {
+        if (this.why?.loading) this.why = { loading: true, progress: [done, total] }
+        this.redraw()
+      })
+      this.why = { slots: e.slots.map(s => ({ slot: s.slot, segments: renderSlot(s, e.packet) })), floor: e.floor }
     } catch (e) {
       this.why = { error: (e as Error).message }
     }

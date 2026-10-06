@@ -1,9 +1,8 @@
 import type { VNode } from 'snabbdom'
 import type { Ctrl } from '../ctrl'
-import type { ExplanationLink } from '../db'
 import type { Drill } from '../drill'
 import { el } from '../el'
-import { linkSegments } from '../explainLinks'
+import type { BoardLink, Segment } from '../server/render'
 import { board, button, icon, moveInput, pawnsWorth, topBar } from './ui'
 
 export function drillView(ctrl: Ctrl): VNode {
@@ -149,9 +148,9 @@ const navButton = (name: string, labelText: string, onClick: () => void) =>
 // events, so only real mouse pointers count as hovering.
 let lastPointer = 'mouse'
 
-function linked(d: Drill, text: string, links: ExplanationLink[]): (VNode | string)[] {
-  const toggle = (target: ExplanationLink) => d.preview(d.previewing === target ? undefined : target)
-  return linkSegments(text, links).map(({ text: t, target }) =>
+function linked(d: Drill, segments: Segment[]): (VNode | string)[] {
+  const toggle = (target: BoardLink) => d.preview(d.previewing === target ? undefined : target)
+  return segments.map(({ text: t, link: target }) =>
     target
       ? el(
           'span',
@@ -181,14 +180,22 @@ function linked(d: Drill, text: string, links: ExplanationLink[]): (VNode | stri
   )
 }
 
+// The four slots: what happened and why read as one paragraph each; the
+// pattern and the habit to keep sit below, quieter
 function whyPart(d: Drill): VNode | null {
   const w = d.why
   if (!w) return null
-  if (w.loading) return el('p', 'mt-3 animate-pulse text-sm text-dim', 'Working it out…')
+  if (w.loading) {
+    const [done, total] = w.progress ?? [0, 0]
+    return el('p', 'mt-3 animate-pulse text-sm text-dim', total ? `Checking with Stockfish… ${done} of ${total}` : 'Working it out…')
+  }
   if (w.error) return el('p', 'mt-3 text-sm text-bad', w.error)
-  return el('div', 'mt-3 border-t border-raised pt-3 text-sm', [
-    el('p', '', linked(d, w.text ?? '', w.links ?? [])),
-    w.cue ? el('p', 'mt-2 text-dim', w.cue) : null,
+  const slot = (name: string) => w.slots?.find(s => s.slot === name)?.segments ?? []
+  return el('div', 'mt-3 space-y-2 border-t border-raised pt-3 text-sm', [
+    el('p', '', linked(d, slot('whatHappened'))),
+    el('p', '', linked(d, slot('why'))),
+    el('p', 'text-dim', linked(d, slot('pattern'))),
+    el('p', 'text-dim', [el('span', 'font-medium', 'Next time: '), ...linked(d, slot('nextTime'))]),
   ])
 }
 

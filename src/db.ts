@@ -1,3 +1,5 @@
+import type { Packet } from './server/packet'
+import type { Slot } from './server/render'
 import Dexie, { type EntityTable } from 'dexie'
 import type { Card } from 'ts-fsrs'
 import type { Perf, Speed } from './lichess/api'
@@ -77,6 +79,25 @@ export interface Explanation {
   version?: number // EXPLAIN_VERSION of the server logic that made it
   tried?: string // UCI of the wrong first try it also explains
   cue?: string // one habit for next time
+}
+
+// A "Why?" explanation: the four slots in ref form, with
+// the packet that renders them. Text is rendered at serve time, never
+// stored, so a renderer change takes effect without asking again.
+export interface ExplanationRow {
+  id: string // `${puzzleId}|${tried ?? ''}`
+  puzzleId: string
+  tried?: string // UCI of the first wrong try it also explains
+  dedupeKey: string
+  packetHash: string
+  band: Band
+  slots: Slot[]
+  floor: boolean // the fixed text, not the narrator's
+  promptVersion: string
+  version: number // EXPLAIN_VERSION when it was made
+  habitId: string // for the next explanations' anti-repeat window
+  createdAt: number
+  packet: Packet
 }
 
 export interface Puzzle {
@@ -185,6 +206,7 @@ class LidrillDb extends Dexie {
   journal!: EntityTable<JournalEntry, 'gameId'>
   liPuzzle!: EntityTable<PuzzleDashboardSnapshot, 'week'>
   practice!: EntityTable<Practice, 'id'>
+  explanations!: EntityTable<ExplanationRow, 'id'>
 
   constructor() {
     super('lidrill')
@@ -207,6 +229,9 @@ class LidrillDb extends Dexie {
       journal: 'gameId, at',
       liPuzzle: 'week',
       practice: 'id, gameId, kind',
+    })
+    this.version(6).stores({
+      explanations: 'id, puzzleId, createdAt, dedupeKey',
     })
   }
 }

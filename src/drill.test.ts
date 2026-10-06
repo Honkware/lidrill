@@ -121,7 +121,7 @@ describe('check highlight', () => {
     d.viewSolution()
     await flush()
     const after = 'rn1qkbnr/ppp2Bp1/3p3p/4N3/4P3/2N5/PPPP1PPP/R1BbK2R b KQkq - 0 6'
-    d.preview({ index: 0, text: 'Bxf7+', from: 'c4', to: 'f7', fen: legal.fen, after })
+    d.preview({ from: 'c4', to: 'f7', fen: legal.fen, after })
     expect(state.check).toBe(false)
     expect(state.turnColor).toBe('white')
     await vi.advanceTimersByTimeAsync(200)

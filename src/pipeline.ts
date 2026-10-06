@@ -24,7 +24,7 @@ export interface Accounts {
 // engine while using more of the device's cores. One core is left free for
 // the page; four is plenty and keeps phones from cooking.
 let engine: Engine | undefined
-export const getEngine = () => (engine ??= new Engine(workerEngine()))
+export const getEngine = () => (engine ??= new Engine(() => workerEngine()))
 
 let pool: Engine[] | undefined
 export const poolSize = () => Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 2) - 1))
@@ -52,8 +52,9 @@ export async function saveProfile(patch: Partial<Omit<Profile, 'id'>>): Promise<
 // A different Lichess account signed in on this browser. Its games aren't
 // ours, so drop the old account's games and puzzles; Chess.com data stays.
 export async function forgetLichessAccount(): Promise<void> {
-  await db.transaction('rw', [db.games, db.puzzles, db.syncState, db.journal, db.liPuzzle, db.profile, db.practice], async () => {
+  await db.transaction('rw', [db.games, db.puzzles, db.syncState, db.journal, db.liPuzzle, db.profile, db.practice, db.explanations], async () => {
     await db.practice.filter(p => p.gameId.startsWith('lichess:')).delete()
+    await db.explanations.filter(e => e.puzzleId.startsWith('lichess:')).delete()
     await db.games.where('site').equals('lichess').delete()
     await db.puzzles.filter(p => p.gameId.startsWith('lichess:') || p.source === 'lichess').delete()
     await db.journal.filter(j => j.gameId.startsWith('lichess:')).delete()
