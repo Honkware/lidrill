@@ -5,6 +5,7 @@ import { parseUci } from 'chessops/util'
 import type { Engine } from './analysis/engine'
 import { db, type Puzzle } from './db'
 import type { ExplainRequest, LineFacts } from './server/explain'
+import { passFen } from './server/facts'
 
 // Client side of "Why?": what Stockfish says about the puzzle, sent to
 // lidrill's /api/explain, which words it. The answer is stored on the puzzle.
@@ -61,6 +62,13 @@ export async function explainRequest(p: Puzzle, engine?: Engine): Promise<Explai
     req.played = { ...lineFacts(p.fen, [p.played, ...reply.moves]), cp: reply.cp }
   }
   if (p.alternatives) req.holding = p.alternatives.map(u => lineFacts(p.fen, [u]).san[0])
+  // What the opponent would do with a free move: often the point of a defence
+  const pass = passFen(p.fen)
+  if (pass) {
+    const t = await pv(engine, pass, 4)
+    if (t.moves.length) req.threat = lineFacts(pass, t.moves)
+  }
+  req.kind = p.source === 'lichess' ? 'lichess' : p.alternatives ? 'hold' : p.tag === 'defensive' ? 'defensive' : p.type === 'external' ? 'lichess' : p.type
   if (p.themes?.length) req.themes = p.themes.filter(t => /^[a-zA-Z]{2,32}$/.test(t)).slice(0, 12)
   return req
 }

@@ -7,7 +7,10 @@ const ok = { fen, best: { san: ['Bxf7+', 'Ke7', 'Nd5#'], end: 'mate' }, played: 
 describe('explain request', () => {
   it('accepts puzzle data', () => {
     expect(validate(ok)).toEqual(ok)
-    expect(validate({ fen, best: { san: ['O-O-O+'], end: 'material +3' }, holding: ['Nf3', 'Be2'], themes: ['fork', 'middlegame'] })).toBeTruthy()
+    expect(validate({ fen, best: { san: ['O-O'], end: 'material +3' }, holding: ['Nf3', 'Be2'], themes: ['fork', 'middlegame'], kind: 'hold' })).toBeTruthy()
+    // a legal-looking move that isn't legal here
+    expect(validate({ fen, best: { san: ['Qh5'], end: 'mate' } })).toBeUndefined()
+    expect(validate({ fen, best: ok.best, kind: 'anything' })).toBeUndefined()
   })
 
   it('refuses anything that is not chess', () => {
@@ -27,8 +30,9 @@ describe('explain request', () => {
   it('builds the prompt under a fixed system prompt', () => {
     const p = prompt(ok)
     expect(p).toContain('White to move.')
-    expect(p).toContain('Best move: Bxf7+. Engine line: 6. Bxf7+ Ke7 7. Nd5# (checkmate).')
-    expect(p).toContain('The player chose Kxd1. Engine line after it: 6. Kxd1 dxe5 (White ends two pawns down).')
+    expect(p).toContain('Best move: Bxf7+. Engine line: 6. Bxf7+ (bishop takes pawn on f7, check, the bishop on f7 attacks the king on e8 and the knight on g8) Ke7 7. Nd5# (checkmate).')
+    expect(p).toContain('The player chose Kxd1. Engine line after it: 6. Kxd1 (king takes bishop on d1) dxe5 (pawn takes knight on e5) (White ends two pawns down).')
+    expect(p).toContain('Move 6, opening;')
     expect(endWords('material +3', 'Black')).toBe('Black ends a piece up')
     const body = openRouterBody(ok)
     expect(body.messages[0]).toEqual({ role: 'system', content: SYSTEM })
