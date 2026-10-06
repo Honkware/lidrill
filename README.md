@@ -19,8 +19,9 @@ token is stored there too and revoked when you sign out.
 
 The first sync pulls your newest 200 games per site. Games Lichess has
 already analyzed reuse its evals. The rest are analyzed at depth 14 with
-the single-threaded Stockfish 19 lite build, roughly 5-11 seconds a game,
-so a full first pass takes a while. Puzzles show up as each game finishes.
+the single-threaded Stockfish 19 lite build, on up to four workers at once
+(cores minus one). A full first pass still takes a while; puzzles show up
+as each game finishes.
 
 ## Development
 
@@ -30,6 +31,7 @@ Needs [Bun](https://bun.sh).
 bun install
 bun run dev       # copies the engine into public/engine, then starts Vite
 bun run test      # vitest
+bun run test:golden  # also the slow Stockfish checks on the reference games
 bun run lint      # oxlint
 bun run build     # typecheck + production build into dist/
 ```
