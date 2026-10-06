@@ -60,6 +60,7 @@ export class Drill {
   canViewSolution = false
   outcome?: Outcome
   misses: string[] = [] // SAN of wrong tries
+  firstTry?: string // UCI of the first wrong try at the first move, for "Why?"
   nodes: Node[]
   cursor = 0
   start = 0 // index of the puzzle position in nodes
@@ -282,6 +283,7 @@ export class Drill {
   // Show the wrong move, then take it back and let the player try again
   private miss(uci: string, san: string) {
     this.misses.push(san)
+    if (this.step === 0) this.firstTry ??= uci
     this.feedback = 'fail'
     this.reverting = true
     this.canViewSolution = true
@@ -387,7 +389,7 @@ export class Drill {
     this.why = { loading: true }
     this.redraw()
     try {
-      const e = await explain(this.puzzle, this.opts.engine)
+      const e = await explain(this.puzzle, this.opts.engine, this.firstTry)
       this.why = { text: e.text, links: e.links }
     } catch (e) {
       this.why = { error: (e as Error).message }

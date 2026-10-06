@@ -26,5 +26,11 @@ describe('explainRequest', () => {
     expect(req.played?.san[0]).toBe('Kxd1')
     expect(req.played?.cp).toBe(150) // the engine's -150 for Black is +150 for White, who just moved
     expect(validate(JSON.parse(JSON.stringify(req)))).toBeTruthy()
+
+    // The player's wrong first try comes along, refuted; the game move doesn't twice
+    const withTry = await explainRequest(p, engine, 'c4b5')
+    expect(withTry.tried?.san[0]).toBe('Bb5+')
+    expect(validate(JSON.parse(JSON.stringify(withTry)))?.tried).toBeTruthy()
+    expect((await explainRequest(p, engine, 'e1d1')).tried).toBeUndefined()
   })
 })

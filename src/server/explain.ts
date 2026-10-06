@@ -21,6 +21,7 @@ export interface ExplainRequest {
   fen: string
   best: LineFacts
   played?: LineFacts // the move the player chose in the game, then the engine's reply line
+  tried?: LineFacts // the player's first wrong try at the puzzle, then the engine's reply line
   threat?: LineFacts // what the opponent would play if it were their move (from passFen)
   holding?: string[] // hold puzzles: every move that would have done
   themes?: string[] // Lichess puzzles
@@ -50,18 +51,21 @@ export function validate(body: unknown): ExplainRequest | undefined {
   const b = body as ExplainRequest
   if (typeof b.fen !== 'string' || !FEN.test(b.fen) || !line(b.best)) return undefined
   if (b.played !== undefined && !line(b.played)) return undefined
+  if (b.tried !== undefined && !line(b.tried)) return undefined
   if (b.holding !== undefined && !(Array.isArray(b.holding) && b.holding.length <= 4 && b.holding.every(s => typeof s === 'string' && SAN.test(s)))) return undefined
   if (b.themes !== undefined && !(Array.isArray(b.themes) && b.themes.length <= 12 && b.themes.every(t => typeof t === 'string' && THEME.test(t)))) return undefined
   if (b.threat !== undefined && !line(b.threat)) return undefined
   if (b.kind !== undefined && !KINDS.includes(b.kind)) return undefined
   // Every line has to replay legally from its position
-  if (!replay(b.fen, b.best.san) || (b.played && !replay(b.fen, b.played.san))) return undefined
+  if (!replay(b.fen, b.best.san) || (b.played && !replay(b.fen, b.played.san)) || (b.tried && !replay(b.fen, b.tried.san))) return undefined
   if (b.holding && b.holding.some(h => !replay(b.fen, [h]))) return undefined
   if (b.threat) {
     const pass = passFen(b.fen)
     if (!pass || !replay(pass, b.threat.san)) return undefined
   }
-  return { fen: b.fen, best: b.best, played: b.played, threat: b.threat, holding: b.holding, themes: b.themes, kind: b.kind }
+  // A try that is the game move adds nothing
+  const tried = b.tried && b.tried.san[0] !== b.played?.san[0] && b.tried.san[0] !== b.best.san[0] ? b.tried : undefined
+  return { fen: b.fen, best: b.best, played: b.played, tried, threat: b.threat, holding: b.holding, themes: b.themes, kind: b.kind }
 }
 
 // "6. Bxf7+ Ke7 7. Nd5#" from the FEN's move number and side
@@ -82,13 +86,16 @@ export function numbered(fen: string, san: string[]): string {
 
 // Bumped whenever the points, checks or wording change, so explanations saved
 // in browsers by older logic are asked for again
-export const EXPLAIN_VERSION = 6
+export const EXPLAIN_VERSION = 7
 
 export const SYSTEM = [
   'You explain chess puzzle answers to improving players.',
   'You get the position, checked facts, Stockfish lines with checked notes in brackets, and the points to explain.',
   'Explain the points, in that order where you can. Add nothing else: no other moves, squares, pieces, plans or ideas.',
   'At most two short sentences and 50 words, plain words, no evaluation numbers, no preamble.',
+  'Say what happens on the board. No praise or labels (brilliant, great, excellent, beautiful) and no vague phrases such as "the right idea" or "improves the position".',
+  'The player is the side to move; you may call that side "you".',
+  'Keep the labels "your try" and "in the game" so the player knows which move is meant.',
   'Write moves exactly as they appear in the lines (e.g. Nf3, exd5, O-O) without move numbers, and squares as a lowercase file and rank (e.g. e4).',
 ].join(' ')
 
@@ -134,6 +141,7 @@ export interface Analysis {
   opp: 'White' | 'Black'
   best: LineReplay
   played?: LineReplay
+  tried?: LineReplay
   threat?: LineReplay
   holding: PlayedMove[]
   stopsThreat: boolean
@@ -224,6 +232,7 @@ export function analyse(r: ExplainRequest): Analysis {
   const opp = me === 'white' ? 'Black' : 'White'
   const best = replay(r.fen, r.best.san)!
   const played = r.played ? replay(r.fen, r.played.san) : undefined
+  const tried = r.tried ? replay(r.fen, r.tried.san) : undefined
   const pass = r.threat ? passFen(r.fen) : undefined
   const threat = pass && r.threat ? replay(pass, r.threat.san) : undefined
   const holding = (r.holding ?? []).map(h => replay(r.fen, [h])!.moves[0])
@@ -251,33 +260,43 @@ export function analyse(r: ExplainRequest): Analysis {
       // Captures that cancel out are a trade, not a gain
       if (!points.length) points.push(`${b0.san} leads to a trade (${trade(best)}), material stays level and${verdictText || ' it stays balanced'}.`)
     } else if (!points.length) {
+      // No tactic to show: say so honestly rather than invent a plan
       const reply = best.moves[1]
-      points.push(`${b0.san} is a quiet move${reply ? `; after ${reply.san}` : ''}${verdictText || ', material stays level'}.`)
+      const level = r.best.cp === undefined || Math.abs(r.best.cp) < 50
+      points.push(
+        `${b0.san} wins nothing right away${reply ? `; after ${reply.san}` : ''}${verdictText || ', material stays level'}${level ? '' : ', so the gain is longer-term rather than a quick win'}.`,
+      )
     }
   }
+  // What goes wrong with a move that isn't the answer: the player's own try
+  // first, since that's what they were thinking, then the game move
   let looseRoles: Role[] = []
-  if (played) {
-    const p0 = played.moves[0]
-    const mate = played.moves.find(m => m.mate)
-    const theirs = net(played, me === 'white' ? 'black' : 'white')
-    if (mate) points.push(`${p0.san} allows ${played.moves.slice(1, played.moves.indexOf(mate) + 1).map(m => m.san).join(' ')}, checkmate.`)
-    else if (theirs.words && theirs.gain > 0) points.push(`${p0.san} lets ${opp} ${baseForm(theirs.words)}${theirs.key ? ` (${theirs.key.san})` : ''}.`)
-    else if (capturesBy(played, me === 'white' ? 'black' : 'white').length)
-      points.push(`After ${p0.san} the line trades (${trade(played)})${r.played!.cp !== undefined ? ` and the engine has ${verdictPhrase(r.played!.cp, side)}` : ', material stays level'}.`)
-    else {
-      const left = looseList(played.positions[0], me)
-      looseRoles = left.map(l => l.role)
-      if (left.length) points.push(`After ${p0.san}, ${left[0].text}.`)
-      else if (r.played!.cp !== undefined) {
-        const reply = played.moves[1]
-        points.push(`After ${p0.san}${reply ? `, ${opp} answers ${reply.san}` : ''} and the engine has ${verdictPhrase(r.played!.cp, side)}.`)
-      }
+  const refute = (l: LineReplay, cp: number | undefined, label: string) => {
+    const p0 = l.moves[0]
+    const mate = l.moves.find(m => m.mate)
+    const theirs = net(l, me === 'white' ? 'black' : 'white')
+    if (mate) return `${label}${p0.san} allows ${l.moves.slice(1, l.moves.indexOf(mate) + 1).map(m => m.san).join(' ')}, checkmate.`
+    if (theirs.words && theirs.gain > 0) return `${label}${p0.san} lets ${opp} ${baseForm(theirs.words)}${theirs.key ? ` (${theirs.key.san})` : ''}.`
+    if (capturesBy(l, me === 'white' ? 'black' : 'white').length)
+      return `${label}${p0.san} leads to a trade (${trade(l)})${cp !== undefined ? ` and the engine has ${verdictPhrase(cp, side)}` : ', material stays level'}.`
+    const left = looseList(l.positions[0], me)
+    if (left.length) {
+      looseRoles = [...looseRoles, ...left.map(x => x.role)]
+      return `After ${label === 'Your try ' ? 'your try ' : 'the game move '}${p0.san}, ${left[0].text}.`
     }
+    if (cp === undefined) return undefined
+    const reply = l.moves[1]
+    return `After ${label === 'Your try ' ? 'your try ' : 'the game move '}${p0.san}${reply ? `, ${opp} answers ${reply.san}` : ''} and the engine has ${verdictPhrase(cp, side)}.`
   }
+  const tryPoint = tried && refute(tried, r.tried!.cp, 'Your try ')
+  const gamePoint = played && refute(played, r.played!.cp, 'In the game, ')
+  if (tryPoint) points.push(tryPoint)
+  // Two short sentences can't carry everything: the try wins over the game move
+  if (gamePoint && (!tryPoint || points.length < 3)) points.push(gamePoint)
 
   const moves = new Map<string, PlayedMove[]>()
   const add = (m: PlayedMove) => moves.set(m.bare, [...(moves.get(m.bare) ?? []), m])
-  for (const l of [best, played, threat].filter(Boolean) as LineReplay[]) l.moves.forEach(add)
+  for (const l of [best, tried, played, threat].filter(Boolean) as LineReplay[]) l.moves.forEach(add)
   for (const h of holding) if (!moves.get(h.bare)?.some(m => m.fenBefore === h.fenBefore)) add(h)
   const squares = new Set<string>()
   for (const m of [...moves.values()].flat()) {
@@ -285,13 +304,14 @@ export function analyse(r: ExplainRequest): Analysis {
     if (m.capturedOn) squares.add(m.capturedOn)
   }
   for (const pt of points) for (const sq of pt.match(/\b[a-h][1-8]\b/g) ?? []) squares.add(sq)
-  const all = [best, played, threat].filter(Boolean) as LineReplay[]
+  const all = [best, tried, played, threat].filter(Boolean) as LineReplay[]
   return {
     pos,
     side,
     opp,
     best,
     played,
+    tried,
     threat,
     holding,
     stopsThreat,
@@ -310,7 +330,8 @@ export function prompt(r: ExplainRequest, a = analyse(r)): string {
   if (r.themes?.length) parts.push(`Lichess tags this puzzle: ${r.themes.join(', ')}.`)
   if (a.threat) parts.push(`If ${a.side} passed, ${a.opp} would play: ${a.threat.annotated}.`)
   parts.push(`Best line: ${a.best.annotated}.`)
-  if (a.played) parts.push(`Line after the player's move: ${a.played.annotated}.`)
+  if (a.tried) parts.push(`Line after the player's wrong try at this puzzle: ${a.tried.annotated}.`)
+  if (a.played) parts.push(`Line after the move played in the game: ${a.played.annotated}.`)
   parts.push(`Points to explain:\n${a.points.map(p => `- ${p}`).join('\n')}`)
   return parts.join('\n')
 }
@@ -337,6 +358,8 @@ export function check(text: string, a: Analysis): Check {
     const role = m[3].toLowerCase() as Role
     if (!a.captured.has(role) && !a.loose.has(role)) problems.push(`no ${role} is taken or loose in the lines`)
   }
+  if (/\b(brilliant|genius|excellent|beautiful|amazing|stunning|great move|right idea|improves? the position)\b/i.test(text))
+    problems.push('say what happens on the board, without praise or vague phrases')
   if (/\b(check)?mates?\b|\bmating\b/i.test(text) && !a.mate) problems.push('there is no mate in the lines')
   if (/\b(prevents?|preventing|stops?|stopping|parr(?:y|ies)|threat\w*)\b/i.test(text) && !a.stopsThreat)
     problems.push('only say a threat is stopped when the points say so')

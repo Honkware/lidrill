@@ -32,10 +32,24 @@ describe('explain request', () => {
 })
 
 describe('analysis', () => {
+  it("explains the player's own wrong try, and drops one that repeats the game move", () => {
+    const withTry = validate({ ...ok, tried: { san: ['Bb5+', 'c6'], end: 'material even', cp: -150 } })!
+    const a = analyse(withTry)
+    expect(a.points[1]).toMatch(/^(Your try Bb5\+|After your try Bb5\+)/)
+    expect(prompt(withTry, a)).toContain("wrong try at this puzzle")
+    expect(check('Your try Bb5+ is met by c6.', a).ok).toBe(true)
+    expect(validate({ ...ok, tried: ok.played })!.tried).toBeUndefined()
+  })
+
+  it('refuses praise and vague phrases', () => {
+    const a = analyse(validate(ok)!)
+    expect(check('Brilliant! Bxf7+ is the right idea.', a).problems).toContain('say what happens on the board, without praise or vague phrases')
+  })
+
   it('finds the mate and what the game move allowed', () => {
     const a = analyse(validate(ok)!)
     // Kxd1 dxe5 is bishop for knight: a trade, not a loss
-    expect(a.points).toEqual(['Bxf7+ leads to checkmate: Bxf7+ Ke7 Nd5#.', 'After Kxd1 the line trades (Kxd1 dxe5), material stays level.'])
+    expect(a.points).toEqual(['Bxf7+ leads to checkmate: Bxf7+ Ke7 Nd5#.', 'In the game, Kxd1 leads to a trade (Kxd1 dxe5), material stays level.'])
     expect(prompt(validate(ok)!, a)).toContain('Best line: 6. Bxf7+ (bishop takes pawn on f7, check')
     expect(openRouterBody(validate(ok)!).messages[0]).toEqual({ role: 'system', content: SYSTEM })
   })
@@ -45,7 +59,7 @@ describe('analysis', () => {
     expect(a.stopsThreat).toBe(true)
     expect(a.points[0]).toBe('Any of Nc4, Rd2 keeps the position.')
     expect(a.points[1]).toBe('Black threatened R8c3# (checkmate); Nc4 stops it.')
-    expect(a.points.at(-1)).toBe('Ra1 allows R8c3#, checkmate.')
+    expect(a.points.at(-1)).toBe('In the game, Ra1 allows R8c3#, checkmate.')
   })
 })
 

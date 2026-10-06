@@ -75,6 +75,7 @@ export interface Explanation {
   text: string
   links: ExplanationLink[]
   version?: number // EXPLAIN_VERSION of the server logic that made it
+  tried?: string // UCI of the wrong first try it also explains
 }
 
 export interface Puzzle {

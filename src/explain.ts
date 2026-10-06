@@ -52,7 +52,7 @@ function after(fen: string, ucis: string[]): string {
   return makeFen(pos.toSetup())
 }
 
-export async function explainRequest(p: Puzzle, engine?: Engine): Promise<ExplainRequest> {
+export async function explainRequest(p: Puzzle, engine?: Engine, tried?: string): Promise<ExplainRequest> {
   // The solution, carried a few moves further so the payoff is visible
   const firstEval = (await pv(engine, after(p.fen, p.solution.slice(0, 1)), 0)).cp
   const tail = p.solution.length < 6 ? (await pv(engine, after(p.fen, p.solution), 6 - p.solution.length)).moves : []
@@ -60,6 +60,11 @@ export async function explainRequest(p: Puzzle, engine?: Engine): Promise<Explai
   if (p.played) {
     const reply = await pv(engine, after(p.fen, [p.played]), 6)
     req.played = { ...lineFacts(p.fen, [p.played, ...reply.moves]), cp: reply.cp }
+  }
+  // The player's own wrong try, refuted: what they were actually thinking
+  if (tried && tried !== p.played && tried !== p.solution[0]) {
+    const reply = await pv(engine, after(p.fen, [tried]), 6)
+    req.tried = { ...lineFacts(p.fen, [tried, ...reply.moves]), cp: reply.cp }
   }
   if (p.alternatives) req.holding = p.alternatives.map(u => lineFacts(p.fen, [u]).san[0])
   // What the opponent would do with a free move: often the point of a defence
@@ -73,20 +78,20 @@ export async function explainRequest(p: Puzzle, engine?: Engine): Promise<Explai
   return req
 }
 
-export const isCurrent = (e: Puzzle['explanation']): e is Explanation =>
-  !!e && typeof e === 'object' && Array.isArray(e.links) && e.version === EXPLAIN_VERSION
+export const isCurrent = (e: Puzzle['explanation'], tried?: string): e is Explanation =>
+  !!e && typeof e === 'object' && Array.isArray(e.links) && e.version === EXPLAIN_VERSION && e.tried === tried
 
-export async function explain(p: Puzzle, engine?: Engine): Promise<Explanation> {
+export async function explain(p: Puzzle, engine?: Engine, tried?: string): Promise<Explanation> {
   // Anything saved by older logic (or in an older shape) is asked for again
-  if (isCurrent(p.explanation)) return p.explanation
+  if (isCurrent(p.explanation, tried)) return p.explanation
   const res = await fetch('/api/explain', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(await explainRequest(p, engine)),
+    body: JSON.stringify(await explainRequest(p, engine, tried)),
   })
   const data = (await res.json().catch(() => ({}))) as { text?: string; links?: Explanation['links']; version?: number; error?: string }
   if (!res.ok || !data.text) throw new Error(data.error ?? 'No explanation right now. Try again later.')
-  const explanation: Explanation = { text: data.text, links: Array.isArray(data.links) ? data.links : [], version: data.version }
+  const explanation: Explanation = { text: data.text, links: Array.isArray(data.links) ? data.links : [], version: data.version, tried }
   await db.puzzles.update(p.id, { explanation })
   p.explanation = explanation
   return explanation
