@@ -25,3 +25,10 @@ dist-ssr
 
 # copied from node_modules by scripts/copy-engine.mjs
 public/engine/
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+.env*
+!.env.example
