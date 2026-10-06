@@ -14,10 +14,11 @@ import { forgetLichessAccount, getEngine, precertifyDue, saveProfile, syncAndAna
 import { PracticeRun } from './practice'
 import { Replay } from './replay'
 import { weekReport, weeklyZeroHang, type WeekReport } from './report'
+import { corpus, exportMarks, loadMarks, saveMarks, type Mark } from './precision'
 import { SignInExpired } from './sync/lichess'
 import { dueQueue, saveWhyMissed, type DayQueue } from './train'
 
-export type Screen = 'welcome' | 'today' | 'drill' | 'replay' | 'review' | 'game' | 'games' | 'drills' | 'practice' | 'settings'
+export type Screen = 'welcome' | 'today' | 'drill' | 'replay' | 'review' | 'game' | 'games' | 'drills' | 'practice' | 'settings' | 'precision'
 
 export interface Counts {
   games: number
@@ -48,7 +49,7 @@ export interface ReviewRow {
 }
 
 // Screens are routed through the URL hash so the phone's back button works
-const ROUTED: Screen[] = ['today', 'review', 'games', 'drills', 'settings']
+const ROUTED: Screen[] = ['today', 'review', 'games', 'drills', 'settings', 'precision']
 
 export class Ctrl {
   screen: Screen = 'today'
@@ -73,6 +74,9 @@ export class Ctrl {
   run?: PracticeRun
   studies?: StudyInfo[]
   playedFamilies: string[] = []
+  // The human precision pass: claim index and the reviewer's marks
+  precisionIndex = 0
+  precisionMarks?: import('./precision').Marks
   private queue: string[] = []
   private abort?: AbortController
   private refreshing?: Promise<void>
@@ -126,6 +130,7 @@ export class Ctrl {
     else if (name === 'practice' && arg) await this.openPractice(arg)
     else if (name === 'drill') await this.openDrill()
     else this.screen = ROUTED.includes(name as Screen) ? (name as Screen) : 'today'
+    if (this.screen === 'precision' && this.precisionMarks === undefined) this.precisionMarks = loadMarks()
     this.redraw()
     window.scrollTo(0, 0)
     await this.refresh(true)
@@ -559,6 +564,35 @@ export class Ctrl {
   dismissNotice() {
     this.notice = undefined
     this.redraw()
+  }
+
+  // --- human precision pass ---
+
+  precisionMark(id: string, mark: Mark) {
+    const marks = { ...(this.precisionMarks ?? loadMarks()) }
+    if (marks[id] === mark) delete marks[id] // the same verdict again clears it
+    else marks[id] = mark
+    this.precisionMarks = marks
+    saveMarks(marks)
+    this.redraw()
+  }
+
+  precisionReset() {
+    if (!confirm('Clear every mark and start the pass over?')) return
+    this.precisionMarks = {}
+    saveMarks({})
+    this.precisionIndex = 0
+    this.redraw()
+  }
+
+  precisionExport() {
+    const data = exportMarks(corpus, this.precisionMarks ?? {})
+    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `lidrill-precision-${data.generatedAt.slice(0, 10)}.json`
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 }
 
