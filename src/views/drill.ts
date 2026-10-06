@@ -143,9 +143,14 @@ function moveLine(d: Drill): VNode {
 const navButton = (name: string, labelText: string, onClick: () => void) =>
   el('button', 'grid size-11 place-items-center rounded-lg text-dim active:bg-raised', { attrs: { type: 'button', 'aria-label': labelText }, on: { click: onClick } }, [icon(name)])
 
-// Moves and squares in the explanation show on the board while hovered,
-// focused or tapped (tap again to put the board back)
+// Moves and squares in the explanation play out on the board: hover with a
+// mouse, tap on a touch screen (tap again to put the board back), or
+// Enter/Space from the keyboard. A tap also fires mouse-compatibility
+// events, so only real mouse pointers count as hovering.
+let lastPointer = 'mouse'
+
 function linked(d: Drill, text: string, links: ExplanationLink[]): (VNode | string)[] {
+  const toggle = (target: ExplanationLink) => d.preview(d.previewing === target ? undefined : target)
   return linkSegments(text, links).map(({ text: t, target }) =>
     target
       ? el(
@@ -153,16 +158,21 @@ function linked(d: Drill, text: string, links: ExplanationLink[]): (VNode | stri
           'cursor-pointer rounded font-medium text-accent underline decoration-dotted underline-offset-2',
           {
             class: { 'bg-raised': d.previewing === target },
-            attrs: { tabindex: 0, role: 'button' },
+            attrs: { tabindex: 0, role: 'button', 'aria-label': `Show ${t} on the board` },
             on: {
-              mouseenter: () => d.preview(target),
-              mouseleave: () => d.preview(),
-              focus: () => d.preview(target),
-              blur: () => d.preview(),
+              pointerdown: (e: PointerEvent) => (lastPointer = e.pointerType),
+              pointerenter: (e: PointerEvent) => e.pointerType === 'mouse' && d.preview(target),
+              pointerleave: (e: PointerEvent) => e.pointerType === 'mouse' && d.previewing === target && d.preview(),
               click: (e: Event) => {
                 e.preventDefault()
-                d.preview(d.previewing === target ? undefined : target)
+                if (lastPointer !== 'mouse') toggle(target)
               },
+              keydown: (e: KeyboardEvent) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return
+                e.preventDefault()
+                toggle(target)
+              },
+              blur: () => d.previewing === target && d.preview(),
             },
           },
           t,

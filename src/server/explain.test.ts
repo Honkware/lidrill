@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { analyse, check, fallback, links, numbered, openRouterBody, prompt, SYSTEM, validate } from './explain'
+import { analyse, check, fallback, links, net, numbered, openRouterBody, prompt, SYSTEM, validate } from './explain'
+import { replay } from './facts'
 
 const legal = 'rn1qkbnr/ppp2pp1/3p3p/4N3/2B1P3/2N5/PPPP1PPP/R1BbK2R w KQkq - 0 6'
 const ok = { fen: legal, best: { san: ['Bxf7+', 'Ke7', 'Nd5#'], end: 'mate' }, played: { san: ['Kxd1', 'dxe5'], end: 'material −2' } }
@@ -33,7 +34,8 @@ describe('explain request', () => {
 describe('analysis', () => {
   it('finds the mate and what the game move allowed', () => {
     const a = analyse(validate(ok)!)
-    expect(a.points).toEqual(['Bxf7+ leads to checkmate: Bxf7+ Ke7 Nd5#.', 'Kxd1 lets Black take the knight on e5 with dxe5; White ends two pawns down.'])
+    // Kxd1 dxe5 is bishop for knight: a trade, not a loss
+    expect(a.points).toEqual(['Bxf7+ leads to checkmate: Bxf7+ Ke7 Nd5#.', 'After Kxd1 the line trades (Kxd1 dxe5), material stays level.'])
     expect(prompt(validate(ok)!, a)).toContain('Best line: 6. Bxf7+ (bishop takes pawn on f7, check')
     expect(openRouterBody(validate(ok)!).messages[0]).toEqual({ role: 'system', content: SYSTEM })
   })
@@ -84,5 +86,40 @@ describe('checking an answer', () => {
 
   it('refuses move numbers', () => {
     expect(check('After 1. Nc4 Rxf2 the position holds.', a).problems).toContain('it uses move numbers; write the moves without them')
+  })
+})
+
+describe('net material', () => {
+  it('cancels like-for-like captures', () => {
+    // Reference puzzle game0003: 7. Nxc6 bxc6 8. Bxc6+ Bd7 9. Bxa8 Qxa8
+    const fen = 'r1bqkb1r/1pp2ppp/p1n2n2/1B1p4/3NP3/2N5/PPP2PPP/R1BQK2R w KQkq - 0 7'
+    const l = replay(fen, ['Nxc6', 'bxc6', 'Bxc6+', 'Bd7', 'Bxa8', 'Qxa8'])!
+    const n = net(l, 'white')
+    expect(n.words).toBe('wins a rook and a pawn for a bishop')
+    expect(n.key?.san).toBe('Bxa8')
+    expect(n.gain).toBe(3)
+  })
+  it('calls a straight queen trade even, and names it when more follows', () => {
+    const even = replay('3qk3/p7/8/8/8/8/8/3QK3 w - - 0 1', ['Qxd8+', 'Kxd8'])!
+    expect(net(even, 'white')).toMatchObject({ words: '', gain: 0 })
+    const plus = replay('3qk3/p7/8/8/8/8/8/3QK3 b - - 0 1', ['Qxd1+', 'Kxd1', 'a5'])!
+    expect(net(plus, 'black').words).toBe('')
+    const won = replay('3qk3/8/8/8/8/8/p7/R2QK3 b - - 0 1', ['Qxd1+', 'Kxd1', 'axb1=Q+'])
+    expect(won).toBeUndefined() // a2 pawn can't take on b1: nothing there; replay refuses
+  })
+})
+
+describe('threat claims', () => {
+  it('are refused unless the threat really is stopped', () => {
+    const quiet = analyse(validate({ fen: legal, best: { san: ['Nf3'], end: 'material even' } })!)
+    expect(check('Nf3 prevents trouble.', quiet).problems).toContain('only say a threat is stopped when the points say so')
+  })
+})
+
+describe('wording', () => {
+  it('uses the base form after "lets"', async () => {
+    const { baseForm } = await import('./explain')
+    expect(baseForm('trades queens and wins two pawns')).toBe('trade queens and win two pawns')
+    expect(baseForm('wins a rook for a knight')).toBe('win a rook for a knight')
   })
 })

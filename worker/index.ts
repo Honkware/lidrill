@@ -1,4 +1,4 @@
-import { analyse, check, fallback, links, openRouterBody, validate, type ExplainRequest } from '../src/server/explain'
+import { analyse, check, EXPLAIN_VERSION, fallback, links, openRouterBody, validate, type ExplainRequest } from '../src/server/explain'
 
 // lidrill is a static site; this Worker only answers /api/*. Everything else
 // is served from the assets without running it (run_worker_first).
@@ -61,7 +61,7 @@ async function explain(request: Request, env: Env): Promise<Response> {
   }
   const source = text && verdict?.ok ? 'model' : 'facts'
   if (source === 'facts') text = fallback(a)
-  return json({ text, links: links(text!, a), source, model: source === 'model' ? model : undefined })
+  return json({ text, links: links(text!, a), source, version: EXPLAIN_VERSION, model: source === 'model' ? model : undefined })
 }
 
 export default {

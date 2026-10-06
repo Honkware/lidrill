@@ -80,6 +80,10 @@ export function numbered(fen: string, san: string[]): string {
   return out.join(' ')
 }
 
+// Bumped whenever the points, checks or wording change, so explanations saved
+// in browsers by older logic are asked for again
+export const EXPLAIN_VERSION = 6
+
 export const SYSTEM = [
   'You explain chess puzzle answers to improving players.',
   'You get the position, checked facts, Stockfish lines with checked notes in brackets, and the points to explain.',
@@ -144,6 +148,59 @@ export interface Analysis {
 
 const capturesBy = (l: LineReplay, color: Color) => l.moves.filter(m => m.color === color && m.captured)
 
+const PLURAL: Record<Role, string> = { pawn: 'pawns', knight: 'knights', bishop: 'bishops', rook: 'rooks', queen: 'queens', king: 'kings' }
+const NUM = ['', 'a', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight']
+const ORDER: Role[] = ['queen', 'rook', 'bishop', 'knight', 'pawn']
+const VALUE: Record<Role, number> = { pawn: 1, knight: 3, bishop: 3, rook: 5, queen: 9, king: 0 }
+
+function count(roles: Role[]): string {
+  return ORDER.filter(r => roles.includes(r))
+    .map(r => {
+      const n = roles.filter(x => x === r).length
+      return n === 1 ? `a ${pieceName(r)}` : `${NUM[n] ?? n} ${PLURAL[r]}`
+    })
+    .join(' and ')
+}
+
+export interface Net {
+  words: string // "wins a rook for a knight", "trades queens and wins a pawn", "" if nothing changes hands
+  key?: PlayedMove // the capture that matters most, for the text and its link
+  gain: number // material for `color`, captures minus losses
+}
+
+// What changes hands in a line for `color`, with like-for-like captures
+// cancelled: "Black trades queens and wins a pawn", not "takes the queen
+// and gives up the queen"
+export function net(l: LineReplay, color: Color): Net {
+  const mine = l.moves.filter(m => m.color === color && m.captured).map(m => m.captured!)
+  const theirs = l.moves.filter(m => m.color !== color && m.captured).map(m => m.captured!)
+  const traded: Role[] = []
+  for (const r of [...mine]) {
+    const i = theirs.indexOf(r)
+    if (i >= 0) {
+      theirs.splice(i, 1)
+      mine.splice(mine.indexOf(r), 1)
+      traded.push(r)
+    }
+  }
+  const promo = l.moves.filter(m => m.promotion).reduce((g, m) => g + (m.color === color ? 1 : -1) * (VALUE[m.promotion!] - 1), 0)
+  const gain = mine.reduce((g, r) => g + VALUE[r], 0) - theirs.reduce((g, r) => g + VALUE[r], 0) + promo
+  const tradedQueens = traded.includes('queen') ? 'trades queens and ' : ''
+  const top = ORDER.find(r => mine.includes(r))
+  const key = top ? l.moves.find(m => m.color === color && m.captured === top) : undefined
+  let words = ''
+  if (mine.length && theirs.length) words = `${tradedQueens}wins ${count(mine)} for ${count(theirs)}`
+  else if (mine.length) words = `${tradedQueens}wins ${count(mine)}`
+  else if (theirs.length) words = `${tradedQueens}loses ${count(theirs)}`
+  return { words, key, gain }
+}
+
+// "wins a rook" -> "win a rook", for "lets Black ..."
+export const baseForm = (words: string) => words.replace(/\b(wins|loses|trades)\b/g, w => w.slice(0, -1))
+
+// "Bxc5 Qxc5": the captures of a line in order
+const trade = (l: LineReplay) => l.moves.filter(m => m.captured).slice(0, 4).map(m => m.san).join(' ')
+
 // Does the threat still work after the best move? It's stopped if the
 // threatening move is no longer legal, or no longer mates, or no longer
 // takes the same piece on the same square.
@@ -185,21 +242,28 @@ export function analyse(r: ExplainRequest): Analysis {
   if (bestMate) points.push(`${b0.san} leads to checkmate: ${best.moves.slice(0, best.moves.indexOf(bestMate) + 1).map(m => m.san).join(' ')}.`)
   else {
     if (b0.fork) points.push(`After ${b0.san}, ${b0.fork}.`)
-    const won = capturesBy(best, me).filter(m => m.captured !== 'pawn' || capturesBy(best, me).length <= 2)
-    const lost = capturesBy(best, me === 'white' ? 'black' : 'white')
-    if (won.length) points.push(`In the line ${side} takes ${won.map(m => `the ${pieceName(m.captured!)} on ${m.capturedOn} (${m.san})`).join(' and ')}${lost.length ? ` and gives up ${lost.map(m => `the ${pieceName(m.captured!)} on ${m.capturedOn} (${m.san})`).join(' and ')}` : ''}; ${endWords(r.best.end, side)}.`)
-    else if (!points.length) {
+    const n = net(best, me)
+    const verdictText = r.best.cp !== undefined ? ` the engine has ${verdictPhrase(r.best.cp, side)}` : ''
+    if (n.words && n.gain > 0) points.push(`In the line ${side} ${n.words}${n.key ? ` (${n.key.san})` : ''}.`)
+    // The best line can still cost something (defences): say it's the best try
+    else if (n.words && n.gain < 0) points.push(`Even after ${b0.san} ${side} ${n.words}, but every other move is worse.`)
+    else if (n.words || capturesBy(best, me).length) {
+      // Captures that cancel out are a trade, not a gain
+      if (!points.length) points.push(`${b0.san} leads to a trade (${trade(best)}), material stays level and${verdictText || ' it stays balanced'}.`)
+    } else if (!points.length) {
       const reply = best.moves[1]
-      points.push(`${b0.san} is a quiet move${reply ? `; after ${reply.san}` : ''}${r.best.cp !== undefined ? ` the engine has ${verdictPhrase(r.best.cp, side)}` : `, ${endWords(r.best.end, side)}`}.`)
+      points.push(`${b0.san} is a quiet move${reply ? `; after ${reply.san}` : ''}${verdictText || ', material stays level'}.`)
     }
   }
   let looseRoles: Role[] = []
   if (played) {
     const p0 = played.moves[0]
     const mate = played.moves.find(m => m.mate)
-    const oppTakes = capturesBy(played, me === 'white' ? 'black' : 'white')
+    const theirs = net(played, me === 'white' ? 'black' : 'white')
     if (mate) points.push(`${p0.san} allows ${played.moves.slice(1, played.moves.indexOf(mate) + 1).map(m => m.san).join(' ')}, checkmate.`)
-    else if (oppTakes.length) points.push(`${p0.san} lets ${opp} take the ${pieceName(oppTakes[0].captured!)} on ${oppTakes[0].capturedOn} with ${oppTakes[0].san}; ${endWords(r.played!.end, side)}.`)
+    else if (theirs.words && theirs.gain > 0) points.push(`${p0.san} lets ${opp} ${baseForm(theirs.words)}${theirs.key ? ` (${theirs.key.san})` : ''}.`)
+    else if (capturesBy(played, me === 'white' ? 'black' : 'white').length)
+      points.push(`After ${p0.san} the line trades (${trade(played)})${r.played!.cp !== undefined ? ` and the engine has ${verdictPhrase(r.played!.cp, side)}` : ', material stays level'}.`)
     else {
       const left = looseList(played.positions[0], me)
       looseRoles = left.map(l => l.role)
@@ -274,6 +338,8 @@ export function check(text: string, a: Analysis): Check {
     if (!a.captured.has(role) && !a.loose.has(role)) problems.push(`no ${role} is taken or loose in the lines`)
   }
   if (/\b(check)?mates?\b|\bmating\b/i.test(text) && !a.mate) problems.push('there is no mate in the lines')
+  if (/\b(prevents?|preventing|stops?|stopping|parr(?:y|ies)|threat\w*)\b/i.test(text) && !a.stopsThreat)
+    problems.push('only say a threat is stopped when the points say so')
   return { ok: problems.length === 0, problems: [...new Set(problems)] }
 }
 
