@@ -89,9 +89,9 @@ export async function explain(p: Puzzle, engine?: Engine, tried?: string): Promi
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(await explainRequest(p, engine, tried)),
   })
-  const data = (await res.json().catch(() => ({}))) as { text?: string; links?: Explanation['links']; version?: number; error?: string }
+  const data = (await res.json().catch(() => ({}))) as { text?: string; links?: Explanation['links']; version?: number; cue?: string; error?: string }
   if (!res.ok || !data.text) throw new Error(data.error ?? 'No explanation right now. Try again later.')
-  const explanation: Explanation = { text: data.text, links: Array.isArray(data.links) ? data.links : [], version: data.version, tried }
+  const explanation: Explanation = { text: data.text, links: Array.isArray(data.links) ? data.links : [], version: data.version, tried, cue: typeof data.cue === 'string' ? data.cue : undefined }
   await db.puzzles.update(p.id, { explanation })
   p.explanation = explanation
   return explanation

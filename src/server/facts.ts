@@ -164,6 +164,19 @@ export function setting(pos: Chess): string {
   return `Move ${pos.fullmoves}, ${phase}; ${bal}${check}.`
 }
 
+// "White: Ke1, Qd1, Bc4, pawns a2 b2. Black: ..." so the model doesn't
+// have to read the FEN (misreading the board is the commonest LLM error)
+export function pieceList(pos: Chess): string {
+  const LETTER: Record<Role, string> = { king: 'K', queen: 'Q', rook: 'R', bishop: 'B', knight: 'N', pawn: '' }
+  const ORDER: Role[] = ['king', 'queen', 'rook', 'bishop', 'knight']
+  const side = (c: Color) => {
+    const pieces = ORDER.flatMap(r => [...pos.board.pieces(c, r)].map(s => `${LETTER[r]}${makeSquare(s)}`))
+    const pawns = [...pos.board.pieces(c, 'pawn')].map(makeSquare)
+    return `${COLOR(c)}: ${[...pieces, ...(pawns.length ? [`pawns ${pawns.join(' ')}`] : [])].join(', ')}.`
+  }
+  return `${side('white')} ${side('black')}`
+}
+
 // Position with the other side to move, for "what do they threaten?"
 export function passFen(fen: string): string | undefined {
   const pos = fromFen(fen)

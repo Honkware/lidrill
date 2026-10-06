@@ -41,6 +41,25 @@ describe('analysis', () => {
     expect(validate({ ...ok, tried: ok.played })!.tried).toBeUndefined()
   })
 
+  it('names a checked pattern, refuses unchecked ones and picks a habit to keep', () => {
+    const fork = validate({ fen: 'r3k3/8/8/3N4/8/8/8/4K3 w - - 0 1', best: { san: ['Nc7+', 'Kd7', 'Nxa8'], end: 'material +5' }, kind: 'missed-win' })!
+    const a = analyse(fork)
+    expect(a.points[0]).toBe('Nc7+ attacks the rook on a8 and the king on e8 at once: a fork.')
+    expect(a.cue).toBe('Next time, look for a move that attacks two things at once.')
+    expect(prompt(fork, a)).toContain('Checked patterns: fork (one piece attacks two things at once)')
+    expect(prompt(fork, a)).toContain('Pieces: White: Ke1, Nd5. Black: Ke8, Ra8.')
+    expect(check('Nc7+ forks the king and the rook on a8.', a).ok).toBe(true)
+    expect(check('Nc7+ pins the rook on a8.', a).problems).toContain('only name a pattern that is checked (pins)')
+    expect(check('Nc7+ deflects the king from a8.', a).ok).toBe(false)
+  })
+
+  it('keeps "your try" and "in the game" for those moves', () => {
+    const fork = analyse(validate({ fen: 'r3k3/8/8/3N4/8/8/8/4K3 w - - 0 1', best: { san: ['Nc7+', 'Kd7', 'Nxa8'], end: 'material +5' } })!)
+    expect(check('Your try Nc7+ forks the king and the rook on a8.', fork).ok).toBe(false)
+    expect(check('In the game, Nc7+ forks the king and the rook on a8.', fork).ok).toBe(false)
+    expect(check('In the game, Kxd1 allows dxe5.', analyse(validate(ok)!)).ok).toBe(true)
+  })
+
   it('refuses praise and vague phrases', () => {
     const a = analyse(validate(ok)!)
     expect(check('Brilliant! Bxf7+ is the right idea.', a).problems).toContain('say what happens on the board, without praise or vague phrases')

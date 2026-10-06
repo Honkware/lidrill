@@ -61,7 +61,7 @@ async function explain(request: Request, env: Env): Promise<Response> {
   }
   const source = text && verdict?.ok ? 'model' : 'facts'
   if (source === 'facts') text = fallback(a)
-  return json({ text, links: links(text!, a), source, version: EXPLAIN_VERSION, model: source === 'model' ? model : undefined })
+  return json({ text, links: links(text!, a), source, cue: a.cue, version: EXPLAIN_VERSION, model: source === 'model' ? model : undefined })
 }
 
 export default {

@@ -68,7 +68,7 @@ export class Drill {
   game?: Game
   reviewId?: number
   flipped = false
-  why?: { loading?: boolean; text?: string; links?: ExplanationLink[]; error?: string }
+  why?: { loading?: boolean; text?: string; links?: ExplanationLink[]; cue?: string; error?: string }
   readonly puzzle: Puzzle
   private cg?: Api
   private owned = false
@@ -390,7 +390,7 @@ export class Drill {
     this.redraw()
     try {
       const e = await explain(this.puzzle, this.opts.engine, this.firstTry)
-      this.why = { text: e.text, links: e.links }
+      this.why = { text: e.text, links: e.links, cue: e.cue }
     } catch (e) {
       this.why = { error: (e as Error).message }
     }

@@ -186,7 +186,10 @@ function whyPart(d: Drill): VNode | null {
   if (!w) return null
   if (w.loading) return el('p', 'mt-3 animate-pulse text-sm text-dim', 'Working it out…')
   if (w.error) return el('p', 'mt-3 text-sm text-bad', w.error)
-  return el('p', 'mt-3 border-t border-raised pt-3 text-sm', linked(d, w.text ?? '', w.links ?? []))
+  return el('div', 'mt-3 border-t border-raised pt-3 text-sm', [
+    el('p', '', linked(d, w.text ?? '', w.links ?? [])),
+    w.cue ? el('p', 'mt-2 text-dim', w.cue) : null,
+  ])
 }
 
 // Puts the explanation inside the result card

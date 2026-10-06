@@ -2,7 +2,8 @@ import { Chess } from 'chessops/chess'
 import { parseSan } from 'chessops/san'
 import type { Color, Role } from 'chessops/types'
 import { makeSquare } from 'chessops/util'
-import { fromFen, looseList, passFen, pieceName, replay, setting, type LineReplay, type PlayedMove } from './facts'
+import { fromFen, looseList, passFen, pieceList, pieceName, replay, setting, type LineReplay, type PlayedMove } from './facts'
+import { MEANING, motifs, type Motif, type MotifName } from './motifs'
 import { isSquare, tokens } from './tokens'
 // The "Why?" explanation: the client sends what Stockfish found,
 // the server turns it into a prompt and asks a model to say it in words.
@@ -86,16 +87,16 @@ export function numbered(fen: string, san: string[]): string {
 
 // Bumped whenever the points, checks or wording change, so explanations saved
 // in browsers by older logic are asked for again
-export const EXPLAIN_VERSION = 7
+export const EXPLAIN_VERSION = 8
 
 export const SYSTEM = [
   'You explain chess puzzle answers to improving players.',
   'You get the position, checked facts, Stockfish lines with checked notes in brackets, and the points to explain.',
   'Explain the points, in that order where you can. Add nothing else: no other moves, squares, pieces, plans or ideas.',
-  'At most two short sentences and 50 words, plain words, no evaluation numbers, no preamble.',
-  'Say what happens on the board. No praise or labels (brilliant, great, excellent, beautiful) and no vague phrases such as "the right idea" or "improves the position".',
+  'At most two short sentences: aim for 20 to 35 words, never more than 50. Plain words, no evaluation numbers, no preamble.',
+  'Say what happens on the board. No praise or labels (brilliant, great, excellent, beautiful) and no stock phrases such as "the right idea", "a better move", "the engine prefers" or "puts pressure": name the piece, square or move instead.',
   'The player is the side to move; you may call that side "you".',
-  'Keep the labels "your try" and "in the game" so the player knows which move is meant.',
+  'Name a tactical pattern (fork, pin, skewer and so on) only if it is listed as a checked pattern, and say what it does in plain words.',
   'Write moves exactly as they appear in the lines (e.g. Nf3, exd5, O-O) without move numbers, and squares as a lowercase file and rank (e.g. e4).',
 ].join(' ')
 
@@ -135,6 +136,71 @@ const KIND_WORDS: Record<PuzzleKind, string> = {
   lichess: 'A Lichess puzzle.',
 }
 
+const LABEL: Record<MotifName, string> = {
+  'smothered mate': 'a smothered mate',
+  'back-rank mate': 'a back-rank mate',
+  'double check': 'a double check',
+  promotion: 'a promotion',
+  'trapped piece': 'a trapped piece',
+  fork: 'a fork',
+  skewer: 'a skewer',
+  pin: 'a pin',
+  'discovered attack': 'a discovered attack',
+  'removing the defender': 'removing the defender',
+  'hanging piece': 'a hanging piece',
+}
+const cap = (t: string) => t[0].toUpperCase() + t.slice(1)
+const motifPoint = (m: Motif) => `${cap(m.text)}: ${LABEL[m.name]}.`
+
+// One habit to take into the next game (feed-forward), picked from the
+// pattern that decided the puzzle. Fixed text, so nothing here is guessed.
+const MISSED_CUE: Partial<Record<MotifName, string>> = {
+  fork: 'Next time, look for a move that attacks two things at once.',
+  pin: 'Next time, look for pieces stuck in front of the king or queen.',
+  skewer: 'Next time, look for a king or queen lined up with a piece behind it.',
+  'discovered attack': 'Next time, check what your pieces would uncover by moving.',
+  'removing the defender': 'Next time, ask which enemy piece holds everything together.',
+  'trapped piece': 'Next time, look for enemy pieces with no safe square.',
+  'hanging piece': 'Next time, check every capture first: loose pieces drop off.',
+  'back-rank mate': 'Next time, look at a king boxed in on its back rank.',
+  'smothered mate': 'Next time, look at a king boxed in by its own pieces.',
+  'double check': 'Next time, look for checks first, especially ones from two pieces.',
+}
+const ALLOWED_CUE: Partial<Record<MotifName, string>> = {
+  fork: 'Before moving, look for squares where one enemy piece could hit two of yours.',
+  pin: 'Before moving, watch pieces standing in front of your king or queen.',
+  skewer: 'Before moving, keep your king and queen off lines with a piece behind them.',
+  'discovered attack': 'Before moving, check what an enemy piece would uncover by moving.',
+  'removing the defender': 'Before moving, ask what each of your pieces is guarding.',
+  'trapped piece': 'Before moving, make sure each piece keeps a safe square.',
+  'hanging piece': 'Before moving, ask what the move leaves unguarded.',
+  'back-rank mate': 'Before moving, make sure your king has an escape square.',
+  'smothered mate': 'Before moving, make sure your king has an escape square.',
+  'double check': 'Before moving, look at every check your opponent has.',
+}
+const KIND_CUE: Record<PuzzleKind, string> = {
+  'missed-win': 'Next time, check your checks, captures and threats first.',
+  hang: 'Before moving, ask what the move leaves unguarded.',
+  conversion: 'When ahead, stop their counterplay before grabbing more.',
+  hold: 'When in trouble, first ask what your opponent threatens.',
+  defensive: 'When worse, list their checks, captures and threats, then find the move that stops them.',
+  lichess: 'Check checks, captures and threats first.',
+}
+
+// Words for patterns lidrill doesn't detect, or that weren't found here
+const MOTIF_WORDS: [MotifName | undefined, RegExp][] = [
+  ['fork', /\bfork(s|ed|ing)?\b/i],
+  ['pin', /\bpin(s|ned|ning)?\b/i],
+  ['skewer', /\bskewer\w*/i],
+  ['discovered attack', /\bdiscover(ed|s|y)\b|\buncover\w*/i],
+  ['removing the defender', /\bremov\w* the (defender|guard)\b/i],
+  ['trapped piece', /\btrapped\b/i],
+  ['back-rank mate', /\bback[- ]rank\b/i],
+  ['smothered mate', /\bsmother\w*/i],
+  ['double check', /\bdouble check\b/i],
+  [undefined, /\b(deflect\w*|overload\w*|decoy\w*|zwischenzug|intermezzo|x-ray|interfer\w*|clearance)\b/i],
+]
+
 export interface Analysis {
   pos: Chess
   side: 'White' | 'Black'
@@ -145,6 +211,9 @@ export interface Analysis {
   threat?: LineReplay
   holding: PlayedMove[]
   stopsThreat: boolean
+  patterns: Set<MotifName>
+  checked: Motif[] // the patterns named in the points
+  cue: string
   points: string[]
   // What the text may mention
   moves: Map<string, PlayedMove[]> // bare SAN -> every place it's played (best line first)
@@ -247,10 +316,16 @@ export function analyse(r: ExplainRequest): Analysis {
     const t = threat!.moves[0]
     points.push(`${opp} threatened ${t.san} (${t.mate ? 'checkmate' : `taking the ${pieceName(t.captured!)} on ${t.capturedOn}`}); ${b0.san} stops it.`)
   }
+  const bestMotifs = motifs(best)
+  const bm = bestMotifs[0]
+  const checked: Motif[] = bm ? [bm] : []
   const bestMate = best.moves.find(m => m.mate)
-  if (bestMate) points.push(`${b0.san} leads to checkmate: ${best.moves.slice(0, best.moves.indexOf(bestMate) + 1).map(m => m.san).join(' ')}.`)
-  else {
-    if (b0.fork) points.push(`After ${b0.san}, ${b0.fork}.`)
+  if (bestMate) {
+    points.push(`${b0.san} leads to checkmate: ${best.moves.slice(0, best.moves.indexOf(bestMate) + 1).map(m => m.san).join(' ')}.`)
+    if (bm) points.push(motifPoint(bm))
+  } else {
+    if (bm) points.push(motifPoint(bm))
+    else if (b0.fork) points.push(`After ${b0.san}, ${b0.fork}.`)
     const n = net(best, me)
     const verdictText = r.best.cp !== undefined ? ` the engine has ${verdictPhrase(r.best.cp, side)}` : ''
     if (n.words && n.gain > 0) points.push(`In the line ${side} ${n.words}${n.key ? ` (${n.key.san})` : ''}.`)
@@ -271,7 +346,15 @@ export function analyse(r: ExplainRequest): Analysis {
   // What goes wrong with a move that isn't the answer: the player's own try
   // first, since that's what they were thinking, then the game move
   let looseRoles: Role[] = []
+  const punish: Motif[] = []
   const refute = (l: LineReplay, cp: number | undefined, label: string) => {
+    const said = refuteOnly(l, cp, label)
+    const m = said && motifs(l, 1)[0]
+    if (!m) return said
+    punish.push(m)
+    return `${said} ${motifPoint(m)}`
+  }
+  const refuteOnly = (l: LineReplay, cp: number | undefined, label: string) => {
     const p0 = l.moves[0]
     const mate = l.moves.find(m => m.mate)
     const theirs = net(l, me === 'white' ? 'black' : 'white')
@@ -305,6 +388,15 @@ export function analyse(r: ExplainRequest): Analysis {
   }
   for (const pt of points) for (const sq of pt.match(/\b[a-h][1-8]\b/g) ?? []) squares.add(sq)
   const all = [best, tried, played, threat].filter(Boolean) as LineReplay[]
+  const patterns = new Set<MotifName>([...bestMotifs, ...[tried, played].flatMap(l => (l ? motifs(l, 1) : []))].map(m => m.name))
+  if (all.some(l => l.moves.some(m => m.fork))) patterns.add('fork')
+  const kind = r.kind ?? 'lichess'
+  const defending = kind === 'hang' || kind === 'hold' || kind === 'defensive'
+  const cue =
+    (defending && punish[0] && ALLOWED_CUE[punish[0].name]) ||
+    (stopsThreat ? 'Before moving, ask what your opponent’s last move threatens.' : undefined) ||
+    (!defending && bm && MISSED_CUE[bm.name]) ||
+    KIND_CUE[kind]
   return {
     pos,
     side,
@@ -315,6 +407,9 @@ export function analyse(r: ExplainRequest): Analysis {
     threat,
     holding,
     stopsThreat,
+    patterns,
+    checked: [...checked, ...punish],
+    cue,
     points,
     moves,
     squares,
@@ -325,13 +420,14 @@ export function analyse(r: ExplainRequest): Analysis {
 }
 
 export function prompt(r: ExplainRequest, a = analyse(r)): string {
-  const parts = [`Position (FEN): ${r.fen}`, `${a.side} to move. ${setting(a.pos)}`]
+  const parts = [`Position (FEN): ${r.fen}`, `Pieces: ${pieceList(a.pos)}`, `${a.side} to move. ${setting(a.pos)}`]
   if (r.kind) parts.push(KIND_WORDS[r.kind])
   if (r.themes?.length) parts.push(`Lichess tags this puzzle: ${r.themes.join(', ')}.`)
   if (a.threat) parts.push(`If ${a.side} passed, ${a.opp} would play: ${a.threat.annotated}.`)
   parts.push(`Best line: ${a.best.annotated}.`)
-  if (a.tried) parts.push(`Line after the player's wrong try at this puzzle: ${a.tried.annotated}.`)
-  if (a.played) parts.push(`Line after the move played in the game: ${a.played.annotated}.`)
+  if (a.tried) parts.push(`Line after the player's wrong try at this puzzle: ${a.tried.annotated}. Call ${a.tried.moves[0].san} "your try".`)
+  if (a.played) parts.push(`Line after the move played in the game: ${a.played.annotated}. Say "in the game" for ${a.played.moves[0].san}.`)
+  if (a.checked.length) parts.push(`Checked patterns: ${[...new Set(a.checked.map(m => m.name))].map(n => `${n} (${MEANING[n]})`).join('; ')}.`)
   parts.push(`Points to explain:\n${a.points.map(p => `- ${p}`).join('\n')}`)
   return parts.join('\n')
 }
@@ -358,7 +454,10 @@ export function check(text: string, a: Analysis): Check {
     const role = m[3].toLowerCase() as Role
     if (!a.captured.has(role) && !a.loose.has(role)) problems.push(`no ${role} is taken or loose in the lines`)
   }
-  if (/\b(brilliant|genius|excellent|beautiful|amazing|stunning|great move|right idea|improves? the position)\b/i.test(text))
+  if (/\byour (try|attempt)\b/i.test(text) && !a.tried) problems.push('there was no wrong try; call the answer by its move')
+  if (/\bin the game\b/i.test(text) && !a.played) problems.push('there is no game move here; do not say "in the game"')
+  for (const [name, re] of MOTIF_WORDS) if (re.test(text) && !(name && a.patterns.has(name))) problems.push(`only name a pattern that is checked (${text.match(re)![0]})`)
+  if (/\b(brilliant|genius|excellent|beautiful|amazing|stunning|great move|right idea|improves? the position|better move|engine prefers|open(s|ing)? up the position|creates? problems|puts? pressure|gains? an advantage|strong move|key move)\b/i.test(text))
     problems.push('say what happens on the board, without praise or vague phrases')
   if (/\b(check)?mates?\b|\bmating\b/i.test(text) && !a.mate) problems.push('there is no mate in the lines')
   if (/\b(prevents?|preventing|stops?|stopping|parr(?:y|ies)|threat\w*)\b/i.test(text) && !a.stopsThreat)
