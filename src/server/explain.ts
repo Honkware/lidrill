@@ -1,4 +1,9 @@
-import { hanging, passFen, replay, setting, fromFen } from './facts'
+import { Chess } from 'chessops/chess'
+import { parseSan } from 'chessops/san'
+import type { Color, Role } from 'chessops/types'
+import { makeSquare } from 'chessops/util'
+import { fromFen, looseList, passFen, pieceName, replay, setting, type LineReplay, type PlayedMove } from './facts'
+import { isSquare, tokens } from './tokens'
 // The "Why?" explanation: the client sends what Stockfish found,
 // the server turns it into a prompt and asks a model to say it in words.
 // Everything here is validated as chess data so the endpoint can't be used
@@ -77,13 +82,10 @@ export function numbered(fen: string, san: string[]): string {
 
 export const SYSTEM = [
   'You explain chess puzzle answers to improving players.',
-  'You get the position, verified facts about it, and Stockfish lines whose notes in brackets (captures, checks, forks, hanging pieces) are checked by a chess library.',
-  'Use only those facts. Never mention a tactic, threat, square or piece that is not in them.',
-  'Name the idea, such as what is won, what is threatened, which piece is loose or which strong reply the opponent gets, rather than reciting moves.',
-  'If an opponent threat is given and the best move deals with it, say so.',
-  'First say why the best move works; then, if a played move is given, what goes wrong with it.',
+  'You get the position, checked facts, Stockfish lines with checked notes in brackets, and the points to explain.',
+  'Explain the points, in that order where you can. Add nothing else: no other moves, squares, pieces, plans or ideas.',
   'At most two short sentences and 50 words, plain words, no evaluation numbers, no preamble.',
-  'Write moves exactly as they appear in the lines (e.g. Nf3, exd5, O-O), without move numbers, and squares as a lowercase file and rank (e.g. e4); never describe a square any other way.',
+  'Write moves exactly as they appear in the lines (e.g. Nf3, exd5, O-O) without move numbers, and squares as a lowercase file and rank (e.g. e4).',
 ].join(' ')
 
 const WORTH: Record<number, string> = { 1: 'a pawn', 2: 'two pawns', 3: 'a piece', 4: 'a piece and a pawn', 5: 'a rook', 6: 'a rook and a pawn', 8: 'a rook and a piece', 9: 'a queen' }
@@ -95,6 +97,12 @@ export function verdict(cp: number, side: 'White' | 'Black'): string {
   if (a < 50) return 'about equal'
   const who = cp > 0 ? side : other
   return a >= 500 ? `${who} is winning` : a >= 200 ? `${who} is clearly better` : `${who} is a little better`
+}
+
+// "White a little better", "it about equal": for "the engine has ..."
+export function verdictPhrase(cp: number, side: 'White' | 'Black'): string {
+  const v = verdict(cp, side)
+  return v === 'about equal' ? 'it about equal' : v.replace(' is ', ' ')
 }
 
 // How a line ends, in words, from the side to move's point of view
@@ -116,40 +124,195 @@ const KIND_WORDS: Record<PuzzleKind, string> = {
   lichess: 'A Lichess puzzle.',
 }
 
-export function prompt(r: ExplainRequest): string {
+export interface Analysis {
+  pos: Chess
+  side: 'White' | 'Black'
+  opp: 'White' | 'Black'
+  best: LineReplay
+  played?: LineReplay
+  threat?: LineReplay
+  holding: PlayedMove[]
+  stopsThreat: boolean
+  points: string[]
+  // What the text may mention
+  moves: Map<string, PlayedMove[]> // bare SAN -> every place it's played (best line first)
+  squares: Set<string>
+  captured: Set<Role>
+  loose: Set<Role>
+  mate: boolean
+}
+
+const capturesBy = (l: LineReplay, color: Color) => l.moves.filter(m => m.color === color && m.captured)
+
+// Does the threat still work after the best move? It's stopped if the
+// threatening move is no longer legal, or no longer mates, or no longer
+// takes the same piece on the same square.
+function threatStopped(best: LineReplay, threat: LineReplay): boolean {
+  const t = threat.moves[0]
+  const after = best.positions[0]
+  const move = parseSan(after.clone(), t.bare)
+  if (!move || !('from' in move)) return true
+  const pos = after.clone()
+  const victim = pos.board.get(move.to)
+  pos.play(move)
+  if (t.mate) return !pos.isCheckmate()
+  if (t.captured) return !victim || victim.role !== t.captured || makeSquare(move.to) !== t.capturedOn
+  return false
+}
+
+export function analyse(r: ExplainRequest): Analysis {
   const pos = fromFen(r.fen)!
-  const side = pos.turn === 'white' ? 'White' : 'Black'
-  const them = side === 'White' ? 'black' : 'white'
-  const me = side === 'White' ? 'white' : 'black'
-  // Mate is already in the move notes
-  const end = (l: LineFacts) => (l.end === 'mate' ? '' : ` (${[endWords(l.end, side), l.cp !== undefined ? `engine: ${verdict(l.cp, side)}` : ''].filter(Boolean).join('; ')})`)
+  const me: Color = pos.turn
+  const side = me === 'white' ? 'White' : 'Black'
+  const opp = me === 'white' ? 'Black' : 'White'
   const best = replay(r.fen, r.best.san)!
-  const parts = [`Position (FEN): ${r.fen}`, `${side} to move. ${setting(pos)}`]
+  const played = r.played ? replay(r.fen, r.played.san) : undefined
+  const pass = r.threat ? passFen(r.fen) : undefined
+  const threat = pass && r.threat ? replay(pass, r.threat.san) : undefined
+  const holding = (r.holding ?? []).map(h => replay(r.fen, [h])!.moves[0])
+  const serious = threat && (threat.moves[0].mate || threat.moves[0].captured)
+  const stopsThreat = !!(serious && threatStopped(best, threat!))
+
+  // The points, in the order a coach would make them
+  const points: string[] = []
+  const b0 = best.moves[0]
+  if (holding.length > 1) points.push(`Any of ${holding.map(h => h.san).join(', ')} keeps the position.`)
+  if (serious && stopsThreat) {
+    const t = threat!.moves[0]
+    points.push(`${opp} threatened ${t.san} (${t.mate ? 'checkmate' : `taking the ${pieceName(t.captured!)} on ${t.capturedOn}`}); ${b0.san} stops it.`)
+  }
+  const bestMate = best.moves.find(m => m.mate)
+  if (bestMate) points.push(`${b0.san} leads to checkmate: ${best.moves.slice(0, best.moves.indexOf(bestMate) + 1).map(m => m.san).join(' ')}.`)
+  else {
+    if (b0.fork) points.push(`After ${b0.san}, ${b0.fork}.`)
+    const won = capturesBy(best, me).filter(m => m.captured !== 'pawn' || capturesBy(best, me).length <= 2)
+    const lost = capturesBy(best, me === 'white' ? 'black' : 'white')
+    if (won.length) points.push(`In the line ${side} takes ${won.map(m => `the ${pieceName(m.captured!)} on ${m.capturedOn} (${m.san})`).join(' and ')}${lost.length ? ` and gives up ${lost.map(m => `the ${pieceName(m.captured!)} on ${m.capturedOn} (${m.san})`).join(' and ')}` : ''}; ${endWords(r.best.end, side)}.`)
+    else if (!points.length) {
+      const reply = best.moves[1]
+      points.push(`${b0.san} is a quiet move${reply ? `; after ${reply.san}` : ''}${r.best.cp !== undefined ? ` the engine has ${verdictPhrase(r.best.cp, side)}` : `, ${endWords(r.best.end, side)}`}.`)
+    }
+  }
+  let looseRoles: Role[] = []
+  if (played) {
+    const p0 = played.moves[0]
+    const mate = played.moves.find(m => m.mate)
+    const oppTakes = capturesBy(played, me === 'white' ? 'black' : 'white')
+    if (mate) points.push(`${p0.san} allows ${played.moves.slice(1, played.moves.indexOf(mate) + 1).map(m => m.san).join(' ')}, checkmate.`)
+    else if (oppTakes.length) points.push(`${p0.san} lets ${opp} take the ${pieceName(oppTakes[0].captured!)} on ${oppTakes[0].capturedOn} with ${oppTakes[0].san}; ${endWords(r.played!.end, side)}.`)
+    else {
+      const left = looseList(played.positions[0], me)
+      looseRoles = left.map(l => l.role)
+      if (left.length) points.push(`After ${p0.san}, ${left[0].text}.`)
+      else if (r.played!.cp !== undefined) {
+        const reply = played.moves[1]
+        points.push(`After ${p0.san}${reply ? `, ${opp} answers ${reply.san}` : ''} and the engine has ${verdictPhrase(r.played!.cp, side)}.`)
+      }
+    }
+  }
+
+  const moves = new Map<string, PlayedMove[]>()
+  const add = (m: PlayedMove) => moves.set(m.bare, [...(moves.get(m.bare) ?? []), m])
+  for (const l of [best, played, threat].filter(Boolean) as LineReplay[]) l.moves.forEach(add)
+  for (const h of holding) if (!moves.get(h.bare)?.some(m => m.fenBefore === h.fenBefore)) add(h)
+  const squares = new Set<string>()
+  for (const m of [...moves.values()].flat()) {
+    squares.add(m.from).add(m.to)
+    if (m.capturedOn) squares.add(m.capturedOn)
+  }
+  for (const pt of points) for (const sq of pt.match(/\b[a-h][1-8]\b/g) ?? []) squares.add(sq)
+  const all = [best, played, threat].filter(Boolean) as LineReplay[]
+  return {
+    pos,
+    side,
+    opp,
+    best,
+    played,
+    threat,
+    holding,
+    stopsThreat,
+    points,
+    moves,
+    squares,
+    captured: new Set(all.flatMap(l => l.moves.map(m => m.captured).filter((x): x is Role => !!x))),
+    loose: new Set(looseRoles),
+    mate: all.some(l => l.moves.some(m => m.mate)),
+  }
+}
+
+export function prompt(r: ExplainRequest, a = analyse(r)): string {
+  const parts = [`Position (FEN): ${r.fen}`, `${a.side} to move. ${setting(a.pos)}`]
   if (r.kind) parts.push(KIND_WORDS[r.kind])
   if (r.themes?.length) parts.push(`Lichess tags this puzzle: ${r.themes.join(', ')}.`)
-  const loose = hanging(pos, them as 'white' | 'black')
-  if (loose.length) parts.push(`Loose ${them} pieces now: ${loose.join('; ')}.`)
-  if (r.threat) {
-    const t = replay(passFen(r.fen)!, r.threat.san)!
-    parts.push(`If ${side} passed, ${side === 'White' ? 'Black' : 'White'} would play: ${t.annotated}.`)
-  }
-  if (r.holding?.length) parts.push(`Any of these moves keeps the position: ${r.holding.join(', ')}. Engine line with the first: ${best.annotated}${end(r.best)}.`)
-  else parts.push(`Best move: ${r.best.san[0]}. Engine line: ${best.annotated}${end(r.best)}.`)
-  // No "loose after the best move" note: it ignored immediate recaptures and
-  // led a model to claim Nxc6 won a queen that bxc6 simply took back
-  if (r.played) {
-    const played = replay(r.fen, r.played.san)!
-    parts.push(`The player chose ${r.played.san[0]}. Engine line after it: ${played.annotated}${end(r.played)}.`)
-    const left = hanging(played.positions[0], me as 'white' | 'black')
-    if (left.length) parts.push(`After ${r.played.san[0]}: ${left.join('; ')}.`)
-  }
+  if (a.threat) parts.push(`If ${a.side} passed, ${a.opp} would play: ${a.threat.annotated}.`)
+  parts.push(`Best line: ${a.best.annotated}.`)
+  if (a.played) parts.push(`Line after the player's move: ${a.played.annotated}.`)
+  parts.push(`Points to explain:\n${a.points.map(p => `- ${p}`).join('\n')}`)
   return parts.join('\n')
+}
+
+export interface Check {
+  ok: boolean
+  problems: string[]
+}
+
+const CLAIM = /\b(wins?|winning|won|takes?|taking|took|captures?|capturing|captured|grabs?|loses?|losing|lost|drops?|hangs?|hanging|gives? up|giving up)\b([^.;]{0,40}?)\b(queen|rook|bishop|knight|pawn)s?\b/gi
+
+// Everything the text names has to come from the facts
+export function check(text: string, a: Analysis): Check {
+  const problems: string[] = []
+  const words = text.trim().split(/\s+/).length
+  if (words > 65) problems.push(`it is ${words} words; keep it under 50`)
+  if (/\b\d+\.(?:\.\.)?\s?(?:[KQRBN]|[a-h][1-8x]|O-O)/.test(text)) problems.push('it uses move numbers; write the moves without them')
+  for (const t of tokens(text)) {
+    if (a.moves.has(t.san)) continue
+    if (isSquare(t.san) && a.squares.has(t.san)) continue
+    problems.push(`${t.text} is not in the lines`)
+  }
+  for (const m of text.matchAll(CLAIM)) {
+    const role = m[3].toLowerCase() as Role
+    if (!a.captured.has(role) && !a.loose.has(role)) problems.push(`no ${role} is taken or loose in the lines`)
+  }
+  if (/\b(check)?mates?\b|\bmating\b/i.test(text) && !a.mate) problems.push('there is no mate in the lines')
+  return { ok: problems.length === 0, problems: [...new Set(problems)] }
+}
+
+// The checked points themselves, when the model can't get it right
+export function fallback(a: Analysis): string {
+  return a.points.slice(0, 2).join(' ')
+}
+
+export interface Link {
+  index: number // where the token starts in the text
+  text: string
+  from?: string
+  to: string
+  fen?: string // the position the move is played from
+  after?: string // and the position it leads to
+}
+
+// One link per move or square in the text. A SAN can occur more than once
+// in the lines (Black's hxg5, then White's hxg5#), so each mention takes the
+// next occurrence in reading order.
+export function links(text: string, a: Analysis): Link[] {
+  const used = new Map<string, number>()
+  const out: Link[] = []
+  for (const t of tokens(text)) {
+    const all = a.moves.get(t.san)
+    if (all?.length) {
+      const i = used.get(t.san) ?? 0
+      const m = all[Math.min(i, all.length - 1)]
+      used.set(t.san, i + 1)
+      out.push({ index: t.index, text: t.text, from: m.from, to: m.to, fen: m.fenBefore, after: m.fenAfter })
+    } else if (isSquare(t.san) && a.squares.has(t.san)) out.push({ index: t.index, text: t.text, to: t.san })
+  }
+  return out
 }
 
 // OpenRouter's auto router on its low tier, picking among fast models that
 // answer directly (about $0.0001 per explanation when tested). DeepSeek V4.1
 // Flash was dropped: it reasons at length and ran out of tokens mid-sentence.
-export function openRouterBody(r: ExplainRequest) {
+export function openRouterBody(r: ExplainRequest, retry: { role: 'assistant' | 'user'; content: string }[] = []) {
   return {
     model: 'openrouter/auto',
     plugins: [
@@ -164,6 +327,7 @@ export function openRouterBody(r: ExplainRequest) {
     messages: [
       { role: 'system', content: SYSTEM },
       { role: 'user', content: prompt(r) },
+      ...retry,
     ],
   }
 }

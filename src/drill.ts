@@ -7,7 +7,7 @@ import { makeFen, parseFen } from 'chessops/fen'
 import { makeSan } from 'chessops/san'
 import { parseSquare, parseUci } from 'chessops/util'
 import type { Engine } from './analysis/engine'
-import { db, type Game, type Puzzle } from './db'
+import { db, type ExplanationLink, type Game, type Puzzle } from './db'
 import { explain } from './explain'
 import { pawns } from './format'
 import { recordAttempt } from './train'
@@ -67,7 +67,7 @@ export class Drill {
   game?: Game
   reviewId?: number
   flipped = false
-  why?: { loading?: boolean; text?: string; error?: string }
+  why?: { loading?: boolean; text?: string; links?: ExplanationLink[]; error?: string }
   readonly puzzle: Puzzle
   private cg?: Api
   private owned = false
@@ -159,6 +159,7 @@ export class Drill {
 
   destroy() {
     this.timers.forEach(clearTimeout)
+    clearTimeout(this.previewTimer)
     if (this.owned) this.cg?.destroy()
   }
 
@@ -177,6 +178,8 @@ export class Drill {
   }
 
   private sync() {
+    this.previewing = undefined
+    this.cg?.setAutoShapes([])
     const node = this.nodes[this.cursor]
     const pos = this.posAt(this.cursor)
     const playable = this.state === 'view' || (this.yourTurn && !this.reverting)
@@ -346,32 +349,35 @@ export class Drill {
     this.reviewId = await recordAttempt(this.puzzle, solved, new Date(), outcome === 'hinted')
   }
 
-  // Moves of the solution and the game move, by SAN, for linking words in
-  // the explanation to squares on the board
-  get knownMoves(): Map<string, { from: string; to: string }> {
-    const out = new Map<string, { from: string; to: string }>()
-    const add = (ucis: string[]) => {
-      const pos = Chess.fromSetup(parseFen(this.puzzle.fen).unwrap()).unwrap()
-      for (const uci of ucis) {
-        const move = parseUci(uci)
-        if (!move || !pos.isLegal(move)) return
-        out.set(makeSan(pos, move).replace(/[+#]$/, ''), { from: uci.slice(0, 2), to: uci.slice(2, 4) })
-        pos.play(move)
-      }
+  // While a word in the explanation is hovered or tapped: the position the
+  // move is played from, with its arrow (or a circle for a square)
+  previewing?: ExplanationLink
+
+  // A move is played out on the board: its starting position appears, then
+  // the move animates in. A square just gets a circle.
+  preview(target?: ExplanationLink) {
+    this.previewing = target
+    clearTimeout(this.previewTimer)
+    if (!target) {
+      this.cg?.set({ animation: { enabled: true } })
+      return this.sync()
     }
-    add(this.puzzle.solution)
-    if (this.puzzle.played) add([this.puzzle.played])
-    for (const alt of this.puzzle.alternatives ?? []) add([alt])
-    return out
+    const still = { lastMove: undefined, check: false, movable: { color: undefined, dests: new Map() }, highlight: { custom: new Map() } }
+    if (target.fen && target.after && target.from) {
+      this.cg?.setAutoShapes([])
+      this.cg?.set({ ...still, animation: { enabled: false }, fen: target.fen })
+      this.previewTimer = setTimeout(() => {
+        if (this.previewing !== target) return
+        const after = Chess.fromSetup(parseFen(target.after!).unwrap()).unwrap()
+        this.cg?.set({ animation: { enabled: true }, fen: target.after, lastMove: [target.from as Key, target.to as Key], check: after.isCheck() })
+      }, 180)
+    } else {
+      this.cg?.set({ ...still, animation: { enabled: true }, fen: this.nodes[this.cursor].fen })
+      this.cg?.setAutoShapes([{ orig: target.to as Key, brush: 'green' }])
+    }
   }
 
-  // Shows a square or a move on the board while a word in the explanation
-  // is hovered or tapped
-  point(target?: { from?: string; to: string }) {
-    this.cg?.setAutoShapes(
-      target ? [target.from ? { orig: target.from as Key, dest: target.to as Key, brush: 'green' } : { orig: target.to as Key, brush: 'green' }] : [],
-    )
-  }
+  private previewTimer?: ReturnType<typeof setTimeout>
 
   // "Why?": a short worded explanation built from the engine lines
   async explain() {
@@ -379,7 +385,8 @@ export class Drill {
     this.why = { loading: true }
     this.redraw()
     try {
-      this.why = { text: await explain(this.puzzle, this.opts.engine) }
+      const e = await explain(this.puzzle, this.opts.engine)
+      this.why = { text: e.text, links: e.links }
     } catch (e) {
       this.why = { error: (e as Error).message }
     }

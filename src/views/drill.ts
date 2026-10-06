@@ -1,5 +1,6 @@
 import type { VNode } from 'snabbdom'
 import type { Ctrl } from '../ctrl'
+import type { ExplanationLink } from '../db'
 import type { Drill } from '../drill'
 import { el } from '../el'
 import { linkSegments } from '../explainLinks'
@@ -142,21 +143,26 @@ function moveLine(d: Drill): VNode {
 const navButton = (name: string, labelText: string, onClick: () => void) =>
   el('button', 'grid size-11 place-items-center rounded-lg text-dim active:bg-raised', { attrs: { type: 'button', 'aria-label': labelText }, on: { click: onClick } }, [icon(name)])
 
-// Moves and squares in the explanation light up on the board on hover/tap
-function linked(d: Drill, text: string): (VNode | string)[] {
-  return linkSegments(text, d.knownMoves).map(({ text: t, target }) =>
+// Moves and squares in the explanation show on the board while hovered,
+// focused or tapped (tap again to put the board back)
+function linked(d: Drill, text: string, links: ExplanationLink[]): (VNode | string)[] {
+  return linkSegments(text, links).map(({ text: t, target }) =>
     target
       ? el(
           'span',
           'cursor-pointer rounded font-medium text-accent underline decoration-dotted underline-offset-2',
           {
-            attrs: { tabindex: 0 },
+            class: { 'bg-raised': d.previewing === target },
+            attrs: { tabindex: 0, role: 'button' },
             on: {
-              mouseenter: () => d.point(target),
-              mouseleave: () => d.point(),
-              focus: () => d.point(target),
-              blur: () => d.point(),
-              click: () => d.point(target),
+              mouseenter: () => d.preview(target),
+              mouseleave: () => d.preview(),
+              focus: () => d.preview(target),
+              blur: () => d.preview(),
+              click: (e: Event) => {
+                e.preventDefault()
+                d.preview(d.previewing === target ? undefined : target)
+              },
             },
           },
           t,
@@ -170,7 +176,7 @@ function whyPart(d: Drill): VNode | null {
   if (!w) return null
   if (w.loading) return el('p', 'mt-3 animate-pulse text-sm text-dim', 'Working it out…')
   if (w.error) return el('p', 'mt-3 text-sm text-bad', w.error)
-  return el('p', 'mt-3 border-t border-raised pt-3 text-sm', linked(d, w.text ?? ''))
+  return el('p', 'mt-3 border-t border-raised pt-3 text-sm', linked(d, w.text ?? '', w.links ?? []))
 }
 
 // Puts the explanation inside the result card

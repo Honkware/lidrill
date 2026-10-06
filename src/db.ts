@@ -61,6 +61,21 @@ export type PuzzleTag = 'hang' | 'mate' | 'defensive'
 
 export type PuzzleSource = 'own' | 'lichess'
 
+// A board link for a move or square in an explanation, checked on the server
+export interface ExplanationLink {
+  index: number // where the move or square starts in the text
+  text: string
+  from?: string
+  to: string
+  fen?: string // the position the move is played from
+  after?: string // and the position after it
+}
+
+export interface Explanation {
+  text: string
+  links: ExplanationLink[]
+}
+
 export interface Puzzle {
   id: string // `${gameId}:${ply}`, or `lichess:${puzzleId}` for Lichess puzzles
   gameId: string // '' for Lichess puzzles
@@ -75,7 +90,7 @@ export interface Puzzle {
   fen: string
   played: string // UCI of what the player actually played
   solution: string[] // UCI, player and opponent moves alternating
-  explanation?: string // the "Why?" text, kept so it's only generated once
+  explanation?: Explanation | string // the "Why?" text, kept so it's only generated once (string: older, unlinked)
   // "Hold" puzzles: every first move that keeps the position (one-move only)
   alternatives?: string[]
   solutionLen: number // player moves in the solution

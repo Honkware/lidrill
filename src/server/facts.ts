@@ -29,18 +29,30 @@ function attackers(pos: Chess, square: Square, by: Color): { role: Role; square:
 
 // Pieces of `color` that the other side can win: attacked and undefended, or
 // attacked by something cheaper
-export function hanging(pos: Chess, color: Color): string[] {
-  const out: string[] = []
+export interface Loose {
+  role: Role
+  square: string
+  text: string
+}
+
+export function looseList(pos: Chess, color: Color): Loose[] {
+  const out: Loose[] = []
   for (const [sq, piece] of pos.board) {
     if (piece.color !== color || piece.role === 'king') continue
     const att = attackers(pos, sq, other(color))
     if (!att.length) continue
     const def = attackers(pos, sq, color)
     if (def.length && VALUE[att[0].role] >= VALUE[piece.role]) continue
-    out.push(`the ${NAME[piece.role]} on ${makeSquare(sq)} can be taken by the ${NAME[att[0].role]} on ${makeSquare(att[0].square)}${def.length ? '' : ' and is undefended'}`)
+    out.push({
+      role: piece.role,
+      square: makeSquare(sq),
+      text: `the ${NAME[piece.role]} on ${makeSquare(sq)} can be taken by the ${NAME[att[0].role]} on ${makeSquare(att[0].square)}${def.length ? '' : ' and is undefended'}`,
+    })
   }
   return out.slice(0, 3)
 }
+
+export const hanging = (pos: Chess, color: Color): string[] => looseList(pos, color).map(l => l.text)
 
 // What the piece that just moved to `to` attacks: two or more valuable
 // targets is a fork
@@ -54,10 +66,28 @@ function forks(pos: Chess, to: Square): string | undefined {
   return `the ${NAME[piece.role]} on ${makeSquare(to)} attacks ${targets.map(t => `the ${NAME[t.p!.role]} on ${makeSquare(t.sq)}`).join(' and ')}`
 }
 
+export interface PlayedMove {
+  san: string // as written, with + or #
+  bare: string // without + or #
+  from: string
+  to: string
+  fenBefore: string
+  fenAfter: string
+  color: Color
+  role: Role
+  captured?: Role
+  capturedOn?: string
+  promotion?: Role
+  castle: boolean
+  check: boolean
+  mate: boolean
+  fork?: string
+}
+
 export interface LineReplay {
   annotated: string // "6. Bxf7+ (bishop takes pawn on f7, check) Ke7 7. Nd5# (checkmate)"
+  moves: PlayedMove[]
   positions: Chess[] // after each move
-  ucis: { from: Square; to: Square }[]
 }
 
 // Replays SAN from fen; undefined if any move is illegal
@@ -67,35 +97,56 @@ export function replay(fen: string, sans: string[]): LineReplay | undefined {
   let n = pos.fullmoves
   const parts: string[] = []
   const positions: Chess[] = []
-  const ucis: { from: Square; to: Square }[] = []
+  const moves: PlayedMove[] = []
   for (const [i, san] of sans.entries()) {
     const move = parseSan(pos, san)
     if (!move || !('from' in move)) return undefined
+    const fenBefore = makeFen(pos.toSetup())
     const mover = pos.board.get(move.from)!
-    const victim = pos.board.get(move.to)
-    const isCastle = mover.role === 'king' && victim?.color === mover.color
-    const enPassant = mover.role === 'pawn' && !victim && move.from % 8 !== move.to % 8
+    const target = pos.board.get(move.to)
+    const castle = mover.role === 'king' && target?.color === mover.color
+    const enPassant = mover.role === 'pawn' && !target && move.from % 8 !== move.to % 8
+    const captured: Role | undefined = castle ? undefined : target ? target.role : enPassant ? 'pawn' : undefined
+    const capturedOn = captured ? makeSquare(enPassant ? (move.to + (mover.color === 'white' ? -8 : 8)) : move.to) : undefined
     const written = makeSan(pos, move)
     if (pos.turn === 'white') parts.push(`${n}.`)
     else if (i === 0) parts.push(`${n}...`)
     pos.play(move)
     if (pos.turn === 'white') n++
-    const notes: string[] = []
-    if (isCastle) notes.push('castles')
-    else if (victim || enPassant) notes.push(`${NAME[mover.role]} takes ${victim ? NAME[victim.role] : 'pawn'} on ${makeSquare(move.to)}`)
-    if (move.promotion) notes.push(`promotes to ${NAME[move.promotion]}`)
-    if (pos.isCheckmate()) notes.push('checkmate')
-    else if (pos.isCheck()) notes.push('check')
-    if (!isCastle) {
-      const fork = forks(pos, move.to)
-      if (fork) notes.push(fork)
+    // Castling is stored king-to-rook; the king lands on c or g
+    const to = castle ? makeSquare(((move.to % 8) > (move.from % 8) ? move.from + 2 : move.from - 2)) : makeSquare(move.to)
+    const m: PlayedMove = {
+      san: written,
+      bare: written.replace(/[+#]$/, ''),
+      from: makeSquare(move.from),
+      to,
+      fenBefore,
+      fenAfter: makeFen(pos.toSetup()),
+      color: mover.color,
+      role: mover.role,
+      captured,
+      capturedOn,
+      promotion: move.promotion,
+      castle,
+      check: pos.isCheck() && !pos.isCheckmate(),
+      mate: pos.isCheckmate(),
+      fork: castle ? undefined : forks(pos, move.to),
     }
+    const notes: string[] = []
+    if (castle) notes.push('castles')
+    else if (captured) notes.push(`${NAME[mover.role]} takes ${NAME[captured]} on ${capturedOn}`)
+    if (m.promotion) notes.push(`promotes to ${NAME[m.promotion]}`)
+    if (m.mate) notes.push('checkmate')
+    else if (m.check) notes.push('check')
+    if (m.fork) notes.push(m.fork)
     parts.push(notes.length ? `${written} (${notes.join(', ')})` : written)
     positions.push(pos.clone())
-    ucis.push({ from: move.from, to: move.to })
+    moves.push(m)
   }
-  return { annotated: parts.join(' '), positions, ucis }
+  return { annotated: parts.join(' '), moves, positions }
 }
+
+export const pieceName = (r: Role) => NAME[r]
 
 function material(pos: Chess): number {
   let d = 0

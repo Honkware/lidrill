@@ -3,7 +3,7 @@ import { makeFen, parseFen } from 'chessops/fen'
 import { makeSan } from 'chessops/san'
 import { parseUci } from 'chessops/util'
 import type { Engine } from './analysis/engine'
-import { db, type Puzzle } from './db'
+import { db, type Explanation, type Puzzle } from './db'
 import type { ExplainRequest, LineFacts } from './server/explain'
 import { passFen } from './server/facts'
 
@@ -73,16 +73,18 @@ export async function explainRequest(p: Puzzle, engine?: Engine): Promise<Explai
   return req
 }
 
-export async function explain(p: Puzzle, engine?: Engine): Promise<string> {
-  if (p.explanation) return p.explanation
+export async function explain(p: Puzzle, engine?: Engine): Promise<Explanation> {
+  // Older saved forms (plain strings, links by name) are asked for again
+  if (p.explanation && typeof p.explanation === 'object' && Array.isArray(p.explanation.links)) return p.explanation
   const res = await fetch('/api/explain', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(await explainRequest(p, engine)),
   })
-  const data = (await res.json().catch(() => ({}))) as { text?: string; error?: string }
+  const data = (await res.json().catch(() => ({}))) as { text?: string; links?: Explanation['links']; error?: string }
   if (!res.ok || !data.text) throw new Error(data.error ?? 'No explanation right now. Try again later.')
-  await db.puzzles.update(p.id, { explanation: data.text })
-  p.explanation = data.text
-  return data.text
+  const explanation: Explanation = { text: data.text, links: Array.isArray(data.links) ? data.links : [] }
+  await db.puzzles.update(p.id, { explanation })
+  p.explanation = explanation
+  return explanation
 }
