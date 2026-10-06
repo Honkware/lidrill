@@ -38,8 +38,8 @@ async function certifyAll(): Promise<EngineReport[]> {
   const uci: UciEngine = { send: c => sf.sendCommand(c), onLine: l => (sf.listener = l) }
   const sfEngine = new Engine(uci)
   // Node can't run the threaded build: a node budget stands in for the
-  // browser's time budget on three threads (about 6M nodes in 6 s)
-  const nodes = Number(process.env.GATE_NODES ?? 6_000_000)
+  // browser's 15 s budget on one thread (about 7M nodes)
+  const nodes = Number(process.env.GATE_NODES ?? 7_000_000)
   const engine = { certify: (fen: string, o: CertifyOptions) => sfEngine.certify(fen, { ...o, movetime: undefined, nodes }), search: sfEngine.search.bind(sfEngine), searchLines: sfEngine.searchLines.bind(sfEngine) } as unknown as Engine
 
   const games = readFileSync('src/sync/fixtures/player_01.ndjson', 'utf8')

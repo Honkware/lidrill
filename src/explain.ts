@@ -51,13 +51,14 @@ function jobsFor(p: Puzzle): Job[] {
 }
 
 // Side by side when there are several engines (each takes the next search)
-async function runJobs(jobs: Job[], engines: Engine[], progress: Progress): Promise<Record<string, CertifiedRun[]>> {
+async function runJobs(jobs: Job[], engines: Engine[], progress: Progress, stopped: () => boolean = () => false): Promise<Record<string, CertifiedRun[]>> {
   const out: Record<string, CertifiedRun[]> = {}
   let next = 0
   let done = 0
+  progress(0, jobs.length)
   await Promise.all(
     engines.map(async engine => {
-      while (next < jobs.length) {
+      while (next < jobs.length && !stopped()) {
         const [name, fen, multipv, budget] = jobs[next++]
         out[name] = [await engine.certify(fen, { depth: CERT.depth, nodes: CERT.nodesCap, movetime: budget, multipv, clearHash: true })]
         progress(++done, jobs.length)
@@ -71,7 +72,7 @@ async function runJobs(jobs: Job[], engines: Engine[], progress: Progress): Prom
 export async function precertify(p: Puzzle, engines: Engine[], interrupted: () => boolean = () => false): Promise<void> {
   const saved = await db.certs.get(p.id)
   if (saved?.version === CERT_RUN_VERSION) return
-  const runs = await runJobs(jobsFor(p), engines, () => {})
+  const runs = await runJobs(jobsFor(p), engines, () => {}, interrupted)
   // A search cut short for "Why?" isn't a certification
   if (interrupted()) return
   await db.certs.put({ puzzleId: p.id, version: CERT_RUN_VERSION, runs, createdAt: Date.now() })
