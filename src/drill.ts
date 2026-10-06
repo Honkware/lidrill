@@ -358,6 +358,8 @@ export class Drill {
   preview(target?: ExplanationLink) {
     this.previewing = target
     clearTimeout(this.previewTimer)
+    // The panel marks the word being shown
+    this.redraw()
     if (!target) {
       this.cg?.set({ animation: { enabled: true } })
       return this.sync()
