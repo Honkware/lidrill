@@ -3,6 +3,8 @@
   Referrer-Policy: strict-origin-when-cross-origin
   X-Content-Type-Options: nosniff
   Permissions-Policy: camera=(), microphone=(), geolocation=()
+  # Stops Cloudflare rewriting pages (it injects a Web Analytics beacon otherwise)
+  Cache-Control: no-transform
 
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
