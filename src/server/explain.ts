@@ -389,7 +389,6 @@ export function analyse(r: ExplainRequest): Analysis {
   for (const pt of points) for (const sq of pt.match(/\b[a-h][1-8]\b/g) ?? []) squares.add(sq)
   const all = [best, tried, played, threat].filter(Boolean) as LineReplay[]
   const patterns = new Set<MotifName>([...bestMotifs, ...[tried, played].flatMap(l => (l ? motifs(l, 1) : []))].map(m => m.name))
-  if (all.some(l => l.moves.some(m => m.fork))) patterns.add('fork')
   const kind = r.kind ?? 'lichess'
   const defending = kind === 'hang' || kind === 'hold' || kind === 'defensive'
   const cue =
