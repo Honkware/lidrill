@@ -219,8 +219,8 @@ describe('motif library', () => {
   it('has an entry for every motif and "none" at every band', () => {
     expect(MOTIF_KEYS).toHaveLength(12)
     expect(MOTIF_KEYS).toContain('none')
-    expect(motifEntry('back-rank mate', 'club').id).toBe('gloss:backRankMate')
-    expect(motifEntry('removing the defender', 'beginner').id).toBe('gloss:removingTheDefender')
+    expect(motifEntry('back-rank mate', 'club').id).toBe('gloss:back-rank-mate')
+    expect(motifEntry('removing the defender', 'beginner').id).toBe('gloss:removing-the-defender')
     expect(motifEntry('none', 'advanced').id).toBe('gloss:none')
   })
 

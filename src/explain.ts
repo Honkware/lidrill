@@ -84,7 +84,9 @@ export async function certifyReport(p: Puzzle, engines: Engine[], ctx: ExplainCo
   const tryIt = tried && tried !== p.played && !(p.alternatives ?? [p.solution[0]]).includes(tried)
   const jobs = [...jobsFor(p).filter(([name]) => !cached[name]), ...(tryIt ? [['tried', after(p.fen, [tried]), 1, CERT.budgetMs.line] as Job] : [])]
   const fresh = jobs.length ? await runJobs(jobs, engines, progress) : {}
-  const out = { ...cached, ...fresh }
+  // Engine lines can run past what the Worker accepts; the packet uses at most 8 plies
+  const trim = (runs: CertifiedRun[]) => runs.map(r => ({ ...r, lines: r.lines.map(l => ({ ...l, pv: l.pv.slice(0, 16) })), check: r.check && { ...r.check, pv: r.check.pv.slice(0, 16) } }))
+  const out = Object.fromEntries(Object.entries({ ...cached, ...fresh }).map(([k, v]) => [k, trim(v)]))
   if (jobs.some(([name]) => name !== 'tried')) await db.certs.put({ puzzleId: p.id, version: CERT_RUN_VERSION, runs: Object.fromEntries(Object.entries(out).filter(([k]) => k !== 'tried')), createdAt: Date.now() })
   return {
     schema: REPORT_SCHEMA,

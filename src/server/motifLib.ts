@@ -13,7 +13,7 @@ export const MOTIF_LIB_VERSION = 'motifLib/1.0'
 export type MotifKey = MotifName | 'none'
 
 export interface MotifEntry {
-  id: string // 'gloss:<camelCaseMotif>', the same at every band
+  id: string // 'gloss:<motif-in-kebab-case>', the same at every band
   gloss: string // what it is, one short sentence
   rule: string // the rule to take into the next game, one short sentence
 }
@@ -191,7 +191,8 @@ const TEXTS: Record<MotifKey, Texts> = {
   },
 }
 
-const idOf = (m: MotifKey) => `gloss:${m.replace(/[- ](\w)/g, (_, c: string) => c.toUpperCase())}`
+// Lowercase kebab-case: fact ids are [a-z0-9:-]+
+const idOf = (m: MotifKey) => `gloss:${m.replace(/ /g, '-')}`
 
 export const MOTIF_KEYS = Object.keys(TEXTS) as MotifKey[]
 

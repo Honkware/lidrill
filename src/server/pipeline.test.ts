@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { templateFloor } from './floor'
 import { narrate, prune, type Caller, type LlmCall } from './narrate'
@@ -336,5 +337,21 @@ describe('narrator pipeline', () => {
       return { json: { slots: good() }, cost: 0.001 }
     }
     expect((await narrate(p, call)).reason).toBe('claim check unavailable')
+  })
+})
+
+// Real certification reports from the reference account's hardest puzzles
+// (bun run test:gate writes them): every one must validate, build a packet
+// that passes its own self-check, and get a floor that meets the required sets
+describe('reference reports', () => {
+  const reports = JSON.parse(readFileSync('src/server/fixtures/gate-reports.json', 'utf8')) as EngineReport[]
+  it.each(reports.map((r, i) => [i, r] as const))('report %i', (_, raw) => {
+    for (const band of ['beginner', 'club', 'advanced'] as const) {
+      const r = validReport(JSON.parse(JSON.stringify({ ...raw, band })))
+      expect(r).toBeTruthy()
+      const p = packetOf(r!)
+      expect(packetProblems(p)).toEqual([])
+      expect(validateSlots({ slots: templateFloor(p) }, p).violations.filter(v => !/^readability|could not be certified/.test(v))).toEqual([])
+    }
   })
 })
