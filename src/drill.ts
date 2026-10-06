@@ -346,6 +346,33 @@ export class Drill {
     this.reviewId = await recordAttempt(this.puzzle, solved, new Date(), outcome === 'hinted')
   }
 
+  // Moves of the solution and the game move, by SAN, for linking words in
+  // the explanation to squares on the board
+  get knownMoves(): Map<string, { from: string; to: string }> {
+    const out = new Map<string, { from: string; to: string }>()
+    const add = (ucis: string[]) => {
+      const pos = Chess.fromSetup(parseFen(this.puzzle.fen).unwrap()).unwrap()
+      for (const uci of ucis) {
+        const move = parseUci(uci)
+        if (!move || !pos.isLegal(move)) return
+        out.set(makeSan(pos, move).replace(/[+#]$/, ''), { from: uci.slice(0, 2), to: uci.slice(2, 4) })
+        pos.play(move)
+      }
+    }
+    add(this.puzzle.solution)
+    if (this.puzzle.played) add([this.puzzle.played])
+    for (const alt of this.puzzle.alternatives ?? []) add([alt])
+    return out
+  }
+
+  // Shows a square or a move on the board while a word in the explanation
+  // is hovered or tapped
+  point(target?: { from?: string; to: string }) {
+    this.cg?.setAutoShapes(
+      target ? [target.from ? { orig: target.from as Key, dest: target.to as Key, brush: 'green' } : { orig: target.to as Key, brush: 'green' }] : [],
+    )
+  }
+
   // "Why?": a short worded explanation built from the engine lines
   async explain() {
     if (this.state !== 'view' || this.why?.loading || this.why?.text) return

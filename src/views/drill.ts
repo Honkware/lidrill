@@ -2,6 +2,7 @@ import type { VNode } from 'snabbdom'
 import type { Ctrl } from '../ctrl'
 import type { Drill } from '../drill'
 import { el } from '../el'
+import { linkSegments } from '../explainLinks'
 import { board, button, icon, moveInput, pawnsWorth, topBar } from './ui'
 
 export function drillView(ctrl: Ctrl): VNode {
@@ -141,15 +142,35 @@ function moveLine(d: Drill): VNode {
 const navButton = (name: string, labelText: string, onClick: () => void) =>
   el('button', 'grid size-11 place-items-center rounded-lg text-dim active:bg-raised', { attrs: { type: 'button', 'aria-label': labelText }, on: { click: onClick } }, [icon(name)])
 
+// Moves and squares in the explanation light up on the board on hover/tap
+function linked(d: Drill, text: string): (VNode | string)[] {
+  return linkSegments(text, d.knownMoves).map(({ text: t, target }) =>
+    target
+      ? el(
+          'span',
+          'cursor-pointer rounded font-medium text-accent underline decoration-dotted underline-offset-2',
+          {
+            attrs: { tabindex: 0 },
+            on: {
+              mouseenter: () => d.point(target),
+              mouseleave: () => d.point(),
+              focus: () => d.point(target),
+              blur: () => d.point(),
+              click: () => d.point(target),
+            },
+          },
+          t,
+        )
+      : t,
+  )
+}
+
 function whyPart(d: Drill): VNode | null {
   const w = d.why
   if (!w) return null
   if (w.loading) return el('p', 'mt-3 animate-pulse text-sm text-dim', 'Working it out…')
   if (w.error) return el('p', 'mt-3 text-sm text-bad', w.error)
-  return el('div', 'mt-3 border-t border-raised pt-3', [
-    el('p', 'text-sm', w.text ?? ''),
-    el('p', 'mt-1 text-xs text-dim', 'Written by an AI model from Stockfish’s lines.'),
-  ])
+  return el('p', 'mt-3 border-t border-raised pt-3 text-sm', linked(d, w.text ?? ''))
 }
 
 // Puts the explanation inside the result card
