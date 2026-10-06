@@ -10,13 +10,15 @@ export interface Backup {
   app: 'lidrill'
   version: 1
   exportedAt: string
+  lichessUser?: string // whose data this is; older exports only have it in the profile
   tables: Record<TableName, unknown[]>
 }
 
 export async function exportData(): Promise<Backup> {
   const tables = {} as Backup['tables']
   for (const name of TABLES) tables[name] = await db.table(name).toArray()
-  return { app: 'lidrill', version: 1, exportedAt: new Date().toISOString(), tables }
+  const lichessUser = (await db.profile.get('me'))?.lichessUser
+  return { app: 'lidrill', version: 1, exportedAt: new Date().toISOString(), lichessUser, tables }
 }
 
 // JSON turns the FSRS card dates into strings
@@ -26,11 +28,21 @@ function reviveCard(p: Puzzle): Puzzle {
   return { ...p, card }
 }
 
-// Replaces local data with the file's. Sign-in is kept as it is.
-export async function importData(text: string): Promise<void> {
+const owner = (data: Backup): string | undefined =>
+  data.lichessUser ?? (data.tables.profile?.[0] as { lichessUser?: string } | undefined)?.lichessUser
+
+export const sameUser = (a?: string, b?: string) => a !== undefined && b !== undefined && a.toLowerCase() === b.toLowerCase()
+
+// Replaces local data with the file's. Sign-in is kept as it is, so a backup
+// from another Lichess account is refused: its games and puzzles would sit
+// under the wrong sign-in.
+export async function importData(text: string, signedInAs?: string): Promise<void> {
   const data = JSON.parse(text) as Backup
   if (data.app !== 'lidrill' || data.version !== 1 || typeof data.tables !== 'object')
     throw new Error("That file isn't a lidrill export.")
+  const from = owner(data)
+  if (signedInAs && from && !sameUser(from, signedInAs))
+    throw new Error(`That backup is from the Lichess account ${from}, and you're signed in as ${signedInAs}. Sign in as ${from} to restore it.`)
   await db.transaction('rw', TABLES.map(t => db.table(t)), async () => {
     for (const name of TABLES) {
       const rows = (data.tables[name] ?? []) as unknown[]

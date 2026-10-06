@@ -1,6 +1,6 @@
 import type { Progress } from './analysis/queue'
 import { finishSignIn, signOut, startSignIn } from './auth'
-import { deleteAllData, exportData, importData } from './backup'
+import { deleteAllData, exportData, importData, sameUser } from './backup'
 import { db, type Auth, type Game, type JournalEntry, type Practice, type Profile } from './db'
 import { Drill, type Outcome } from './drill'
 import { GameView } from './gameview'
@@ -94,7 +94,7 @@ export class Ctrl {
     try {
       const fresh = await finishSignIn()
       const old = await db.profile.get('me')
-      if (fresh && old?.lichessUser && old.lichessUser !== fresh.username) await forgetLichessAccount()
+      if (fresh && old?.lichessUser && !sameUser(old.lichessUser, fresh.username)) await forgetLichessAccount()
       after = fresh?.after
     } catch (e) {
       this.status = (e as Error).message
@@ -529,7 +529,7 @@ export class Ctrl {
 
   async importFile(file: File) {
     try {
-      await importData(await file.text())
+      await importData(await file.text(), this.auth?.username)
       this.profile = await db.profile.get('me')
       applyLook(this.profile)
       this.notice = { text: 'Imported.' }
