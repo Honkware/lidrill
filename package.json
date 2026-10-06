@@ -11,7 +11,8 @@
     "lint": "oxlint",
     "test": "vitest run",
     "preview": "vite preview",
-    "deploy": "bun run build && wrangler deploy"
+    "deploy": "bun run build && wrangler deploy",
+    "test:golden": "GOLDEN=1 vitest run src/golden.test.ts"
   },
   "dependencies": {
     "@lichess-org/chessground": "^10.1.1",

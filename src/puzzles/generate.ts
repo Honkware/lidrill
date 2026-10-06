@@ -13,6 +13,10 @@ export interface GenerateOptions {
   maxSolutionMoves: number
 }
 
+// Bumped when the generator finds puzzles it didn't before (2: hold puzzles);
+// older games are then looked at again
+export const GENERATOR_VERSION = 2
+
 const MATE_CP = 1000
 
 // Eval as centipawns for the given side, mates squashed to ±1000
@@ -81,7 +85,12 @@ export async function generatePuzzles(game: Game, engine: Engine, opts: Generate
   const puzzles: Puzzle[] = []
   for (const c of findCandidates(game, opts.swingThresholdCp)) {
     const lines = await engine.searchLines(c.fen, opts.depth, 2)
-    if (lines.length < 2 || !isUnique(lines, opts.marginCp)) continue
+    if (lines.length < 2) continue
+    if (!isUnique(lines, opts.marginCp)) {
+      const hold = await holdPuzzle(game, c, engine, opts)
+      if (hold) puzzles.push(hold)
+      continue
+    }
     const best = lines[0]
     // Engine now likes the played move: not a mistake at depth. Compared as
     // SAN because castling is e1h1 in chessops and e1g1 from Stockfish.
@@ -109,6 +118,38 @@ export async function generatePuzzles(game: Game, engine: Engine, opts: Generate
     })
   }
   return puzzles
+}
+
+// A hang often has two or three moves that save it, so it can't be a
+// one-answer puzzle, yet it's exactly what a beginner needs to practise.
+// Such a position becomes a "hold" puzzle when 2 or 3 moves stay within the
+// band margin of the best one and the played move isn't among them; any of
+// them solves it. More than 3 means almost anything works: not a puzzle.
+export const MAX_HOLDING_MOVES = 3
+
+async function holdPuzzle(game: Game, c: Candidate, engine: Engine, opts: GenerateOptions): Promise<Puzzle | undefined> {
+  const lines = await engine.searchLines(c.fen, opts.depth, MAX_HOLDING_MOVES + 1)
+  const best = lines[0]
+  if (!best?.pv[0] || isMate(best)) return undefined
+  const toCp = (r: SearchResult) => povCp(r.eval, 'white')
+  const holding = lines.filter(l => l.pv[0] && toCp(best) - toCp(l) < opts.marginCp).map(l => l.pv[0])
+  if (holding.length < 2 || holding.length > MAX_HOLDING_MOVES) return undefined
+  const played = sanOf(c.fen, c.played)
+  if (holding.some(uci => sanOf(c.fen, uci) === played)) return undefined
+  return {
+    id: `${game.id}:${c.ply}`,
+    gameId: game.id,
+    ply: c.ply,
+    fen: c.fen,
+    played: c.played,
+    solution: [best.pv[0]],
+    alternatives: holding,
+    solutionLen: 1,
+    type: 'hang',
+    tag: c.before < 0 ? 'defensive' : 'hang',
+    swingCp: c.swingCp,
+    card: createEmptyCard(),
+  }
 }
 
 // Follow the forced line: keep adding player moves while each one is still

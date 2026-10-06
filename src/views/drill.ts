@@ -2,7 +2,7 @@ import type { VNode } from 'snabbdom'
 import type { Ctrl } from '../ctrl'
 import type { Drill } from '../drill'
 import { el } from '../el'
-import { board, button, icon, plural, topBar } from './ui'
+import { board, button, icon, moveInput, pawnsWorth, plural, topBar } from './ui'
 
 export function drillView(ctrl: Ctrl): VNode {
   const d = ctrl.drill
@@ -33,9 +33,11 @@ export function drillContext(d: Drill): VNode | null {
 export function puzzleSide(d: Drill, after: VNode[]): VNode {
   if (d.state === 'playing')
     return el('div', 'space-y-3', [
-      el('p', 'font-display text-xl', `Find the best move for ${d.color}`),
+      el('p', 'font-display text-xl', d.puzzle.alternatives ? `Find a move that holds for ${d.color}` : `Find the best move for ${d.color}`),
+      d.puzzle.alternatives && d.step === 0 ? el('p', 'text-sm text-dim', `In the game your move lost material. ${d.puzzle.alternatives.length} moves would have kept the position.`) : null,
       d.step > 0 ? el('p', 'text-sm text-accent', 'Good. Keep going.') : null,
       drillContext(d),
+      moveInput(t => d.typeMove(t)),
       d.hinted
         ? el('p', 'text-sm text-warn', 'The highlighted piece moves. A solve now counts as a hard one.')
         : el('button', 'inline-flex min-h-11 items-center gap-2 rounded-lg px-1 text-dim', { attrs: { type: 'button' }, on: { click: () => d.hint() } }, [icon('hint', 18), 'Hint']),
@@ -47,10 +49,11 @@ export function puzzleSide(d: Drill, after: VNode[]): VNode {
       'p',
       'font-display text-xl',
       { class: { 'text-accent': solved, 'text-bad': !solved } },
-      solved ? (d.hinted ? 'Solved with the hint' : 'Solved') : `Best was ${d.sanAt(p.solution[0])}`,
+      solved ? (d.hinted ? 'Solved with the hint' : 'Solved') : p.alternatives ? `${d.holdingSans.join(' or ')} held` : `Best was ${d.sanAt(p.solution[0])}`,
     ),
+    solved && p.alternatives ? el('p', 'text-sm text-dim', `Any of ${d.holdingSans.join(', ')} would do.`) : null,
     drillContext(d),
-    p.played ? el('p', 'text-sm', `In the game you played ${d.sanAt(p.played)}, which cost about ${(p.swingCp / 100).toFixed(1)} pawns.`) : null,
+    p.played ? el('p', 'text-sm', `In the game you played ${d.sanAt(p.played)}, which gave away about ${pawnsWorth(p.swingCp)}.`) : null,
     ...after,
   ])
 }

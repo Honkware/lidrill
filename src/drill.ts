@@ -8,6 +8,7 @@ import { makeSan } from 'chessops/san'
 import { parseSquare, parseUci } from 'chessops/util'
 import { db, type Game, type Puzzle } from './db'
 import { recordAttempt } from './train'
+import { parseTyped } from './typed'
 
 export type DrillState = 'playing' | 'solved' | 'failed'
 
@@ -87,6 +88,11 @@ export class Drill {
     this.redraw()
   }
 
+  // For hold puzzles: every move that would have done
+  get holdingSans(): string[] {
+    return (this.puzzle.alternatives ?? []).map(uci => this.sanAt(uci))
+  }
+
   // SAN of a UCI move from the puzzle's starting position
   sanAt(uci: string, fen = this.puzzle.fen): string {
     const pos = Chess.fromSetup(parseFen(fen).unwrap()).unwrap()
@@ -99,11 +105,27 @@ export class Drill {
     let uci = orig + dest
     if (expected?.startsWith(uci) && expected.length === 5) uci = expected
     else if (this.pos.board.get(parseSquare(orig)!)?.role === 'pawn' && /[18]$/.test(dest)) uci += 'q'
+    this.onUci(uci)
+  }
 
+  // Keyboard entry; returns false if the text isn't a legal move here
+  typeMove(text: string): boolean {
+    if (this.state !== 'playing' || this.pos.turn !== this.color) return false
+    const uci = parseTyped(this.pos, text)
+    if (!uci) return false
+    this.cg?.move(uci.slice(0, 2) as Key, uci.slice(2, 4) as Key)
+    this.onUci(uci)
+    return true
+  }
+
+  private onUci(uci: string) {
+    const expected = this.puzzle.solution[this.step]
     // Castling arrives as e1g1 or e1h1 depending on where the king was dropped
     const here = makeFen(this.pos.toSetup())
-    if (uci !== expected && (!expected || this.sanAt(uci, here) !== this.sanAt(expected, here))) return this.finish(false)
-    uci = expected
+    const accepted = this.step === 0 && this.puzzle.alternatives ? this.puzzle.alternatives : [expected]
+    const hit = accepted.find(a => a && (a === uci || this.sanAt(a, here) === this.sanAt(uci, here)))
+    if (!hit) return this.finish(false)
+    uci = hit
     this.cg?.set({ highlight: { custom: new Map() } })
     this.play(uci)
     if (this.step >= this.puzzle.solution.length) return this.finish(true)

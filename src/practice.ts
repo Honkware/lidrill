@@ -9,6 +9,7 @@ import { parseSquare, parseUci } from 'chessops/util'
 import type { Engine } from './analysis/engine'
 import { db, type Game, type Practice, type PracticeKind } from './db'
 import { povCp } from './puzzles/generate'
+import { parseTyped } from './typed'
 
 // Conversion and defense drills: positions from the player's own
 // games, played out against Stockfish. Cleared after 3 successes in a row.
@@ -115,9 +116,22 @@ export class PracticeRun {
     })
   }
 
-  private async onMove(orig: Key, dest: Key) {
+  private onMove(orig: Key, dest: Key) {
     let uci = orig + dest
     if (this.pos.board.get(parseSquare(orig)!)?.role === 'pawn' && /[18]$/.test(dest)) uci += 'q'
+    this.onUci(uci)
+  }
+
+  // Keyboard entry; returns false if the text isn't a legal move here
+  typeMove(text: string): boolean {
+    if (this.state !== 'your-move') return false
+    const uci = parseTyped(this.pos, text)
+    if (!uci) return false
+    this.onUci(uci)
+    return true
+  }
+
+  private async onUci(uci: string) {
     this.pos.play(parseUci(uci)!)
     this.moves++
     this.state = 'thinking'

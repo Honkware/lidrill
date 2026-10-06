@@ -11,13 +11,17 @@ export const BAND_DEFAULTS: Record<Band, { swingThresholdCp: number; marginCp: n
 const bandOf = (rating: number): Band => (rating < 1000 ? 'beginner' : rating < 1800 ? 'club' : 'advanced')
 
 // The current Lichess rating in the speed played most, rapid/classical first
-//Provisional ratings are skipped: a few games say little.
+//Settled ratings win; failing that, a provisional one with 5+ games,
+// which still beats game ratings that start every new account at 1500.
 export function bandFromRatings(perfs: Partial<Record<Speed, Perf>>): Band | undefined {
-  for (const speeds of [['rapid', 'classical'], ['blitz', 'bullet']] as Speed[][]) {
-    const known = speeds.map(s => perfs[s]).filter((p): p is Perf => !!p && p.games > 0 && !p.prov)
-    known.sort((a, b) => b.games - a.games)
-    if (known.length) return bandOf(known[0].rating)
-  }
+  for (const settled of [true, false])
+    for (const speeds of [['rapid', 'classical'], ['blitz', 'bullet']] as Speed[][]) {
+      const known = speeds
+        .map(s => perfs[s])
+        .filter((p): p is Perf => !!p && (settled ? p.games > 0 && !p.prov : p.games >= 5))
+      known.sort((a, b) => b.games - a.games)
+      if (known.length) return bandOf(known[0].rating)
+    }
   return undefined
 }
 

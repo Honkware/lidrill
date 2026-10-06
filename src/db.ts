@@ -45,6 +45,7 @@ export interface Game {
   accuracy?: number // Lichess accuracy %, when the game was analyzed there
   division?: { middle?: number; end?: number } // plies where middlegame/endgame start
   serverAnalysis?: boolean // evals came from Lichess's analysis
+  puzzlesVersion?: number // GENERATOR_VERSION that made its puzzles; missing = 1
 }
 
 export interface SyncState {
@@ -72,6 +73,8 @@ export interface Puzzle {
   fen: string
   played: string // UCI of what the player actually played
   solution: string[] // UCI, player and opponent moves alternating
+  // "Hold" puzzles: every first move that keeps the position (one-move only)
+  alternatives?: string[]
   solutionLen: number // player moves in the solution
   type: PuzzleType
   tag: PuzzleTag
@@ -91,8 +94,8 @@ export interface Profile {
   marginCp: number
   thresholdHistory?: { cp: number; at: number; solveRate: number }[] // calibration audit
   repertoire?: string[] // opening families the plan aims for, editable in Settings
+  repertoireStudy?: { id: string; name: string; lines: string[][] } // or a Lichess study's chapters
   ratings?: Partial<Record<Speed | 'puzzle', Perf>> // from /api/account when signed in
-  trainingTime?: string // S9: the player's answer to "when will you train?"
   weakThemes?: WeakTheme[] // from the Lichess puzzle dashboard
   puzzleActivityAt?: number // newest Lichess puzzle activity already read
   theme?: 'dark' | 'light'

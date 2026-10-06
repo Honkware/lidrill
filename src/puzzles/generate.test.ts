@@ -91,3 +91,29 @@ describe('generatePuzzles with Stockfish', () => {
     expect(p.type).toBe('missed-win')
   }, 120_000)
 })
+
+describe('hold puzzles', () => {
+  // 6. Ng5 with a made-up 3.5-pawn drop; the engine below is scripted
+  const moves = pgnMoves('1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. d3 d6 5. O-O Nf6 6. Ng5 O-O')!.map((m, i) => ({
+    ...m,
+    eval: { cp: i < 10 ? 30 : -320 },
+  }))
+  const line = (uci: string, cp: number): SearchResult => ({ eval: { cp }, pv: [uci], depth: 16, multipv: 1 })
+  const scripted = (holding: SearchResult[]) =>
+    ({ searchLines: async (_: string, __: number, count: number) => (count === 2 ? holding.slice(0, 2) : holding.slice(0, count)) }) as unknown as Engine
+  const opts = { swingThresholdCp: 300, marginCp: 150, depth: 16, maxSolutionMoves: 3 }
+
+  it('accepts any of 2-3 moves that keep the position', async () => {
+    const [p] = await generatePuzzles(game(moves, 'white'), scripted([line('c2c3', 40), line('h2h3', 20), line('b1c3', -10), line('f1e1', -200)]), opts)
+    expect(p.ply).toBe(11)
+    expect(p.alternatives).toEqual(['c2c3', 'h2h3', 'b1c3'])
+    expect(p.solution).toEqual(['c2c3'])
+  })
+
+  it('skips positions where almost anything holds, or where the played move held', async () => {
+    const many = [line('c2c3', 40), line('h2h3', 30), line('b1c3', 20), line('f1e1', 10)]
+    expect(await generatePuzzles(game(moves, 'white'), scripted(many), opts)).toEqual([])
+    const playedHolds = [line('c2c3', 40), line('f3g5', 20), line('f1e1', -300)]
+    expect(await generatePuzzles(game(moves, 'white'), scripted(playedHolds), opts)).toEqual([])
+  })
+})
