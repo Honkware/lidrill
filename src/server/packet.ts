@@ -75,6 +75,7 @@ export interface EngineReport {
   schema: typeof REPORT_SCHEMA
   fen: string // the puzzle position, player to move
   history?: string[] // earlier positions of the game, for repetition counts
+  lineCp?: number // the game's stored eval-line value at fen, player's point of view
   solution: string[] // UCI, the stored answer
   holding?: string[] // UCI, every move that holds (hold puzzles)
   kind: PuzzleKind
@@ -374,10 +375,12 @@ export function validReport(body: unknown): EngineReport | undefined {
   if (!b.habit || !Array.isArray(b.habit.recent) || b.habit.recent.length > 8 || !b.habit.recent.every(h => typeof h === 'string' && /^habit:[a-z0-9-]{1,40}$/.test(h))) return undefined
   if (b.habit.weeklyFocus !== undefined && !(typeof b.habit.weeklyFocus === 'string' && /^habit:[a-z0-9-]{1,40}$/.test(b.habit.weeklyFocus))) return undefined
   const themes = Array.isArray(b.themes) ? b.themes.filter(t => typeof t === 'string' && THEME.test(t)).slice(0, 12) : undefined
+  const lineCp = typeof b.lineCp === 'number' && Number.isInteger(b.lineCp) && Math.abs(b.lineCp) <= 10000 ? b.lineCp : undefined
   return {
     schema: REPORT_SCHEMA,
     fen: b.fen,
     history: b.history,
+    lineCp,
     solution: b.solution,
     holding: b.holding,
     kind: b.kind,
@@ -518,12 +521,22 @@ export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION
     const sb = tp.b ? swings(tp.b) : []
     const lineUci = tp.a.lines[0].pv.slice(0, 4)
     const tl = uciLine(nullFen, lineUci)
-    if (ts.stable && tl && Math.min(sa[0], sb[0] ?? -Infinity) >= CERT.threat[band]) {
+    // Mate arithmetic is saturated (cpOf maps every mate into ~10 cp of
+    // range). When the player is being mated, a forcing reply is on the
+    // board by definition: never certify null there - a false certifiedNull
+    // is the release blocker, caught by the null-threat tests - and only a
+    // mating null line may certify (cp "swings" are meaningless against a
+    // mate base). When the player holds the certified mate, the old rules
+    // stand: real threats still certify (the answer may stop them) and "no
+    // forcing reply" is true when the opponent cannot stop the mate.
+    const mated = bs.mateBoth && bs.typed.value < 0
+    const nullEval = ts.typed
+    const oppMates = ts.mateBoth && nullEval.value > 0
+    if (ts.stable && tl && (oppMates || (!mated && Math.min(sa[0], sb[0] ?? -Infinity) >= CERT.threat[band]))) {
       threatStatus = 'certified'
       const t = pvMoves(tl.replay, lineUci, 't')
       let net = 0
       for (const m of t) if (m.captured) net += (m.side === sideOf(opp) ? 1 : -1) * VALUE[m.captured]
-      const nullEval = ts.typed
       threat = {
         id: 'threat',
         san: t[0].san,
@@ -532,11 +545,11 @@ export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION
         viaNullMove: true,
         threatDef: THREAT_DEF,
         line: t,
-        consequence: ts.mateBoth && nullEval.value > 0 ? { type: 'mate', swingCp: Math.round(Math.min(sa[0], sb[0])), mateIn: nullEval.value } : net > 0 ? { type: 'winsMaterial', swingCp: Math.round(Math.min(sa[0], sb[0])), material: net } : { type: 'other', swingCp: Math.round(Math.min(sa[0], sb[0])) },
+        consequence: oppMates ? { type: 'mate', swingCp: Math.round(Math.min(sa[0], sb[0] ?? sa[0])), mateIn: nullEval.value } : net > 0 ? { type: 'winsMaterial', swingCp: Math.round(Math.min(sa[0], sb[0])), material: net } : { type: 'other', swingCp: Math.round(Math.min(sa[0], sb[0])) },
         certifiedAtDepth: ts.reached,
         complete: true,
       }
-    } else if (ts.stable && sa.length && sb.length && [...sa, ...sb].every(s => s < CERT.nullCp)) threatStatus = 'certifiedNull'
+    } else if (ts.stable && !mated && sa.length && sb.length && [...sa, ...sb].every(s => s < CERT.nullCp)) threatStatus = 'certifiedNull'
   }
 
   // Rule-draw state overrules the eval
