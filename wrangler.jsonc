@@ -18,13 +18,11 @@
     { "name": "PACKET_LIMIT", "namespace_id": "1002", "simple": { "limit": 30, "period": 60 } }
   ],
   // Packet store: key = packetHash, value = packet
-  // JSON, TTL 30 days. The id below is a LOCAL dev id (wrangler dev emulates
-  // KV). For preview/production run `wrangler kv namespace create PACKETS`
-  // (and `--preview` for preview_id) and paste the real ids over the
-  // placeholders.
+  // JSON, TTL 30 days. Real namespace ids (created 2026-10-06 with
+  // `wrangler kv namespace create PACKETS` / `--preview`); wrangler dev
+  // emulates KV so local runs ignore them.
   "kv_namespaces": [
-    // wrangler kv namespace create PACKETS  → id; --preview → preview_id
-    { "binding": "PACKETS", "id": "5446388847ad569b5fedb046becfded6", "preview_id": "<preview-id>" }
+    { "binding": "PACKETS", "id": "2442fe2be2e548ebb07922f28e05074b", "preview_id": "6b2c2309b5bf4f58a5cd2c4fdbf8a246" }
   ],
   "routes": [
     // www.lidrill.org is a proxied DNS record that a zone redirect rule sends here
