@@ -1,6 +1,7 @@
 import { templateFloor } from './floor'
 import { fromFen } from './facts'
 import type { Packet } from './packet'
+import { STYLE_WORDS } from './readability'
 import { movesById, gameFrameIds, NO_THREAT_ID, REF, renderRef, SLOTS, type Slot } from './render'
 import { validateSlots } from './slots'
 
@@ -54,15 +55,19 @@ export const SMOOTH = { temperature: 0.3, maxTokens: 900, usdPerMTokIn: 0.75, us
 
 export const SYSTEM_V2 = [
   'You write the explanation of a chess puzzle for an improving player, in the slots the packet lists: whatHappened, why, pattern, and nextTime only when the packet has a habit.',
-  'The puzzle position - the one the player just faced and tried moves in - is the default frame: a claim about it needs no marker. Facts tagged "frame":"game" in the list happened in the original game ({ref:played}, {ref:swing}, the pl… and c-punish ids): introduce them with wording like "in the game" or "the game move", never as moves made in the puzzle.',
+  'Three beats, then stop: beat 1 (whatHappened) - the move made in the game and its category, or the player\'s try in this puzzle when one is recorded, then the best move in this position with its certified consequence in one clause. Beat 2 (why) - the mechanism that makes the best move work, each claim anchored to the fact that proves it. Beat 3 (pattern, nextTime) - the one certified term and the trigger habit. The explanation ends at the move: no imagined future, no moves beyond the certified line.',
+  'The puzzle position - the one the player just faced and tried moves in - is the default frame: a claim about it needs no marker. Facts tagged "frame":"game" in the list happened in the original game ({ref:played}, {ref:swing}, the pl… and c-punish ids): introduce them with wording like "in the game" or "the game move", never as moves made in the puzzle. Bare "in the game" with no game fact in the same sentence is a violation: call the position "this position" or "here".',
   'You never write a chess move, square, number or piece-on-square yourself. Every fact is a fact id from the list; write it as {ref:<id>} and the app inserts the exact words. Write NO_THREAT only where the list says it is allowed.',
   'List every id you use in that slot\'s refs, and no others.',
   'Use only the fact ids given, each with the meaning shown. Add no plans, ideas or patterns that are not facts in the list.',
+  'One-term rule: name at most one chess term (fork, pin, removing the defender…) in the whole explanation, exactly once, in the pattern slot. Everywhere else name concrete pieces and squares by fact id; stacked jargon ("deflection-decoy-overload") fails.',
+  'Trigger-anchor rule: a claim about an abstract idea (pressure, space, the initiative) must carry the fact id that makes it true in the same sentence; if no fact proves it, leave it out.',
+  'Stay under the word budget the packet gives for the whole rendered explanation. Short sentences, subject-verb-object first, no stacked subordinate clauses.',
   'whatHappened: the move made here and what it cost - the player\'s try in this puzzle when one is recorded, otherwise the original game move, marked as game context. why: the mechanism, using the required ids and enough line steps. pattern: the certified pattern and its library text. nextTime: the habit id, nothing else of substance.',
   'Ownership: say "you"/"your" for the player\'s moves and patterns and "they"/"their" for the opponent\'s, right before the id, in the same sentence. Amounts like {ref:swing} take no "your".',
   'Certificate ids (c-…) render as a whole clause, like "every other move is at least 0.8 pawns worse": put them after a colon or after "because", never inside a phrase.',
   'Only say the answer stops, prevents or meets the threat if c-stops is in the list; only say a move was forced, needed or the only move if c-forced is.',
-  'Plain, short sentences. No praise, no labels like brilliant, no rhetorical questions, no exclamation marks. Do not start a sentence with This, That, It or Such.',
+  'Plain, short sentences. No praise, no labels like brilliant, no rhetorical questions, no exclamation marks. Do not open a sentence with This, That, It or Such used as a pronoun.',
   'Answer with JSON only: {"slots":[{"slot":"whatHappened","text":"…","refs":["…"]}, …]}, each listed slot exactly once.',
 ].join('\n')
 
@@ -124,6 +129,8 @@ export function promptView(p: Packet) {
   const facts = p.claimAnchors.map(id => ({ id, means: id === NO_THREAT_ID ? 'no forcing reply (write NO_THREAT)' : renderRef(id, p), owner: owner(id), frame: gameIds.has(id) ? 'game' : 'puzzle' }))
   return {
     level: p.context.band,
+    // Style economy: the whole rendered explanation stays under this
+    wordBudget: STYLE_WORDS[p.context.band],
     puzzleType: p.didactic.puzzleType,
     youPlay: p.position.playerColor,
     verdictBefore: p.eval.verdict.before,
@@ -162,7 +169,13 @@ export async function narrate(p: Packet, call: Caller): Promise<Narration> {
   const models: string[] = []
   const floor = (reason: string): Narration => ({ slots: templateFloor(p), source: 'floor', reason, calls, cost, models })
   if (p.meta.certification.status !== 'certified') return floor(`not certified: ${p.meta.certification.refusals.join('; ')}`)
-  if (p.threatStatus === 'uncertified' && !p.position.check.before) return floor('threat not certified')
+  // The pattern slot must name a certified term. A quiet position
+  // has no honest one, so it floors by design until the motif library grows
+  // strategic entries (outpost, weak square…)
+  if (!p.didactic.motifCert && !p.certificates.some(c => c.type === 'mate')) return floor('no certified term for the pattern slot')
+  // A direct mate ends the game at the move: an uncertified threat can't
+  // matter, so it is no longer a floor reason
+  if (p.threatStatus === 'uncertified' && !p.position.check.before && p.best.mateIn !== 1) return floor('threat not certified')
 
   const view = JSON.stringify(promptView(p))
   const slotSchema = SLOT_SCHEMA(p.didactic.habitSlotId ? 4 : 3)

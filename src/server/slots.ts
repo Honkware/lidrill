@@ -1,7 +1,7 @@
 import type { Band } from '../db'
 import { family, HABITS } from './habits'
 import type { Packet, SlotName } from './packet'
-import { checkCeilings } from './readability'
+import { checkCeilings, styleBudget } from './readability'
 import { gameFrameIds, NO_THREAT_ID, REF, renderRef, renderText, SLOTS, type Slot } from './render'
 import { toneViolations } from './tone'
 
@@ -48,6 +48,20 @@ const CONCEPTS: [string, RegExp][] = [
 ]
 const NEVER = /\b(deflect\w*|overload\w*|decoy\w*|zwischenzug|intermezzo|x-ray|interfer\w*|clearance|attraction|zugzwang|fortress)\b/i
 const LOANWORDS = /\b(zwischenzug|zugzwang|prophylaxis|prophylactic|fianchetto|luft|desperado|tempo)\b/i
+
+// Trigger-anchor: abstract ideas may appear only in a sentence that
+// carries the fact that proves them - an unanchored abstraction is pruned,
+// never served
+const ABSTRACT =
+  /\b(initiative|pressur\w+|compensations?|developments?|activities|positional|crush\w*|decisive|domin\w+|overwhelm\w+|sacrific\w+|speculat\w*|attacks?|attacked|attacking|threatens?|spac\w+)\b/i
+
+// A demonstrative used as a pronoun ("This was…") dangles; used as an
+// adjective ("This position has…") it names its referent. The
+// exemplar opens "This position has a direct win", so only the pronoun
+// use is linted. Closed verb list - the word after the demonstrative
+// decides, not a model's judgement.
+const DEMONSTRATIVE_VERB =
+  /^(is|are|was|were|has|have|had|does|do|did|comes?|came|means?|meant|looks?|seems?|seemed|feels?|felt|sounds?|proved?|turns?|turned|happens?|happened|costs?|cost|wins?|won|loses?|lost|leaves?|left|gives?|gave|takes?|took|gets?|got|keeps?|kept|makes?|made|helps?|works?|worked|shows?|showed|reads?|matters?|counted?|counts?)$/i
 
 const SUBJECTS: [RegExp, 'player' | 'opponent' | 'neutral'][] = [
   [/\b(you|your|you're|you've)\b/gi, 'player'],
@@ -115,11 +129,20 @@ export function validateSlots(out: unknown, p: Packet): Verdict {
     for (const r of s.refs) if (!used.includes(r)) v.push(`${s.slot}: ${r} is listed but not used in the text`)
     // 3. Notation outside refs
     for (const [re, what] of NOTATION) if (re.test(m)) v.push(`${s.slot}: ${what} written out ("${m.match(re)![0]}"); use the fact id instead`)
-    // 9. Anaphora: a sentence can't open with This/That/It/Such unless a ref follows at once
+    // 9. Anaphora: a sentence can't open with a demonstrative pronoun
+    // (This/That/It/Such) unless a ref follows at once; "This position…"
+    // is an adjective use and names its own referent
     for (const sent of sentencesOf(s.text)) {
       const w = sent.trim().split(/\s+/)
-      if (/^(This|That|It|Such|These|Those)$/.test(w[0]) && !w.slice(1, 3).some(x => REF.test(x) || /\{ref:/.test(x))) v.push(`${s.slot}: "${w[0]}" opens a sentence without saying what it refers to`)
+      if (/^(This|That|It|Such|These|Those)$/.test(w[0] ?? '') && (w.length === 1 || DEMONSTRATIVE_VERB.test(w[1] ?? '')) && !w.slice(1, 3).some(x => REF.test(x) || /\{ref:/.test(x)))
+        v.push(`${s.slot}: "${w[0]}" opens a sentence without saying what it refers to`)
       REF.lastIndex = 0
+    }
+    // Trigger-anchor: an abstract claim needs the fact that makes
+    // it true in the same sentence; with no fact there is nothing to anchor it
+    for (const sent of sentencesOf(s.text)) {
+      const a = ABSTRACT.exec(mask(sent))
+      if (a && refIds(sent).length === 0) v.push(`${s.slot}: "${a[0]}" is an abstraction with no fact in its sentence - anchor it to the feature that makes it true`)
     }
     // 5. Polarity: threats and patterns keep their owner
     for (const sent of sentencesOf(s.text)) {
@@ -140,6 +163,13 @@ export function validateSlots(out: unknown, p: Packet): Verdict {
         if (gameIds.has(id) && !GAME_MARK.test(sent)) v.push(`${s.slot}: ${id} is from the original game - mark it as game context ("in the game, …")`)
       }
     }
+    // The other way round: "the game" appears only attached to a
+    // game fact - a bare "in the game" with no game id in its sentence
+    // confuses the source game with this position
+    for (const sent of sentencesOf(s.text)) {
+      if (/\bthe game\b/i.test(mask(sent)) && ![...sent.matchAll(REF)].some(rm => gameIds.has(rm[1] ?? NO_THREAT_ID)))
+        v.push(`${s.slot}: "the game" with no game fact in the sentence - attach it to the played fact or say "this position"`)
+    }
   }
 
   const all = slots.map(s => mask(s.text)).join(' ')
@@ -148,6 +178,28 @@ export function validateSlots(out: unknown, p: Packet): Verdict {
   for (const [name, re] of CONCEPTS) if (re.test(all) && !certified.has(name as never)) v.push(`names "${all.match(re)![0]}" but no ${name} is certified`)
   if (NEVER.test(all)) v.push(`names "${all.match(NEVER)![0]}", which lidrill doesn't detect`)
   if (band !== 'advanced' && LOANWORDS.test(all)) v.push(`"${all.match(LOANWORDS)![0]}" is too technical at this level`)
+
+  // One-term rule: a single certified term per explanation, used
+  // once, in the pattern slot; stacked jargon is a lint violation that
+  // leads to prune/repair, never silently served. Refs are masked first:
+  // ids like {ref:c-hang} or {ref:gloss:fork} are not the model naming a term
+  const mentions: { name: string; slot: SlotName }[] = []
+  for (const s of slots)
+    for (const [name, re] of CONCEPTS) {
+      const g = new RegExp(re.source, 'gi')
+      const m = mask(s.text)
+      while (g.exec(m) !== null) mentions.push({ name, slot: s.slot })
+    }
+  if (mentions.length > 1) {
+    const distinct = [...new Set(mentions.map(x => x.name))]
+    v.push(
+      distinct.length > 1
+        ? `terms stack (${distinct.join(' + ')}) - one certified term per explanation, in the pattern slot`
+        : `"${mentions[0].name}" is used ${mentions.length} times - the one certified term is used once`,
+    )
+  } else if (mentions.length === 1 && mentions[0].slot !== 'pattern') {
+    v.push(`the certified term "${mentions[0].name}" belongs in the pattern slot, not in ${mentions[0].slot}`)
+  }
 
   // 6. Modality
   const forced = p.certificates.find(c => c.id === 'c-forced')
@@ -162,10 +214,11 @@ export function validateSlots(out: unknown, p: Packet): Verdict {
   // 7. Didactics
   for (const name of SLOTS)
     for (const req of p.didactic.requiredRefs[name]) if (!req.split('|').some(r => by[name].refs.includes(r))) v.push(`${name} must use ${req.split('|').join(' or ')}`)
-  // the threat or a certified "no threat"
+  // the threat or a certified "no threat"; a direct mate (mate in 1)
+  // ends the game at the move, so no threat can matter
   const usesNoThreat = slots.some(s => s.refs.includes(NO_THREAT_ID))
   if (usesNoThreat && p.threatStatus !== 'certifiedNull') v.push('NO_THREAT is only allowed when no threat is certified')
-  if (p.threatStatus === 'uncertified' && !p.position.check.before) v.push('the threat could not be certified, so this needs the fixed text')
+  if (p.threatStatus === 'uncertified' && !p.position.check.before && p.best.mateIn !== 1) v.push('the threat could not be certified, so this needs the fixed text')
   // the pattern slot's motif is the generator's
   const patternCerts = by.pattern.refs.filter(r => p.certificates.find(c => c.id === r && c.type === 'tactical'))
   if (patternCerts.some(r => r !== p.didactic.motifCert)) v.push(`pattern must be about ${p.didactic.motifCert ?? 'no detected pattern'}`)
@@ -187,6 +240,10 @@ export function validateSlots(out: unknown, p: Packet): Verdict {
     for (const s of slots) if (refIds(s.text).some(r => renderRef(r, p) === undefined)) v.push(`${s.slot}: a ref can't be rendered`)
     const present = SLOTS.filter(n => text[n] !== undefined)
     const whole = present.map(n => text[n]).join(' ')
+    // Style budget on the rendered text (the ceilings above
+    // remain the hard caps)
+    const style = styleBudget(whole, band)
+    if (style) v.push(`style: ${style}`)
     // Readability on what the player reads; a rendered fact counts as one
     // word toward sentence length (it's one unit, written by the renderer)
     const unitText = present.map(n => by[n].text.replace(REF, 'X')).join(' ')

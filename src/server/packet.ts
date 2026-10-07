@@ -429,7 +429,7 @@ function stability(p: RunPair, flip: boolean) {
 
 export type BuildResult = { ok: true; packet: Packet } | { ok: false; error: string }
 
-export const PROMPT_VERSION = 'p2.2'
+export const PROMPT_VERSION = 'p2.3'
 export const RENDERER_VERSION = 'render/1.0'
 
 export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION): BuildResult {
@@ -659,12 +659,15 @@ export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION
     gloss.id,
   ]
   const required: Record<SlotName, string[]> = {
-    // The puzzle position is the default frame. When the player's try is
-    // recorded, whatHappened is about the try, not the original game move;
-    // only without a try does the game move (marked as game context) lead
-    whatHappened: tried ? ['tried', 'tryswing'] : played ? ['played', 'swing'] : ['best'],
-    why: [threatRequirement(threatStatus, threat, pos.isCheck())].filter((x): x is string => !!x),
-    pattern: bestMotif ? ['c-motif', gloss.id] : [gloss.id],
+    // Three beats: whatHappened contrasts the game move (or
+    // the player's try) and its category with the best move in this
+    // position; the category rides the swing or the punishment certificate
+    whatHappened: tried ? ['tried', 'best', 'tryswing|c-try'] : played ? ['played', 'best', 'swing|c-punish'] : ['best'],
+    why: [threatRequirement(threatStatus, threat, pos.isCheck(), mateIn)].filter((x): x is string => !!x),
+    // The pattern slot names the certified point: the tactical motif, or
+    // the mate when there is no motif; a quiet position has no honest term
+    // and floors by design until the library grows strategic entries
+    pattern: bestMotif ? ['c-motif', gloss.id] : certificates.some(c => c.type === 'mate') ? ['c-mate'] : [gloss.id],
     nextTime: habit ? [habit.id] : [],
   }
   // Per-type additions
@@ -754,7 +757,11 @@ function stopsThreat(fenAfterBest: string, t: PvMove): boolean {
   return false
 }
 
-function threatRequirement(status: ThreatStatus, threat: Packet['threat'], inCheck: boolean): string | undefined {
+function threatRequirement(status: ThreatStatus, threat: Packet['threat'], inCheck: boolean, mateIn: number | null): string | undefined {
+  // A direct mate ends the game at the move: no threat can matter, so the
+  // why slot need not carry one (exemplar is a missed mate-in-1
+  // whose why is the mating mechanism)
+  if (mateIn === 1) return undefined
   if (status === 'certified' && threat) return 'threat'
   if (status === 'certifiedNull') return 'threat|c-nothreat'
   // In check the threat is already on the board: the check itself

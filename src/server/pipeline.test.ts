@@ -47,7 +47,7 @@ const packetOf = (r: EngineReport): Packet => {
 }
 
 const good = (): Slot[] => [
-  { slot: 'whatHappened', text: 'In the game, {ref:played} cost you {ref:swing}.', refs: ['played', 'swing'] },
+  { slot: 'whatHappened', text: 'In the game, {ref:played} cost you {ref:swing}. This position has {ref:best}.', refs: ['played', 'swing', 'best'] },
   { slot: 'why', text: 'They had NO_THREAT, so you were free to play {ref:best}. After {ref:pv1}, {ref:pv2} takes the rook.', refs: ['c-nothreat', 'best', 'pv1', 'pv2'] },
   { slot: 'pattern', text: 'Your idea: {ref:c-motif}. {ref:gloss:fork}', refs: ['c-motif', 'gloss:fork'] },
   { slot: 'nextTime', text: '{ref:habit:two-targets}', refs: ['habit:two-targets'] },
@@ -124,7 +124,7 @@ describe('packet', () => {
   it('names a missed mate as a mate, never as pawns', () => {
     const p = packetOf(legalReport())
     expect(p.played!.swing).toMatchObject({ type: 'mate', value: 2 })
-    expect(renderText(templateFloor(p), p).whatHappened).toBe('In the game, Kxd1 cost you a mate in 2.')
+    expect(renderText(templateFloor(p), p).whatHappened).toBe('In the game, Kxd1 cost you a mate in 2. Answer: Bxf7+.')
   })
 
   it('dead draws carry no concepts and no threat', () => {
@@ -233,6 +233,10 @@ describe('validator', () => {
   const pc = (band: Packet['context']['band']) => packetOf(forkReport({ band }))
   const withThreat = packetOf(legalReport())
   const hold = packetOf(forkReport({ best: forkReport().best.map(r => ({ ...r, lines: [r.lines[0], { pv: ['e1e2'], eval: cp(480) }] })), holding: ['d5c7', 'e1e2'], kind: 'hold' }))
+  // One-term rule: a packet where two patterns are certified at once
+  const stacked = packetOf(forkReport())
+  stacked.certificates.push({ id: 'c-pin', type: 'tactical', subject: 'best', side: 'w', targetSide: 'b', motif: 'pin', payload: {}, text: 'the bishop on f4 pins the knight on c6' })
+  stacked.claimAnchors.push('c-pin')
   const edit = (slot: number, text: string, refs?: string[]): Slot[] => good().map((s, i) => (i === slot ? { ...s, text, refs: refs ?? s.refs } : s))
 
   it('accepts a good draft', () => {
@@ -324,10 +328,43 @@ describe('validator', () => {
     ], hold],
     ['bad ref charset', edit(0, 'You played {ref:PV1} and it cost {ref:swing}.', ['swing'])],
     ['not JSON slots at all', 'You played Ke2 and it cost a rook.'],
+    // Style economy: one term, in the pattern slot, anchored, on budget
+    ['term used twice', edit(2, 'Your idea: a fork and a fork. {ref:gloss:fork}', ['gloss:fork'])],
+    ['term outside the pattern slot', edit(1, 'They had NO_THREAT, so {ref:best} was a fork. After {ref:pv1}, {ref:pv2} takes the rook.')],
+    ['stacked jargon', edit(1, 'They had NO_THREAT, so {ref:best} forked the king and pinned the queen. After {ref:pv1}, {ref:pv2} takes the rook.'), stacked],
+    ['unanchored abstraction', edit(1, 'The pressure was decisive here. They had NO_THREAT, so {ref:best} was free. After {ref:pv1}, {ref:pv2} takes the rook.')],
+    ['bare "in the game"', edit(0, 'In the game, {ref:played} cost you {ref:swing}. The game was complicated before that.')],
+    [
+      'over the style budget',
+      edit(
+        1,
+        'They had NO_THREAT, so {ref:best} was on the board. You looked at it. You saw the pieces. You checked the line. You took your time. After {ref:pv1}, {ref:pv2} takes the rook.',
+      ),
+      pc('beginner'),
+    ],
   ]
   it.each(hostile)('catches: %s', (_, draft, packet) => {
     const out = Array.isArray(draft) ? { slots: draft } : draft
     expect(validateSlots(out, packet ?? p).ok).toBe(false)
+  })
+
+  it('names the style-budget break and nothing else on a merely long draft', () => {
+    const long = edit(
+      1,
+      'They had NO_THREAT, so {ref:best} was on the board. You looked at it. You saw the pieces. You checked the line. You took your time. After {ref:pv1}, {ref:pv2} takes the rook.',
+    )
+    const verdict = validateSlots({ slots: long }, pc('beginner'))
+    expect(verdict.ok).toBe(false)
+    expect(verdict.violations.join()).toMatch(/style: total \d+ words > 80/)
+  })
+
+  it('the padded draft is inside the style budget at club and advanced (deep-check satisfied)', () => {
+    const padded = edit(
+      1,
+      'They had NO_THREAT, so {ref:best} was on the board. You looked at it. You saw the pieces. You checked the line. You took your time. After {ref:pv1}, {ref:pv2} takes the rook. Also: {ref:c-forced}.',
+      ['c-nothreat', 'best', 'pv1', 'pv2', 'c-forced'],
+    )
+    for (const band of ['club', 'advanced'] as const) expect(validateSlots({ slots: padded }, pc(band)).ok, band).toBe(true)
   })
 
   it('the suite is at least 41 drafts', () => expect(hostile.length).toBeGreaterThanOrEqual(41))
@@ -343,10 +380,10 @@ describe('explanation context', () => {
   it('a recorded try leads whatHappened; the original game move is not its subject', () => {
     const p = packetOf(triedReport())
     expect(p.tried?.san).toBe('Ne3')
-    expect(p.didactic.requiredRefs.whatHappened).toEqual(['tried', 'tryswing'])
+    expect(p.didactic.requiredRefs.whatHappened).toEqual(['tried', 'best', 'tryswing|c-try'])
     expect(p.claimAnchors).toContain('tryswing')
     const text = renderText(templateFloor(p), p)
-    expect(text.whatHappened).toBe('You tried Ne3 and it cost you 5.0 pawns.')
+    expect(text.whatHappened).toBe('You tried Ne3 and it cost you 5.0 pawns. Answer: Nc7+.')
     expect(text.whatHappened).not.toContain('Ke2')
     expect(validateSlots({ slots: templateFloor(p) }, p).violations.filter(x => !/^readability/.test(x))).toEqual([])
   })
@@ -354,7 +391,7 @@ describe('explanation context', () => {
   it('a draft about the try passes; the same draft lecturing the game move fails', () => {
     const p = packetOf(triedReport())
     const draft: Slot[] = [
-      { slot: 'whatHappened', text: 'You tried {ref:tried} and it cost you {ref:tryswing}.', refs: ['tried', 'tryswing'] },
+      { slot: 'whatHappened', text: 'You tried {ref:tried} and it cost you {ref:tryswing}. This position has {ref:best}.', refs: ['tried', 'tryswing', 'best'] },
       good()[1],
       good()[2],
       { slot: 'nextTime', text: '{ref:habit:two-targets}', refs: ['habit:two-targets'] },
@@ -372,7 +409,7 @@ describe('explanation context', () => {
     // Without the marker the puzzle reads as if the game move happened here
     expect(validateSlots({ slots: what('You played {ref:played} and it cost you {ref:swing}.', ['played', 'swing']) }, p).violations.join()).toMatch(/original game/)
     // With it, the same fact is fine
-    expect(validateSlots({ slots: what('In the game, {ref:played} cost you {ref:swing}.', ['played', 'swing']) }, p)).toMatchObject({ ok: true, violations: [] })
+    expect(validateSlots({ slots: what('In the game, {ref:played} cost you {ref:swing}. This position has {ref:best}.', ['played', 'swing', 'best']) }, p)).toMatchObject({ ok: true, violations: [] })
     // The game's reply line is game context too, and the marker must sit in its own sentence
     const whyNoMark = good().map(s =>
       s.slot === 'why' ? { ...s, text: 'They had NO_THREAT, so you were free to play {ref:best}. After {ref:pv1}, {ref:pv2} takes the rook. Replying to {ref:played}, they choose {ref:pl1}.', refs: ['c-nothreat', 'best', 'pv1', 'pv2', 'played', 'pl1'] } : s,
@@ -504,12 +541,12 @@ describe('narrator pipeline', () => {
     const hang: Certificate = { id: 'c-hang', type: 'tactical', subject: 'best', side: 'b', targetSide: 'w', motif: 'hanging piece', payload: { square: 'b8', piece: 'rook' }, text: 'the rook on b8 was loose' }
     p.certificates.push(hang)
     p.claimAnchors.push('c-hang')
-    const why = 'They had {ref:c-nothreat} and their {ref:c-hang} was loose, so you were free to play {ref:best}. After {ref:pv1}, {ref:pv2} takes the rook.'
+    const why = 'They had {ref:c-nothreat} and {ref:c-hang}, so you were free to play {ref:best}. After {ref:pv1}, {ref:pv2} takes the rook.'
     const draft = good().map(s => (s.slot === 'why' ? { ...s, text: why, refs: ['c-nothreat', 'c-hang', 'best', 'pv1', 'pv2'] } : s))
     const claims = {
       claims: [
-        { slot: 'whatHappened', text: 'In the game, {ref:played} cost you {ref:swing}.', refs: ['played', 'swing'], tense: 'past' },
-        { slot: 'why', text: 'They had {ref:c-nothreat} and their {ref:c-hang} was loose', refs: ['c-nothreat', 'c-hang'], tense: 'present' },
+        { slot: 'whatHappened', text: 'In the game, {ref:played} cost you {ref:swing}. This position has {ref:best}.', refs: ['played', 'swing', 'best'], tense: 'past' },
+        { slot: 'why', text: 'They had {ref:c-nothreat} and {ref:c-hang}', refs: ['c-nothreat', 'c-hang'], tense: 'present' },
         { slot: 'why', text: 'so you were free to play {ref:best}', refs: ['best'], tense: 'past' },
         { slot: 'why', text: 'After {ref:pv1}, {ref:pv2} takes the rook.', refs: ['pv1', 'pv2'], tense: 'past' },
       ],

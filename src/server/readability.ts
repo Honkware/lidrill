@@ -104,6 +104,21 @@ export const CEILINGS: Record<Band, Ceiling> = {
   advanced: { fk: 9, smog: 12, sentenceWords: 24, totalWords: 200 },
 }
 
+// Style economy: the whole rendered explanation stays this short.
+// These are tighter than the hard caps above - 80/110/150 vs
+// 130/160/200 - and are enforced on rendered text in the validator.
+export const STYLE_WORDS: Record<Band, number> = {
+  beginner: 80,
+  club: 110,
+  advanced: 150,
+}
+
+// The one style-budget break, or undefined when the text fits
+export function styleBudget(text: string, band: Band): string | undefined {
+  const n = words(text).length
+  return n > STYLE_WORDS[band] ? `total ${n} words > ${STYLE_WORDS[band]} (style budget)` : undefined
+}
+
 const round = (n: number) => Math.round(n * 100) / 100
 
 // Every way the text breaks its band's ceiling, empty when it fits
