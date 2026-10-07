@@ -15,6 +15,7 @@ import { PracticeRun } from './practice'
 import { Replay } from './replay'
 import { weekReport, weeklyZeroHang, type WeekReport } from './report'
 import { corpus, exportMarks, loadMarks, saveMarks, type Mark } from './precision'
+import { sound } from './sound'
 import { SignInExpired } from './sync/lichess'
 import { dueQueue, saveWhyMissed, type DayQueue } from './train'
 
@@ -346,6 +347,7 @@ export class Ctrl {
     this.queueLeft = this.queue.length
     const puzzle = id ? await db.puzzles.get(id) : undefined
     if (!puzzle) {
+      sound.notify() // the daily queue is done
       this.notice = { text: 'Done for today.' }
       return this.go('today')
     }

@@ -1,10 +1,10 @@
 // Offline shell. The shell (page, its hashed JS/CSS, fonts) is
 // cached at install so later starts don't wait on the network; pages still
 // come from the network first when it answers within two seconds, so a new
-// deploy shows up on the next load. The engine, pieces and boards are cached
-// on first use. Lichess and Chess.com calls are never cached here.
+// deploy shows up on the next load. The engine, pieces, boards and sounds are
+// cached on first use. Lichess and Chess.com calls are never cached here.
 const CACHE = 'lidrill-v2'
-const STATIC = /^\/(assets|engine|pieces|fonts|board)\//
+const STATIC = /^\/(assets|engine|pieces|fonts|board|sound)\//
 
 self.addEventListener('install', e =>
   e.waitUntil(

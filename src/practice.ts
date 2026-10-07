@@ -10,6 +10,7 @@ import type { Engine } from './analysis/engine'
 import { checkColor } from './checkColor'
 import { db, type Game, type Practice, type PracticeKind } from './db'
 import { povCp } from './puzzles/generate'
+import { landSound, sound } from './sound'
 import { parseTyped } from './typed'
 
 // Conversion and defense drills: positions from the player's own
@@ -133,11 +134,14 @@ export class PracticeRun {
   }
 
   private async onUci(uci: string) {
-    this.pos.play(parseUci(uci)!)
+    const move = parseUci(uci)!
+    const capture = this.pos.board.get(move.to) !== undefined || move.to === this.pos.epSquare
+    this.pos.play(move)
     this.moves++
     this.state = 'thinking'
     this.sync(uci)
     this.redraw()
+    sound[landSound(capture, this.pos.isCheck())]()
     if (this.pos.isCheckmate()) return this.end('won')
     if (this.pos.isEnd()) return this.end(this.practice.kind === 'defense' ? 'won' : 'lost') // a draw holds, but doesn't convert
 
@@ -146,9 +150,11 @@ export class PracticeRun {
     this.cp = -povCp(reply.eval, 'white')
     const early = verdict(this.practice.kind, this.practice.startCp, this.cp, this.moves)
     if (early === 'lost' || !reply.pv[0]) return this.end(early ?? 'lost')
-    const move = parseUci(reply.pv[0])!
-    this.last = makeSan(this.pos, move)
-    this.pos.play(move)
+    const replyMove = parseUci(reply.pv[0])!
+    this.last = makeSan(this.pos, replyMove)
+    const took = this.pos.board.get(replyMove.to) !== undefined || replyMove.to === this.pos.epSquare
+    this.pos.play(replyMove)
+    sound[landSound(took, this.pos.isCheck())]()
     if (this.pos.isCheckmate()) return this.end('lost')
     if (this.pos.isEnd()) return this.end(this.practice.kind === 'defense' ? 'won' : 'lost')
     if (early) return this.end(early)
@@ -159,6 +165,8 @@ export class PracticeRun {
 
   private async end(result: 'won' | 'lost') {
     this.state = result
+    if (result === 'won') sound.win()
+    else sound.lose()
     this.sync()
     const p = this.practice
     const streak = result === 'won' ? p.streak + 1 : 0

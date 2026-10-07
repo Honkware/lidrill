@@ -14,6 +14,7 @@ import { renderSlot, type BoardLink, type Segment } from './server/render'
 import type { Packet, SlotName } from './server/packet'
 import { pawns } from './format'
 import { recordAttempt } from './train'
+import { landSound, sound } from './sound'
 import { parseTyped } from './typed'
 
 // How a puzzle plays, modelled on Lichess's trainer (lila ui/puzzle):
@@ -157,7 +158,11 @@ export class Drill {
       // Turning Points arrives with the board already at the puzzle position
       this.cursor = owned ? 0 : this.start
       this.sync()
-      if (this.cursor < this.start) this.later(() => this.go(this.start), INTRO_MS)
+      if (this.cursor < this.start)
+        this.later(() => {
+          this.land(this.start) // the opponent's last move animates in
+          this.go(this.start)
+        }, INTRO_MS)
       this.later(() => {
         this.canViewSolution = true
         this.redraw()
@@ -257,6 +262,7 @@ export class Drill {
     if (this.state === 'view') {
       // Free play after the puzzle: a new line from here
       this.push(uci)
+      this.land(this.cursor)
       this.sync()
       return this.redraw()
     }
@@ -272,6 +278,7 @@ export class Drill {
     this.showHint = false
     const end = this.push(hit ?? uci, { mark: 'good' })
     this.step++
+    sound.good() // the grade: right move
     if (end.isCheckmate() || this.step >= this.puzzle.solution.length) {
       this.nodes[this.cursor].mark = 'win'
       return void this.complete()
@@ -283,14 +290,27 @@ export class Drill {
     this.later(() => {
       this.push(this.puzzle.solution[this.step])
       this.step++
+      this.land(this.cursor)
       this.sync()
       this.redraw()
     }, REPLY_MS)
   }
 
+  // The sound of the move that produced nodes[i]: a capture or a check if it
+  // is one, else the plain knock. Nodes before index 1 have no from-position.
+  private land(i: number) {
+    const uci = this.nodes[i]?.uci
+    const move = uci && parseUci(uci)
+    if (!move || i < 1) return
+    const before = this.posAt(i - 1)
+    const capture = before.board.get(move.to) !== undefined || move.to === before.epSquare
+    sound[landSound(capture, this.posAt(i).isCheck())]()
+  }
+
   // Show the wrong move, then take it back and let the player try again
   private miss(uci: string, san: string) {
     this.misses.push(san)
+    sound.bad() // the grade: wrong move
     if (this.step === 0) this.firstTry ??= uci
     this.feedback = 'fail'
     this.reverting = true

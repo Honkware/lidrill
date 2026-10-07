@@ -6,6 +6,7 @@ import { PREFERENCE_SCOPE } from '../lichess/api'
 import { STUDY_READ_SCOPE } from '../lichess/repertoire'
 import { STUDY_SCOPE } from '../lichess/study'
 import { BOARDS, DEFAULT_BOARD, DEFAULT_PIECES, PIECE_SETS } from '../look'
+import { setSound, soundOn } from '../sound'
 import { button, card, label } from './ui'
 import { chesscomField } from './welcome'
 
@@ -127,6 +128,12 @@ export function settingsView(ctrl: Ctrl): VNode {
       'space-y-3',
     ),
     el('p', 'px-1 text-xs text-dim', 'lidrill is open source under the GPL. Stockfish 19 runs in your browser.'),
+    el(
+      'button',
+      'inline-flex min-h-11 items-center gap-2 px-1 text-sm text-dim',
+      { attrs: { type: 'button', 'aria-pressed': soundOn() }, on: { click: () => { setSound(!soundOn()); ctrl.redraw() } } },
+      ['Sounds', el('span', { class: { 'text-accent': soundOn() } }, soundOn() ? 'On' : 'Off')],
+    ),
     el('p', 'px-1 text-xs', [el('a', 'text-dim underline decoration-dotted underline-offset-2', { attrs: { href: '#/precision' } }, 'Review explanation claims (release gate)')]),
   ])
 }

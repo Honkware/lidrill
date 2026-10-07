@@ -9,6 +9,7 @@ import { checkColor } from './checkColor'
 import { Drill } from './drill'
 import { db, type Game, type Puzzle } from './db'
 import { lineEvalCp, reconcileWithLine } from './server/consistency'
+import { scoreSound, sound } from './sound'
 
 export type ReplayState = 'playing' | 'stop' | 'between' | 'done'
 
@@ -87,8 +88,7 @@ export class Replay {
     if (!this.current) {
       // No stops left: the score is what matters, not the rest of the game
       this.show(this.fens.length - 1)
-      this.state = 'done'
-      return this.redraw()
+      return this.done()
     }
     this.state = 'playing'
     this.redraw()
@@ -148,12 +148,18 @@ export class Replay {
       return
     }
     if (this.ply >= this.game.moves.length) {
-      this.state = 'done'
-      this.redraw()
-      return
+      return this.done()
     }
     this.show(this.ply + 1)
     this.redraw()
     this.schedule()
+  }
+
+  // The end of the game: the stops' score reads as a win, loss or draw
+  private done() {
+    this.state = 'done'
+    const s = scoreSound(this.results.filter(Boolean).length, this.stops.length)
+    if (s) sound[s]()
+    this.redraw()
   }
 }
