@@ -25,9 +25,11 @@ const noEngine = { search: async () => ({ eval: { cp: 20 }, pv: [], depth: 1, mu
 const judged = async (g: Game) => ({ ...g, moves: await analyzeMoves(g.moves, noEngine, { depth: 1, bookPlies: 8 }), analyzedAt: 1 })
 
 describe('reference account', () => {
-  it('has the 25 games, 12 with Lichess analysis', () => {
-    expect(games.length).toBe(25)
-    expect(analysed.length).toBe(12)
+  it('has the 38 games, 25 with analysis', () => {
+    // 25 Lichess games (12 analysed) + 13 chess.com games from the PT import
+    // (evals synthesized by scripts/build-chesscom-corpus.mjs, 2026-10-06)
+    expect(games.length).toBe(38)
+    expect(analysed.length).toBe(25)
   })
 
   it('is a beginner: 9 provisional rapid games at 884 beat the 1500 starting ratings', () => {
@@ -38,7 +40,7 @@ describe('reference account', () => {
 
   it('is hang-dominant: most analysed games have a 3-pawn hang', async () => {
     const hangs = (await Promise.all(analysed.map(judged))).filter(g => hangOf(g, 'beginner'))
-    expect(hangs.length).toBe(10)
+    expect(hangs.length).toBe(22)
   })
 })
 
