@@ -104,14 +104,18 @@ def test_analyze_game_shape():
 
 def test_evals_not_searched_again_when_known():
     # Lichess-server-analyzed games carry evals on the moves; those positions
-    # must not be re-searched (same rule as analyze.ts)
+    # must not be re-searched (same rule as analyze.ts). With a zero book the
+    # start position (i=0, nothing before it) is searched - as in the client
+    board = chess.Board()
     moves = [
         {"san": "f3", "uci": "f2f3", "eval": {"cp": 20}},
         {"san": "e5", "uci": "e7e5", "eval": {"cp": -30}},
         {"san": "g4", "uci": "g2g4", "eval": {"cp": -400}},
         {"san": "Qh4#", "uci": "d8h4", "eval": {"cp": -MATED}},
     ]
-    engine = FakeEngine({})
+    for m in moves:
+        board.push_uci(m["uci"])
+    engine = FakeEngine({chess.Board().fen(): {"cp": 15}})
     out = analyze_moves(moves, engine, depth=14, book_plies=0)
-    assert engine.searched == []
+    assert engine.searched == [chess.Board().fen()]
     assert out[3]["eval"] == {"cp": -MATED}
