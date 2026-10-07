@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { Band } from '../db'
+import type { MotifName } from './motifs'
 import type { PuzzleKind } from './packet'
-import { family, HABITS, HABIT_LIB_VERSION, selectHabit, type Family } from './habits'
+import { family, HABITS, HABIT_LIB_VERSION, pickHabit, selectHabit, type Family, type Habit } from './habits'
 import { MOTIF_KEYS, MOTIF_LIB_VERSION, motifEntry } from './motifLib'
 import { checkCeilings, fkGrade, READABILITY_VERSION, sentences, smog, syllables, words } from './readability'
 import { TONE_VERSION, toneViolations } from './tone'
@@ -152,52 +153,66 @@ describe('habit library', () => {
     }
   })
 
+  it('tags every habit with motifs the library actually detects', () => {
+    for (const h of HABITS) for (const m of h.when ?? []) expect(MOTIF_KEYS, `${h.id}: ${m}`).toContain(m)
+  })
+
   it('passes ceilings and tone at every band it is tagged with', () => {
     for (const h of HABITS) for (const b of h.bands) expect(problems(h.text, b), `${h.id} at ${b}`).toEqual([])
   })
 })
 
 describe('habit selection', () => {
-  const pick = (kind: PuzzleKind, band: Band, recent: string[] = [], weeklyFocusHabitId?: string) =>
-    selectHabit({ kind, band, recent, weeklyFocusHabitId }).id
+  const pick = (kind: PuzzleKind, band: Band, concepts: MotifName[] = [], recent: string[] = [], weeklyFocusHabitId?: string) =>
+    selectHabit({ kind, band, recent, weeklyFocusHabitId }, concepts)?.id
 
-  it('takes the first habit in family and band, in list order', () => {
-    expect(pick('hang', 'beginner')).toBe('habit:blunder-check')
+  it('family advice in list order when no concept is certified', () => {
+    expect(pick('hang', 'beginner')).toBe('habit:their-move')
     expect(pick('missed-win', 'club')).toBe('habit:cct-scan')
     expect(pick('lichess', 'advanced')).toBe('habit:cct-scan')
     expect(pick('conversion', 'beginner')).toBe('habit:trade-down')
     expect(pick('defensive', 'advanced')).toBe('habit:list-forcing')
     for (const kind of ['hang', 'missed-win', 'conversion', 'hold'] as PuzzleKind[])
       for (const band of BANDS) {
-        const first = HABITS.find(h => h.family === family(kind) && h.bands.includes(band))
+        const first = HABITS.filter(h => h.family === family(kind) && h.bands.includes(band) && !h.when).find(() => true)
         expect(pick(kind, band)).toBe(first?.id)
       }
   })
 
-  it('honours the weekly focus only within the puzzle family and band', () => {
-    expect(pick('missed-win', 'beginner', [], 'habit:two-targets')).toBe('habit:two-targets')
+  it('a certified concept puts its habit ahead of generic family advice', () => {
+    expect(pick('hang', 'beginner', ['hanging piece'])).toBe('habit:blunder-check')
+    expect(pick('missed-win', 'club', ['fork'])).toBe('habit:two-targets')
+    expect(pick('missed-win', 'advanced', ['back-rank mate'])).toBe('habit:king-boxed')
+    // A concept no habit claims changes nothing
+    expect(pick('missed-win', 'club', ['promotion'])).toBe('habit:cct-scan')
+  })
+
+  it('honours the weekly focus only within the family, the band, and the certified concepts', () => {
+    expect(pick('missed-win', 'beginner', ['fork'], [], 'habit:two-targets')).toBe('habit:two-targets')
     // A tactics focus does not override a safety puzzle
-    expect(pick('hang', 'beginner', [], 'habit:two-targets')).toBe('habit:blunder-check')
+    expect(pick('hang', 'beginner', ['hanging piece'], [], 'habit:two-targets')).toBe('habit:blunder-check')
+    // A focus whose concept this packet did not certify is dropped
+    expect(pick('missed-win', 'beginner', [], [], 'habit:two-targets')).toBe('habit:cct-scan')
     // A club-only habit is not offered to a beginner
-    expect(pick('conversion', 'beginner', [], 'habit:stop-counterplay')).toBe('habit:trade-down')
-    expect(pick('conversion', 'club', [], 'habit:stop-counterplay')).toBe('habit:stop-counterplay')
+    expect(pick('conversion', 'beginner', [], [], 'habit:stop-counterplay')).toBe('habit:trade-down')
+    expect(pick('conversion', 'club', [], [], 'habit:stop-counterplay')).toBe('habit:stop-counterplay')
     // The focus repeats on purpose, even if used lately
-    expect(pick('missed-win', 'club', ['habit:two-targets'], 'habit:two-targets')).toBe('habit:two-targets')
+    expect(pick('missed-win', 'club', ['fork'], ['habit:two-targets'], 'habit:two-targets')).toBe('habit:two-targets')
     // An unknown id is ignored
-    expect(pick('hang', 'club', [], 'habit:nope')).toBe('habit:blunder-check')
+    expect(pick('hang', 'club', ['hanging piece'], [], 'habit:nope')).toBe('habit:blunder-check')
   })
 
   it('drops habits from the last 3 explanations only', () => {
-    expect(pick('hang', 'beginner', ['habit:blunder-check'])).toBe('habit:loose-pieces')
-    expect(pick('hang', 'beginner', ['habit:blunder-check', 'habit:loose-pieces', 'habit:their-move'])).toBe(
+    expect(pick('hang', 'beginner', ['hanging piece'], ['habit:blunder-check'])).toBe('habit:loose-pieces')
+    expect(pick('hang', 'beginner', ['hanging piece'], ['habit:blunder-check', 'habit:loose-pieces', 'habit:their-move'])).toBe(
       'habit:safe-square',
     )
     // Four back, blunder-check is out of the window and wins again
     expect(
-      pick('hang', 'beginner', ['habit:blunder-check', 'habit:loose-pieces', 'habit:their-move', 'habit:safe-square']),
+      pick('hang', 'beginner', ['hanging piece'], ['habit:blunder-check', 'habit:loose-pieces', 'habit:their-move', 'habit:safe-square']),
     ).toBe('habit:blunder-check')
     // Habits from other families in the window don't matter
-    expect(pick('hang', 'beginner', ['habit:cct-scan', 'habit:trade-down', 'habit:list-forcing'])).toBe(
+    expect(pick('hang', 'beginner', ['hanging piece'], ['habit:cct-scan', 'habit:trade-down', 'habit:list-forcing'])).toBe(
       'habit:blunder-check',
     )
   })
@@ -206,12 +221,31 @@ describe('habit selection', () => {
     const recent: string[] = []
     const seen: string[] = []
     for (let i = 0; i < 8; i++) {
-      const id = pick('hold', 'beginner', recent)
-      seen.push(id)
-      recent.push(id)
+      const id = pick('hold', 'beginner', [], recent)
+      seen.push(id!)
+      recent.push(id!)
     }
-    const pool = HABITS.filter(h => h.family === 'defense' && h.bands.includes('beginner')).map(h => h.id)
+    const pool = HABITS.filter(h => h.family === 'defense' && h.bands.includes('beginner') && !h.when).map(h => h.id)
     expect(seen).toEqual([...pool, ...pool].slice(0, 8))
+  })
+
+  it('fails closed: an ineligible habit is never served, and an empty pool means none', () => {
+    const tagged = (id: string, when: MotifName[]): Habit => ({ id, family: 'tactics', bands: BANDS, when, text: 'When x, I y.' })
+    const advice: Habit = { id: 'habit:general', family: 'tactics', bands: BANDS, text: 'When x, I y.' }
+    const pool = [tagged('habit:a', ['fork']), tagged('habit:b', ['pin'])]
+    expect(pickHabit([], [])).toBeUndefined()
+    // Nothing certified for this position: no tip at all, not a mismatched one
+    expect(pickHabit(pool, [])).toBeUndefined()
+    expect(pickHabit(pool, ['promotion'])).toBeUndefined()
+    expect(pickHabit(pool, [], 'habit:a')).toBeUndefined()
+    // A certified concept selects its habit; a mismatched focus is overridden
+    expect(pickHabit(pool, ['pin'])?.id).toBe('habit:b')
+    expect(pickHabit(pool, ['pin'], 'habit:a')?.id).toBe('habit:b')
+    expect(pickHabit(pool, ['pin'], 'habit:b')?.id).toBe('habit:b')
+    // Matched habits rank ahead of family advice, which serves when nothing matches
+    const mixed = [...pool, advice]
+    expect(pickHabit(mixed, ['fork'])?.id).toBe('habit:a')
+    expect(pickHabit(mixed, [])?.id).toBe('habit:general')
   })
 })
 

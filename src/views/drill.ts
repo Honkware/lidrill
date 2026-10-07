@@ -150,14 +150,18 @@ let lastPointer = 'mouse'
 
 function linked(d: Drill, segments: Segment[]): (VNode | string)[] {
   const toggle = (target: BoardLink) => d.preview(d.previewing === target ? undefined : target)
-  return segments.map(({ text: t, link: target }) =>
+  return segments.map(({ text: t, link: target, frame }) =>
     target
       ? el(
           'span',
-          'cursor-pointer rounded font-medium text-accent underline decoration-dotted underline-offset-2',
+          // Game-line facts read differently from puzzle-position facts:
+          // dashed underline marks "this happened in the original game"
+          frame === 'game'
+            ? 'cursor-pointer rounded font-medium text-accent underline decoration-dashed underline-offset-2'
+            : 'cursor-pointer rounded font-medium text-accent underline decoration-dotted underline-offset-2',
           {
             class: { 'bg-raised': d.previewing === target },
-            attrs: { tabindex: 0, role: 'button', 'aria-label': `Show ${t} on the board` },
+            attrs: { tabindex: 0, role: 'button', 'aria-label': frame === 'game' ? `Show ${t} from the game on the board` : `Show ${t} on the board` },
             on: {
               pointerdown: (e: PointerEvent) => (lastPointer = e.pointerType),
               pointerenter: (e: PointerEvent) => e.pointerType === 'mouse' && d.preview(target),
@@ -180,8 +184,9 @@ function linked(d: Drill, segments: Segment[]): (VNode | string)[] {
   )
 }
 
-// The four slots: what happened and why read as one paragraph each; the
-// pattern and the habit to keep sit below, quieter
+// The slots: what happened and why read as one paragraph each; the
+// pattern and the habit to keep sit below, quieter. Some packets carry no
+// habit: then there is no nextTime row at all
 function whyPart(d: Drill): VNode | null {
   const w = d.why
   if (!w) return null
@@ -191,11 +196,12 @@ function whyPart(d: Drill): VNode | null {
   }
   if (w.error) return el('p', 'mt-3 text-sm text-bad', w.error)
   const slot = (name: string) => w.slots?.find(s => s.slot === name)?.segments ?? []
+  const nextTime = slot('nextTime')
   return el('div', 'mt-3 space-y-2 border-t border-raised pt-3 text-sm', [
     el('p', '', linked(d, slot('whatHappened'))),
     el('p', '', linked(d, slot('why'))),
     el('p', 'text-dim', linked(d, slot('pattern'))),
-    el('p', 'text-dim', [el('span', 'font-medium', 'Next time: '), ...linked(d, slot('nextTime'))]),
+    ...(nextTime.length ? [el('p', 'text-dim', [el('span', 'font-medium', 'Next time: '), ...linked(d, nextTime)])] : []),
   ])
 }
 

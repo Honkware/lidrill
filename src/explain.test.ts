@@ -122,7 +122,7 @@ describe('explain', () => {
       const body = JSON.parse(init!.body!)
       if (body.v === 2) {
         slimBodies.push(body)
-        return new Response(JSON.stringify({ slots: templateFloor(packet), packet, source: 'floor', version: 10 }))
+        return new Response(JSON.stringify({ slots: templateFloor(packet), packet, source: 'floor', version: EXPLAIN_VERSION }))
       }
       throw new Error('legacy path should not run on a hit')
     })
@@ -132,7 +132,7 @@ describe('explain', () => {
     expect(slimBodies).toEqual([{ v: 2, packetHash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/), band: 'club' }])
     const row = await db.explanations.get(rowId(puzzle.id))
     expect(row?.certTier).toBe('client-lite')
-    expect(row?.version).toBe(10)
+    expect(row?.version).toBe(EXPLAIN_VERSION)
     expect(isCurrent(row, 'club')).toBe(true)
   })
 
@@ -150,7 +150,7 @@ describe('explain', () => {
       const report = validReport(body)!
       const built = buildPacket(report)
       if (!built.ok) throw new Error(built.error)
-      return new Response(JSON.stringify({ slots: templateFloor(built.packet), packet: built.packet, source: 'floor', version: 10 }))
+      return new Response(JSON.stringify({ slots: templateFloor(built.packet), packet: built.packet, source: 'floor', version: EXPLAIN_VERSION }))
     })
     const e = await explain(puzzle, [fakeEngine(engineCalls)], { band: 'club' })
     expect(e.floor).toBe(true)
@@ -169,7 +169,7 @@ describe('explain', () => {
       const report = validReport(body)!
       const built = buildPacket(report)
       if (!built.ok) throw new Error(built.error)
-      return new Response(JSON.stringify({ slots: templateFloor(built.packet), packet: built.packet, source: 'floor', version: 10 }))
+      return new Response(JSON.stringify({ slots: templateFloor(built.packet), packet: built.packet, source: 'floor', version: EXPLAIN_VERSION }))
     })
     const e = await explain(puzzle, [fakeEngine()], { band: 'club' })
     expect(e.floor).toBe(true)

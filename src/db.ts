@@ -97,7 +97,7 @@ export interface ExplanationRow {
   certTier?: CertTier // which device certified the packet; rows from before are stamped client-lite by the backfill
   promptVersion: string
   version: number // EXPLAIN_VERSION when it was made
-  habitId: string // for the next explanations' anti-repeat window
+  habitId: string | null // for the next explanations' anti-repeat window; null when no habit fit the packet
   createdAt: number
   packet: Packet
 }

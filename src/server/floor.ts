@@ -18,10 +18,13 @@ export function templateFloor(p: Packet): Slot[] {
   const anchors = new Set(p.claimAnchors)
   const has = (id: string) => anchors.has(id)
 
-  // What happened
+  // What happened: about the player's try when one is recorded (the puzzle
+  // is the default frame), else the original game move, marked as game
+  // context - never the bare game move as if it happened in the puzzle
   let what: string
   if (p.position.drawRule) what = `The rules matter here: ${ref('c-draw')}.`
-  else if (p.played && has('swing')) what = band === 'beginner' ? `You played ${ref('played')} and it cost ${ref('swing')}.` : `${ref('played')} cost ${ref('swing')}.`
+  else if (p.tried && has('tryswing')) what = `You tried ${ref('tried')} and it cost you ${ref('tryswing')}.`
+  else if (p.played && has('swing')) what = `In the game, ${ref('played')} cost you ${ref('swing')}.`
   else what = p.holding.length > 1 ? `Any of ${p.holding.map(h => ref(h.id)).join(', ')} held the position.` : `The answer was ${ref('best')}.`
 
   // Why: the threat (or certified none), then the line
@@ -36,8 +39,9 @@ export function templateFloor(p: Packet): Slot[] {
   else why.push(`The move was ${ref('best')}.`)
   if (p.holding.length > 1 && !why.some(w => w.includes('{ref:hold'))) why.push(`${ref(p.holding[0].id)} was one way to hold.`)
   const punish = has('c-try') ? 'c-try' : has('c-punish') ? 'c-punish' : undefined
-  if (punish) why.push(`Against ${ref(punish === 'c-try' ? 'tried' : 'played')}, they had this: ${ref(punish)}.`)
-  else if (p.played?.reply.length) why.push(`After ${ref('played')}, they answer ${ref(p.played.reply[0].id)}.`)
+  if (punish === 'c-try') why.push(`Against ${ref('tried')}, they had this: ${ref(punish)}.`)
+  else if (punish) why.push(`Against the game move ${ref('played')}, they had this: ${ref(punish)}.`)
+  else if (p.played?.reply.length) why.push(`In the game, ${ref('played')} was answered by ${ref(p.played.reply[0].id)}.`)
   if (band === 'advanced') {
     const deep = has('c-forced') ? 'c-forced' : p.alternatives[0] ? p.alternatives[0].id : p.claimAnchors.find(a => /^c-fd\d+$/.test(a))
     if (deep === 'c-forced') why.push(`Here ${ref('c-forced')}.`)
@@ -46,7 +50,10 @@ export function templateFloor(p: Packet): Slot[] {
   }
   if (p.didactic.puzzleType === 'conversion' && has('material')) why.push(`You had ${ref('material')}.`)
 
-  // The pattern, then one habit, both verbatim from the libraries
+  // The pattern, then one habit, both verbatim from the libraries. No
+  // eligible habit: the floor is shorter, with no generic tip
   const pattern = p.didactic.motifCert ? `Your idea: ${ref(p.didactic.motifCert)}. ${ref(p.didactic.glossId)}` : ref(p.didactic.glossId)
-  return [slot('whatHappened', what), slot('why', why.join(' ')), slot('pattern', pattern), slot('nextTime', ref(p.didactic.habitSlotId))]
+  const out = [slot('whatHappened', what), slot('why', why.join(' ')), slot('pattern', pattern)]
+  if (p.didactic.habitSlotId) out.push(slot('nextTime', ref(p.didactic.habitSlotId)))
+  return out
 }

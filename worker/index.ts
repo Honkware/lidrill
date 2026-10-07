@@ -30,7 +30,7 @@ interface Env {
 }
 
 // Bumped with the shape of explanations: the browser asks again for anything older
-const EXPLAIN_VERSION = 10
+const EXPLAIN_VERSION = 11
 
 // Packets are a deterministic rebuild of a report plus config: a cache, not a
 // record. 30 days is longer than any sync cycle.

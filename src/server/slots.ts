@@ -2,7 +2,7 @@ import type { Band } from '../db'
 import { family, HABITS } from './habits'
 import type { Packet, SlotName } from './packet'
 import { checkCeilings } from './readability'
-import { NO_THREAT_ID, REF, renderRef, renderText, SLOTS, type Slot } from './render'
+import { gameFrameIds, NO_THREAT_ID, REF, renderRef, renderText, SLOTS, type Slot } from './render'
 import { toneViolations } from './tone'
 
 // Mechanical checks only. A draft passes or names
@@ -63,10 +63,16 @@ const refIds = (t: string) => [...t.matchAll(REF)].map(m => m[1] ?? NO_THREAT_ID
 const MECHANISM = /^(t\d+|pv[1-9]\d*|pl\d+|tr\d+|alt\d+|threat|c-(?!nothreat$|draw$).+)$/
 const DEEP = /^(alt\d+|c-fd\d+|c-forced)$/
 
+// The puzzle position is the default frame; a game-line fact must be
+// introduced as game context in the same sentence
+const GAME_MARK = /\b(?:in the game|the game move|your game move|from the game)\b/i
+
 export function validateSlots(out: unknown, p: Packet): Verdict {
   const v: string[] = []
   const band: Band = p.context.band
   const anchors = new Set(p.claimAnchors)
+  const gameIds = gameFrameIds(p)
+  const hasHabit = p.didactic.habitSlotId !== null
 
   // 0. Shape
   const slotsIn = (out as { slots?: unknown })?.slots
@@ -86,6 +92,10 @@ export function validateSlots(out: unknown, p: Packet): Verdict {
   }
   for (const name of SLOTS) {
     const n = slots.filter(s => s.slot === name).length
+    if (name === 'nextTime' && !hasHabit) {
+      if (n !== 0) v.push(`slot nextTime must be omitted: no habit fits this packet (found ${n})`)
+      continue
+    }
     if (n !== 1) v.push(`slot ${name} must appear exactly once (found ${n})`)
   }
   if (v.length) return { ok: false, violations: v }
@@ -122,6 +132,14 @@ export function validateSlots(out: unknown, p: Packet): Verdict {
         else if (subject !== 'neutral' && subject !== owner) v.push(`${s.slot}: ${id} belongs to ${owner === 'player' ? 'you' : 'the opponent'}, not ${subject === 'player' ? 'you' : 'them'}`)
       }
     }
+    // 8. Position clarity: a game-line fact must read as game context, so a
+    // claim about the puzzle never has the original game move as its subject
+    for (const sent of sentencesOf(s.text)) {
+      for (const m2 of sent.matchAll(REF)) {
+        const id = m2[1] ?? NO_THREAT_ID
+        if (gameIds.has(id) && !GAME_MARK.test(sent)) v.push(`${s.slot}: ${id} is from the original game - mark it as game context ("in the game, …")`)
+      }
+    }
   }
 
   const all = slots.map(s => mask(s.text)).join(' ')
@@ -152,8 +170,10 @@ export function validateSlots(out: unknown, p: Packet): Verdict {
   const patternCerts = by.pattern.refs.filter(r => p.certificates.find(c => c.id === r && c.type === 'tactical'))
   if (patternCerts.some(r => r !== p.didactic.motifCert)) v.push(`pattern must be about ${p.didactic.motifCert ?? 'no detected pattern'}`)
   // the habit is the packet's, from the library, for this band and family
-  const habit = HABITS.find(h => h.id === p.didactic.habitSlotId)
-  if (!habit || !habit.bands.includes(band) || habit.family !== family(p.didactic.puzzleType)) v.push('the habit does not fit this band or puzzle type')
+  if (hasHabit) {
+    const habit = HABITS.find(h => h.id === p.didactic.habitSlotId)
+    if (!habit || !habit.bands.includes(band) || habit.family !== family(p.didactic.puzzleType)) v.push('the habit does not fit this band or puzzle type')
+  }
   // M-COUNT and M-NOVEL
   const mech = new Set(by.why.refs.filter(r => MECHANISM.test(r)))
   if (mech.size < p.didactic.mechanismMin) v.push(`why needs at least ${p.didactic.mechanismMin} steps of the line or certified facts (has ${mech.size})`)
@@ -165,10 +185,11 @@ export function validateSlots(out: unknown, p: Packet): Verdict {
   if (!v.some(x => /not a fact id/.test(x))) {
     const text = renderText(slots, p)
     for (const s of slots) if (refIds(s.text).some(r => renderRef(r, p) === undefined)) v.push(`${s.slot}: a ref can't be rendered`)
-    const whole = SLOTS.map(n => text[n]).join(' ')
+    const present = SLOTS.filter(n => text[n] !== undefined)
+    const whole = present.map(n => text[n]).join(' ')
     // Readability on what the player reads; a rendered fact counts as one
     // word toward sentence length (it's one unit, written by the renderer)
-    const unitText = SLOTS.map(n => by[n].text.replace(REF, 'X')).join(' ')
+    const unitText = present.map(n => by[n].text.replace(REF, 'X')).join(' ')
     for (const c of checkCeilings(whole, band)) if (!c.startsWith('sentence')) v.push(`readability: ${c}`)
     for (const c of checkCeilings(unitText, band)) if (c.startsWith('sentence')) v.push(`readability: ${c}`)
     for (const t of toneViolations(whole, band)) v.push(`tone: ${t}`)

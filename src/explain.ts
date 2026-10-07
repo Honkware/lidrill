@@ -14,7 +14,7 @@ import { sha256Hex, solve } from './server/sha256'
 // narrator word it, checks it, and sends back the four slots in ref form
 // with the packet that renders them. Stored per (puzzle, first wrong try).
 
-export const EXPLAIN_VERSION = 10
+export const EXPLAIN_VERSION = 11
 
 export interface ExplainContext {
   band: Band
@@ -142,8 +142,9 @@ export function uploadPacket(report: EngineReport): Promise<boolean> {
 }
 
 // Which habits the packet build should avoid repeating: the three newest
-// explanations' habit ids, oldest first
-export const recentHabits = async (): Promise<string[]> => (await db.explanations.orderBy('createdAt').reverse().limit(3).toArray()).map(e => e.habitId).reverse()
+// explanations' habit ids, oldest first (rows without a habit carry null)
+export const recentHabits = async (): Promise<string[]> =>
+  (await db.explanations.orderBy('createdAt').reverse().limit(3).toArray()).map(e => e.habitId).filter((h): h is string => !!h).reverse()
 
 // The sync-time build: from the cached certification runs
 // (no new engine work when precertify already covered the puzzle) build the

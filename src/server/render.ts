@@ -29,6 +29,7 @@ export interface Segment {
   text: string
   ref?: string
   link?: BoardLink
+  frame?: 'game' // the fact is about the original game, not the puzzle position
 }
 
 export { amount }
@@ -76,6 +77,7 @@ export function renderRef(id: string, p: Packet): string | undefined {
   const move = movesById(p).get(id)
   if (move) return move.san
   if (id === 'swing' && p.played?.swing) return evalAmount(p.played.swing, band)
+  if (id === 'tryswing' && p.tried?.swing) return evalAmount(p.tried.swing, band)
   if (id === 'material') return materialText(p.material.before, band)
   if (id === 'check') return 'the check'
   const hold = p.holding.find(h => h.id === id)
@@ -94,12 +96,28 @@ export function renderRef(id: string, p: Packet): string | undefined {
   return undefined
 }
 
+// Facts about the original game line (the move that created the puzzle and
+// its certified reply), as opposed to the puzzle position the player faced.
+// Everything else in the packet - the answer, its line, the player's tries,
+// the threat - is about the puzzle position, the default frame.
+export function gameFrameIds(p: Packet): Set<string> {
+  const out = new Set<string>()
+  if (p.played) {
+    out.add('played')
+    out.add('swing')
+    for (const r of p.played.reply) out.add(r.id)
+  }
+  if (p.certificates.some(c => c.id === 'c-punish')) out.add('c-punish')
+  return out
+}
+
 const SQUARE = /\b[a-h][1-8]\b/g
 
 // A slot's text with refs replaced, split for the screen: moves link to the
 // position they're played from, squares inside certified text get a circle
 export function renderSlot(s: Slot, p: Packet): Segment[] {
   const moves = movesById(p)
+  const game = gameFrameIds(p)
   const out: Segment[] = []
   let last = 0
   for (const m of s.text.matchAll(REF)) {
@@ -108,10 +126,11 @@ export function renderSlot(s: Slot, p: Packet): Segment[] {
     let words = renderRef(id, p) ?? ''
     // Library sentences end with a full stop; don't double it
     if (words.endsWith('.') && s.text[m.index + m[0].length] === '.') words = words.slice(0, -1)
+    const frame = game.has(id) ? ({ frame: 'game' } as const) : {}
     const move = moves.get(id)
-    if (move) out.push({ text: words, ref: id, link: { from: move.from, to: move.to, fen: move.fenBefore, after: move.fenAfter } })
-    else if (id.startsWith('c-')) out.push(...squareLinks(words, id, certPosition(id, p, moves)))
-    else out.push({ text: words, ref: id })
+    if (move) out.push({ text: words, ref: id, link: { from: move.from, to: move.to, fen: move.fenBefore, after: move.fenAfter }, ...frame })
+    else if (id.startsWith('c-')) out.push(...squareLinks(words, id, certPosition(id, p, moves), frame.frame))
+    else out.push({ text: words, ref: id, ...frame })
     last = m.index + m[0].length
   }
   if (last < s.text.length) out.push({ text: s.text.slice(last) })
@@ -124,15 +143,15 @@ function certPosition(id: string, p: Packet, moves: Map<string, PvMove>): string
   return moveId ? moves.get(moveId)?.fenAfter : undefined
 }
 
-function squareLinks(text: string, ref: string, fen?: string): Segment[] {
+function squareLinks(text: string, ref: string, fen: string | undefined, frame?: 'game'): Segment[] {
   const out: Segment[] = []
   let last = 0
   for (const m of text.matchAll(SQUARE)) {
-    if (m.index > last) out.push({ text: text.slice(last, m.index), ref })
-    out.push({ text: m[0], ref, link: { to: m[0], fen } })
+    if (m.index > last) out.push({ text: text.slice(last, m.index), ref, ...(frame ? { frame } : {}) })
+    out.push({ text: m[0], ref, link: { to: m[0], fen }, ...(frame ? { frame } : {}) })
     last = m.index + m[0].length
   }
-  if (last < text.length) out.push({ text: text.slice(last), ref })
+  if (last < text.length) out.push({ text: text.slice(last), ref, ...(frame ? { frame } : {}) })
   return out
 }
 

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { templateFloor } from './floor'
-import { BUDGET_USD, MODELS, narrate, prune, SMOOTH_MODEL, type Caller, type LlmCall } from './narrate'
+import { BUDGET_USD, MODELS, narrate, promptView, prune, SMOOTH_MODEL, type Caller, type LlmCall } from './narrate'
 import { buildPacket, dedupeKey, nullMoveFen, packetHash, packetProblems, stampTier, validPacket, validReport, type Certificate, type EngineReport, type EngineRun, type Packet } from './packet'
 import { renderSlot, renderText, type Slot } from './render'
 import { validateSlots } from './slots'
@@ -47,10 +47,10 @@ const packetOf = (r: EngineReport): Packet => {
 }
 
 const good = (): Slot[] => [
-  { slot: 'whatHappened', text: 'You played {ref:played} and it cost {ref:swing}.', refs: ['played', 'swing'] },
+  { slot: 'whatHappened', text: 'In the game, {ref:played} cost you {ref:swing}.', refs: ['played', 'swing'] },
   { slot: 'why', text: 'They had NO_THREAT, so you were free to play {ref:best}. After {ref:pv1}, {ref:pv2} takes the rook.', refs: ['c-nothreat', 'best', 'pv1', 'pv2'] },
   { slot: 'pattern', text: 'Your idea: {ref:c-motif}. {ref:gloss:fork}', refs: ['c-motif', 'gloss:fork'] },
-  { slot: 'nextTime', text: '{ref:habit:cct-scan}', refs: ['habit:cct-scan'] },
+  { slot: 'nextTime', text: '{ref:habit:two-targets}', refs: ['habit:two-targets'] },
 ]
 
 describe('engine report', () => {
@@ -124,7 +124,7 @@ describe('packet', () => {
   it('names a missed mate as a mate, never as pawns', () => {
     const p = packetOf(legalReport())
     expect(p.played!.swing).toMatchObject({ type: 'mate', value: 2 })
-    expect(renderText(templateFloor(p), p).whatHappened).toBe('Kxd1 cost a mate in 2.')
+    expect(renderText(templateFloor(p), p).whatHappened).toBe('In the game, Kxd1 cost you a mate in 2.')
   })
 
   it('dead draws carry no concepts and no threat', () => {
@@ -214,6 +214,8 @@ describe('validator', () => {
     ['ref used but not listed', edit(1, 'They had NO_THREAT, so {ref:best} was free. After {ref:pv1}, {ref:pv2} takes the rook.', ['c-nothreat', 'best', 'pv1'])],
     ['ref listed but not used', edit(0, 'You played {ref:played} and it cost {ref:swing}.', ['played', 'swing', 'best'])],
     ['state field as anchor', edit(0, 'You played {ref:played} from {ref:fenBefore}, costing {ref:swing}.', ['played', 'fenBefore', 'swing'])],
+    ['game move without game context', edit(0, 'You played {ref:played} and it cost you {ref:swing}.')],
+    ['game reply without game context', edit(1, 'They had NO_THREAT, so you were free to play {ref:best}. Replying to {ref:played}, they choose {ref:pl1}.', ['c-nothreat', 'best', 'played', 'pl1'])],
     ['bare habit id', edit(3, '{ref:habit}', ['habit'])],
     ['missing slot', { slots: good().slice(0, 3) }],
     ['duplicate slot', { slots: [...good(), good()[0]] }],
@@ -279,6 +281,94 @@ describe('validator', () => {
   })
 
   it('the suite is at least 41 drafts', () => expect(hostile.length).toBeGreaterThanOrEqual(41))
+})
+
+// The owner's explanation-context complaints, as fixtures (2026-10-07):
+// game vs puzzle framing, tried-move awareness, and habit gating
+describe('explanation context', () => {
+  // The player's first wrong try in the puzzle: Ne3, while the game went Ke2
+  const triedReport = () =>
+    forkReport({ tried: { uci: 'd5e3', runs: [run([{ pv: ['a8a2'], eval: cp(0) }]), run([{ pv: ['a8a2'], eval: cp(10) }])] } })
+
+  it('a recorded try leads whatHappened; the original game move is not its subject', () => {
+    const p = packetOf(triedReport())
+    expect(p.tried?.san).toBe('Ne3')
+    expect(p.didactic.requiredRefs.whatHappened).toEqual(['tried', 'tryswing'])
+    expect(p.claimAnchors).toContain('tryswing')
+    const text = renderText(templateFloor(p), p)
+    expect(text.whatHappened).toBe('You tried Ne3 and it cost you 5.0 pawns.')
+    expect(text.whatHappened).not.toContain('Ke2')
+    expect(validateSlots({ slots: templateFloor(p) }, p).violations.filter(x => !/^readability/.test(x))).toEqual([])
+  })
+
+  it('a draft about the try passes; the same draft lecturing the game move fails', () => {
+    const p = packetOf(triedReport())
+    const draft: Slot[] = [
+      { slot: 'whatHappened', text: 'You tried {ref:tried} and it cost you {ref:tryswing}.', refs: ['tried', 'tryswing'] },
+      good()[1],
+      good()[2],
+      { slot: 'nextTime', text: '{ref:habit:two-targets}', refs: ['habit:two-targets'] },
+    ]
+    expect(validateSlots({ slots: draft }, p)).toMatchObject({ ok: true, violations: [] })
+    const lecturing = draft.map(s => (s.slot === 'whatHappened' ? { ...s, text: 'You played {ref:played} and it cost you {ref:swing}.', refs: ['played', 'swing'] } : s))
+    const verdict = validateSlots({ slots: lecturing }, p)
+    expect(verdict.ok).toBe(false)
+    expect(verdict.violations.join()).toMatch(/original game/)
+  })
+
+  it('game-line facts must be marked as game context in the same sentence', () => {
+    const p = packetOf(forkReport())
+    const what = (text: string, refs: string[]): Slot[] => [{ slot: 'whatHappened', text, refs }, good()[1], good()[2], good()[3]]
+    // Without the marker the puzzle reads as if the game move happened here
+    expect(validateSlots({ slots: what('You played {ref:played} and it cost you {ref:swing}.', ['played', 'swing']) }, p).violations.join()).toMatch(/original game/)
+    // With it, the same fact is fine
+    expect(validateSlots({ slots: what('In the game, {ref:played} cost you {ref:swing}.', ['played', 'swing']) }, p)).toMatchObject({ ok: true, violations: [] })
+    // The game's reply line is game context too, and the marker must sit in its own sentence
+    const whyNoMark = good().map(s =>
+      s.slot === 'why' ? { ...s, text: 'They had NO_THREAT, so you were free to play {ref:best}. After {ref:pv1}, {ref:pv2} takes the rook. Replying to {ref:played}, they choose {ref:pl1}.', refs: ['c-nothreat', 'best', 'pv1', 'pv2', 'played', 'pl1'] } : s,
+    )
+    expect(validateSlots({ slots: whyNoMark }, p).violations.join()).toMatch(/original game/)
+    const whyMark = good().map(s =>
+      s.slot === 'why' ? { ...s, text: 'They had NO_THREAT, so you were free to play {ref:best}. After {ref:pv1}, {ref:pv2} takes the rook. In the game, {ref:played} is answered by {ref:pl1}.', refs: ['c-nothreat', 'best', 'pv1', 'pv2', 'played', 'pl1'] } : s,
+    )
+    expect(validateSlots({ slots: whyMark }, p)).toMatchObject({ ok: true, violations: [] })
+  })
+
+  it('the prompt view tags each fact with its frame and names the whatHappened subject', () => {
+    const p = packetOf(triedReport())
+    const view = promptView(p)
+    const frame = (id: string) => view.facts.find(f => f.id === id)?.frame
+    expect(frame('played')).toBe('game')
+    expect(frame('swing')).toBe('game')
+    expect(frame('tried')).toBe('puzzle')
+    expect(frame('tryswing')).toBe('puzzle')
+    expect(frame('best')).toBe('puzzle')
+    expect(view.whatHappened).toMatch(/tried/)
+    expect(view.nextTime).toMatch(/^the habit fact$/)
+  })
+
+  it('habits are gated to the packet\'s certified concepts; the weekly focus only when it fits', () => {
+    // The fork is certified for this position: the fork habit beats generic advice
+    expect(packetOf(forkReport()).didactic.habitSlotId).toBe('habit:two-targets')
+    // A weekly focus about boxed kings does not override a fork puzzle
+    expect(packetOf(forkReport({ habit: { weeklyFocus: 'habit:king-boxed', recent: [] } })).didactic.habitSlotId).toBe('habit:two-targets')
+    // A cross-family focus is ignored as before
+    expect(packetOf(forkReport({ habit: { weeklyFocus: 'habit:blunder-check', recent: [] } })).didactic.habitSlotId).toBe('habit:two-targets')
+  })
+
+  it('no relevant habit: shorter explanation, no generic tip', () => {
+    const p = packetOf(forkReport())
+    // Simulate the fail-closed build: nothing in the pool fits this packet
+    p.didactic.habitSlotId = null
+    p.didactic.requiredRefs = { ...p.didactic.requiredRefs, nextTime: [] }
+    p.claimAnchors = p.claimAnchors.filter(a => !a.startsWith('habit:'))
+    expect(packetProblems(p)).toEqual([])
+    const floor = templateFloor(p)
+    expect(floor.map(s => s.slot)).toEqual(['whatHappened', 'why', 'pattern'])
+    expect(validateSlots({ slots: floor }, p).violations.filter(x => !/^readability/.test(x))).toEqual([])
+    // A nextTime slot is a violation when the packet carries no habit
+    expect(validateSlots({ slots: [...floor, good()[3]] }, p).violations.join()).toMatch(/must be omitted/)
+  })
 })
 
 describe('narrator pipeline', () => {
@@ -368,7 +458,7 @@ describe('narrator pipeline', () => {
     const draft = good().map(s => (s.slot === 'why' ? { ...s, text: why, refs: ['c-nothreat', 'c-hang', 'best', 'pv1', 'pv2'] } : s))
     const claims = {
       claims: [
-        { slot: 'whatHappened', text: 'You played {ref:played} and it cost {ref:swing}.', refs: ['played', 'swing'], tense: 'past' },
+        { slot: 'whatHappened', text: 'In the game, {ref:played} cost you {ref:swing}.', refs: ['played', 'swing'], tense: 'past' },
         { slot: 'why', text: 'They had {ref:c-nothreat} and their {ref:c-hang} was loose', refs: ['c-nothreat', 'c-hang'], tense: 'present' },
         { slot: 'why', text: 'so you were free to play {ref:best}', refs: ['best'], tense: 'past' },
         { slot: 'why', text: 'After {ref:pv1}, {ref:pv2} takes the rook.', refs: ['pv1', 'pv2'], tense: 'past' },

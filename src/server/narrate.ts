@@ -1,7 +1,7 @@
 import { templateFloor } from './floor'
 import { fromFen } from './facts'
 import type { Packet } from './packet'
-import { movesById, NO_THREAT_ID, REF, renderRef, SLOTS, type Slot } from './render'
+import { movesById, gameFrameIds, NO_THREAT_ID, REF, renderRef, SLOTS, type Slot } from './render'
 import { validateSlots } from './slots'
 
 // The narrator. A cheap model drafts the
@@ -52,24 +52,25 @@ export const SMOOTH_MODEL = 'openrouter/auto'
 export const SMOOTH = { temperature: 0.3, maxTokens: 900, usdPerMTokIn: 0.75, usdPerMTokOut: 3.75 } as const
 
 export const SYSTEM_V2 = [
-  'You write the explanation of a chess puzzle for an improving player, in four slots: whatHappened, why, pattern, nextTime.',
+  'You write the explanation of a chess puzzle for an improving player, in the slots the packet lists: whatHappened, why, pattern, and nextTime only when the packet has a habit.',
+  'The puzzle position - the one the player just faced and tried moves in - is the default frame: a claim about it needs no marker. Facts tagged "frame":"game" in the list happened in the original game ({ref:played}, {ref:swing}, the pl… and c-punish ids): introduce them with wording like "in the game" or "the game move", never as moves made in the puzzle.',
   'You never write a chess move, square, number or piece-on-square yourself. Every fact is a fact id from the list; write it as {ref:<id>} and the app inserts the exact words. Write NO_THREAT only where the list says it is allowed.',
   'List every id you use in that slot\'s refs, and no others.',
   'Use only the fact ids given, each with the meaning shown. Add no plans, ideas or patterns that are not facts in the list.',
-  'whatHappened: what was played and what it cost. why: the mechanism, using the required ids and enough line steps. pattern: the certified pattern and its library text. nextTime: the habit id, nothing else of substance.',
+  'whatHappened: the move made here and what it cost - the player\'s try in this puzzle when one is recorded, otherwise the original game move, marked as game context. why: the mechanism, using the required ids and enough line steps. pattern: the certified pattern and its library text. nextTime: the habit id, nothing else of substance.',
   'Ownership: say "you"/"your" for the player\'s moves and patterns and "they"/"their" for the opponent\'s, right before the id, in the same sentence. Amounts like {ref:swing} take no "your".',
   'Certificate ids (c-…) render as a whole clause, like "every other move is at least 0.8 pawns worse": put them after a colon or after "because", never inside a phrase.',
   'Only say the answer stops, prevents or meets the threat if c-stops is in the list; only say a move was forced, needed or the only move if c-forced is.',
   'Plain, short sentences. No praise, no labels like brilliant, no rhetorical questions, no exclamation marks. Do not start a sentence with This, That, It or Such.',
-  'Answer with JSON only: {"slots":[{"slot":"whatHappened","text":"…","refs":["…"]}, …]}, each slot exactly once.',
+  'Answer with JSON only: {"slots":[{"slot":"whatHappened","text":"…","refs":["…"]}, …]}, each listed slot exactly once.',
 ].join('\n')
 
-const SLOT_SCHEMA = {
+const SLOT_SCHEMA = (minSlots = 4): Record<string, unknown> => ({
   type: 'object',
   properties: {
     slots: {
       type: 'array',
-      minItems: 4,
+      minItems: minSlots,
       maxItems: 4,
       items: {
         type: 'object',
@@ -81,7 +82,7 @@ const SLOT_SCHEMA = {
   },
   required: ['slots'],
   additionalProperties: false,
-}
+})
 
 const CLAIM_SCHEMA = {
   type: 'object',
@@ -106,11 +107,12 @@ const CLAIM_SCHEMA = {
   additionalProperties: false,
 }
 
-// What the narrator sees: ids with their rendered meaning and owner. No
-// FEN (the narrator never reads the board) and nothing about the opponent.
+// What the narrator sees: ids with their rendered meaning, owner and frame.
+// No FEN (the narrator never reads the board) and nothing about the opponent.
 export function promptView(p: Packet) {
   const mine = p.position.playerColor === 'white' ? 'w' : 'b'
   const moves = movesById(p)
+  const gameIds = gameFrameIds(p)
   const owner = (id: string): string => {
     const m = moves.get(id)
     if (m) return m.side === mine ? 'you' : 'opponent'
@@ -118,13 +120,16 @@ export function promptView(p: Packet) {
     if (c && (c.type === 'tactical' || c.type === 'noThreat')) return c.side === mine ? 'you' : 'opponent'
     return '-'
   }
-  const facts = p.claimAnchors.map(id => ({ id, means: id === NO_THREAT_ID ? 'no forcing reply (write NO_THREAT)' : renderRef(id, p), owner: owner(id) }))
+  const facts = p.claimAnchors.map(id => ({ id, means: id === NO_THREAT_ID ? 'no forcing reply (write NO_THREAT)' : renderRef(id, p), owner: owner(id), frame: gameIds.has(id) ? 'game' : 'puzzle' }))
   return {
     level: p.context.band,
     puzzleType: p.didactic.puzzleType,
     youPlay: p.position.playerColor,
     verdictBefore: p.eval.verdict.before,
     verdictAfterGameMove: p.eval.verdict.afterPlayed,
+    // The puzzle position is the default frame; game facts must be marked
+    whatHappened: p.tried ? 'about the move the player tried in this puzzle' : p.played ? 'about the original game move, as game context ("in the game")' : 'about the answer',
+    nextTime: p.didactic.habitSlotId ? 'the habit fact' : 'omit this slot entirely: no habit fits this position',
     lines: {
       answer: p.best.pv.map(m => m.id),
       gameMove: p.played ? ['played', ...p.played.reply.map(r => r.id)] : undefined,
@@ -159,6 +164,7 @@ export async function narrate(p: Packet, call: Caller): Promise<Narration> {
   if (p.threatStatus === 'uncertified' && !p.position.check.before) return floor('threat not certified')
 
   const view = JSON.stringify(promptView(p))
+  const slotSchema = SLOT_SCHEMA(p.didactic.habitSlotId ? 4 : 3)
   // Reserve each call's worst case before making it (fail closed at the cap)
   const ask = async (pass: LlmCall['pass'], user: string, which: keyof typeof MODELS | 'smooth', schema: Record<string, unknown>) => {
     const pinned = which === 'smooth' ? undefined : MODELS[which]
@@ -185,10 +191,10 @@ export async function narrate(p: Packet, call: Caller): Promise<Narration> {
     }
   }
 
-  let draft = await ask('draft', `Facts packet:\n${view}\n\nWrite the four slots.`, 'draft', SLOT_SCHEMA)
+  let draft = await ask('draft', `Facts packet:\n${view}\n\nWrite the slots.`, 'draft', slotSchema)
   let verdict = validateSlots(draft, p)
   if (!verdict.ok) {
-    const again = await ask('repair', `Facts packet:\n${view}\n\nYour draft:\n${JSON.stringify(draft ?? null)}\n\nFix every problem and answer with the four slots again:\n- ${verdict.violations.slice(0, 20).join('\n- ')}`, 'draft', SLOT_SCHEMA)
+    const again = await ask('repair', `Facts packet:\n${view}\n\nYour draft:\n${JSON.stringify(draft ?? null)}\n\nFix every problem and answer with the slots again:\n- ${verdict.violations.slice(0, 20).join('\n- ')}`, 'draft', slotSchema)
     if (again === undefined) return floor(`draft failed: ${verdict.violations.slice(0, 3).join('; ')}`)
     draft = again
     verdict = validateSlots(draft, p)
@@ -209,7 +215,7 @@ export async function narrate(p: Packet, call: Caller): Promise<Narration> {
     slots = pruning.slots
     verdict = validateSlots({ slots }, p)
     if (!verdict.ok) {
-      const smooth = await ask('smooth', `Facts packet:\n${view}\n\nSome claims were removed from this explanation. Rejoin the text so it reads well. Keep every {ref:…} token and NO_THREAT exactly, add no facts, and fix these problems:\n- ${verdict.violations.slice(0, 12).join('\n- ')}\n\n${JSON.stringify({ slots })}`, 'smooth', SLOT_SCHEMA)
+      const smooth = await ask('smooth', `Facts packet:\n${view}\n\nSome claims were removed from this explanation. Rejoin the text so it reads well. Keep every {ref:…} token and NO_THREAT exactly, add no facts, and fix these problems:\n- ${verdict.violations.slice(0, 12).join('\n- ')}\n\n${JSON.stringify({ slots })}`, 'smooth', slotSchema)
       verdict = validateSlots(smooth, p)
       if (!verdict.ok) return floor('could not rejoin after removing claims')
       slots = verdict.slots!

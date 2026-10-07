@@ -24,7 +24,7 @@ export type PuzzleKind = 'missed-win' | 'hang' | 'conversion' | 'hold' | 'defens
 export const KINDS: PuzzleKind[] = ['missed-win', 'hang', 'conversion', 'hold', 'defensive', 'lichess']
 export const BANDS: Band[] = ['beginner', 'club', 'advanced']
 
-export const PACKET_SCHEMA = 'lidrill-packet/2.1'
+export const PACKET_SCHEMA = 'lidrill-packet/2.2'
 export const REPORT_SCHEMA = 'lidrill-report/1'
 export const BUILDER_VERSION = 'builder/1.0'
 export const DETECTOR_VERSION = 'det/1.0'
@@ -208,7 +208,7 @@ export interface Packet {
     motif: MotifKey
     motifCert: string | null
     requiredRefs: Record<SlotName, string[]> // "a|b" = at least one of them
-    habitSlotId: string
+    habitSlotId: string | null // null: no habit fits this packet's certified concepts
     glossId: string
     mechanismMin: number
   }
@@ -429,7 +429,7 @@ function stability(p: RunPair, flip: boolean) {
 
 export type BuildResult = { ok: true; packet: Packet } | { ok: false; error: string }
 
-export const PROMPT_VERSION = 'p2.1'
+export const PROMPT_VERSION = 'p2.2'
 export const RENDERER_VERSION = 'render/1.0'
 
 export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION): BuildResult {
@@ -631,7 +631,10 @@ export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION
   // Didactics: the point is fixed here, the narrator only phrases it
   const kind = report.kind
   const motifKey: MotifKey = bestMotif?.name ?? 'none'
-  const habit = selectHabit({ kind, band, weeklyFocusHabitId: report.habit.weeklyFocus, recent: report.habit.recent })
+  // Trigger-aware habit selection: only a habit whose motifs match
+  // this packet's certified concepts, or family advice, is eligible; the
+  // weekly focus wins only inside that set
+  const habit = selectHabit({ kind, band, weeklyFocusHabitId: report.habit.weeklyFocus, recent: report.habit.recent }, concepts.map(c => c.tag))
   const gloss = motifEntry(motifKey, band)
   const ids = {
     pv: pv.map(m => m.id),
@@ -645,20 +648,24 @@ export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION
     ...ids.played,
     ...(played ? ['swing'] : []),
     ...ids.tried,
+    ...(tried ? ['tryswing'] : []),
     ...holding.map(h => h.id),
     ...alternatives.map(a => a.id),
     ...ids.threat,
     ...(pos.isCheck() ? ['check'] : []),
     ...certificates.map(c => c.id),
     'material',
-    habit.id,
+    ...(habit ? [habit.id] : []),
     gloss.id,
   ]
   const required: Record<SlotName, string[]> = {
-    whatHappened: played ? ['played', 'swing'] : ['best'],
+    // The puzzle position is the default frame. When the player's try is
+    // recorded, whatHappened is about the try, not the original game move;
+    // only without a try does the game move (marked as game context) lead
+    whatHappened: tried ? ['tried', 'tryswing'] : played ? ['played', 'swing'] : ['best'],
     why: [threatRequirement(threatStatus, threat, pos.isCheck())].filter((x): x is string => !!x),
     pattern: bestMotif ? ['c-motif', gloss.id] : [gloss.id],
-    nextTime: [habit.id],
+    nextTime: habit ? [habit.id] : [],
   }
   // Per-type additions
   if (kind === 'hang' || kind === 'hold' || kind === 'defensive') required.why.push(holding.length > 1 ? holding.map(h => h.id).join('|') : 'best')
@@ -724,7 +731,7 @@ export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION
       motif: motifKey,
       motifCert: bestMotif ? 'c-motif' : null,
       requiredRefs: required,
-      habitSlotId: habit.id,
+      habitSlotId: habit?.id ?? null,
       glossId: gloss.id,
       mechanismMin: band === 'beginner' ? 1 : 2,
     },
@@ -888,7 +895,7 @@ export function validPacket(x: unknown): Packet | undefined {
   if (!p.position || typeof p.position.fenBefore !== 'string' || !['white', 'black'].includes(p.position.playerColor)) return undefined
   if (!Array.isArray(p.claimAnchors) || !p.claimAnchors.every(a => typeof a === 'string')) return undefined
   if (!Array.isArray(p.certificates) || p.certificates.length > 8) return undefined
-  if (!p.didactic || typeof p.didactic.habitSlotId !== 'string' || !p.didactic.habitSlotId.startsWith('habit:')) return undefined
+  if (!p.didactic || (p.didactic.habitSlotId !== null && (typeof p.didactic.habitSlotId !== 'string' || !p.didactic.habitSlotId.startsWith('habit:')))) return undefined
   if (!p.best || typeof p.best.san !== 'string' || !Array.isArray(p.best.pv)) return undefined
   if (p.tried !== undefined && (!p.tried || typeof p.tried.uci !== 'string')) return undefined
   return p
@@ -903,7 +910,8 @@ export function packetProblems(p: Packet): string[] {
     if (!/^[a-z0-9:-]+$/.test(a)) problems.push(`anchor ${a} has a bad id`)
   }
   if (anchors.has('habit') || anchors.has('gloss')) problems.push('bare habit/gloss anchor')
-  if (!anchors.has(p.didactic.habitSlotId) || !p.didactic.habitSlotId.startsWith('habit:')) problems.push('habit slot is not a prefixed anchor')
+  if (p.didactic.habitSlotId !== null && (!anchors.has(p.didactic.habitSlotId) || !p.didactic.habitSlotId.startsWith('habit:'))) problems.push('habit slot is not a prefixed anchor')
+  if (p.didactic.habitSlotId === null && p.didactic.requiredRefs.nextTime.length) problems.push('no habit slot but nextTime has required refs')
   if (!anchors.has(p.didactic.glossId) || !p.didactic.glossId.startsWith('gloss:')) problems.push('gloss is not a prefixed anchor')
   for (const [slot, refs] of Object.entries(p.didactic.requiredRefs))
     for (const r of refs) if (!r.split('|').some(x => anchors.has(x))) problems.push(`required ref ${r} in ${slot} is not an anchor`)

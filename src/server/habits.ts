@@ -1,4 +1,5 @@
 import type { Band } from '../db'
+import type { MotifName } from './motifs'
 import type { PuzzleKind } from './packet'
 
 // Habits to take into the next game, as fixed text. The narrator names a
@@ -32,6 +33,11 @@ export interface Habit {
   family: Family
   bands: Band[]
   text: string // 'When …, I ….'
+  // The motifs that make this habit relevant to a position (trigger-aware
+  // selection,): a tagged habit is only offered for packets whose
+  // certified concepts include one of them. Untagged habits are family
+  // advice, relevant to every puzzle of their family.
+  when?: MotifName[]
 }
 
 const ALL: Band[] = ['beginner', 'club', 'advanced']
@@ -42,33 +48,36 @@ const UPPER: Band[] = ['club', 'advanced']
 export const HABITS: Habit[] = [
   // Safety: the blunder check, "loose pieces drop off" and "what does their
   // move do" (Heisman)
-  { id: 'habit:blunder-check', family: 'safety', bands: ALL, text: 'When I pick a move, I check what it leaves loose.' },
-  { id: 'habit:loose-pieces', family: 'safety', bands: ALL, text: 'When my piece has no guard, I guard it or move it.' },
+  { id: 'habit:blunder-check', family: 'safety', bands: ALL, when: ['hanging piece'], text: 'When I pick a move, I check what it leaves loose.' },
+  { id: 'habit:loose-pieces', family: 'safety', bands: ALL, when: ['hanging piece'], text: 'When my piece has no guard, I guard it or move it.' },
   { id: 'habit:their-move', family: 'safety', bands: ALL, text: 'When they move, I ask what their move wants to do.' },
-  { id: 'habit:safe-square', family: 'safety', bands: ALL, text: 'When I move a piece, I check the new square is safe.' },
+  { id: 'habit:safe-square', family: 'safety', bands: ALL, when: ['hanging piece', 'trapped piece'], text: 'When I move a piece, I check the new square is safe.' },
   {
     id: 'habit:count-captures',
     family: 'safety',
     bands: UPPER,
+    when: ['hanging piece'],
     text: 'When they can take a piece of mine, I count attackers and guards before I move.',
   },
   {
     id: 'habit:open-king',
     family: 'safety',
     bands: ['advanced'],
+    when: ['back-rank mate', 'smothered mate', 'double check'],
     text: 'When the position opens near my king, I list their checks and sacrifices before I move.',
   },
 
   // Tactics: checks, captures and threats (Heisman), and "look for a better
   // move" (Lasker)
   { id: 'habit:cct-scan', family: 'tactics', bands: ALL, text: 'When I move, I first look at checks, captures and threats.' },
-  { id: 'habit:two-targets', family: 'tactics', bands: ALL, text: 'When two of their pieces are loose, I look to hit both.' },
+  { id: 'habit:two-targets', family: 'tactics', bands: ALL, when: ['fork'], text: 'When two of their pieces are loose, I look to hit both.' },
   { id: 'habit:better-move', family: 'tactics', bands: ALL, text: 'When I find a good move, I look for a better one.' },
-  { id: 'habit:king-boxed', family: 'tactics', bands: ALL, text: 'When their king has no free squares, I look for checks.' },
+  { id: 'habit:king-boxed', family: 'tactics', bands: ALL, when: ['back-rank mate', 'smothered mate'], text: 'When their king has no free squares, I look for checks.' },
   {
     id: 'habit:overworked',
     family: 'tactics',
     bands: UPPER,
+    when: ['pin', 'removing the defender', 'skewer'],
     text: 'When one of their pieces guards two things, I look for a way to take one.',
   },
   {
@@ -126,16 +135,28 @@ export interface HabitQuery {
 // How many past explanations a habit sits out after it is used
 const RECENT_WINDOW = 3
 
-// Picked mechanically when the packet is built: filter by family and band,
-// then the weekly focus wins if it is in that pool (never across families,
-// and it repeats on purpose), then drop habits from the last 3
-// explanations, then take the first one left in list order.
-export function selectHabit(q: HabitQuery): Habit {
-  const fam = family(q.kind)
-  const pool = HABITS.filter(h => h.family === fam && h.bands.includes(q.band))
-  const focus = q.weeklyFocusHabitId && pool.find(h => h.id === q.weeklyFocusHabitId)
+// Picked mechanically when the packet is built (family+band+
+// rotation, extended with trigger-awareness over the packet's certified
+// concepts). A habit tagged with `when` is only eligible when one of those
+// motifs is certified for this position; untagged habits are family advice,
+// eligible for every puzzle of the family. Eligible order: concept-matched
+// habits first, then family advice. The weekly focus wins only inside the
+// eligible set - a focus about pins never overrides a fork puzzle. Fail
+// closed: no eligible habit at all means no habit slot (a shorter
+// explanation beats an irrelevant tip).
+export function pickHabit(pool: Habit[], concepts: readonly MotifName[], weeklyFocusHabitId?: string, recent: string[] = []): Habit | undefined {
+  const matched = pool.filter(h => h.when?.some(c => concepts.includes(c)))
+  const familyAdvice = pool.filter(h => !h.when)
+  const eligible = [...matched, ...familyAdvice]
+  const focus = weeklyFocusHabitId && eligible.find(h => h.id === weeklyFocusHabitId)
   if (focus) return focus
-  const recent = new Set(q.recent.slice(-RECENT_WINDOW))
-  // All used lately: repeating the first is better than saying nothing
-  return pool.find(h => !recent.has(h.id)) ?? pool[0]
+  const seen = new Set(recent.slice(-RECENT_WINDOW))
+  // All eligible used lately: repeating one is better than saying nothing -
+  // but an ineligible (concept-mismatched) habit is never repeated
+  return eligible.find(h => !seen.has(h.id)) ?? eligible[0]
+}
+
+export function selectHabit(q: HabitQuery, concepts: readonly MotifName[] = []): Habit | undefined {
+  const pool = HABITS.filter(h => h.family === family(q.kind) && h.bands.includes(q.band))
+  return pickHabit(pool, concepts, q.weeklyFocusHabitId, q.recent)
 }
