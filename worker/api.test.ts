@@ -41,6 +41,9 @@ const env = {
   POW_SECRET: SECRET,
   EXPLAIN_LIMIT: { limit: async () => ({ success: true }) },
   PACKET_LIMIT: { limit: async () => ({ success: packetLimitOk }) },
+  SYNC_LIMIT: { limit: async () => ({ success: true }) },
+  BACKEND_URL: 'https://backend.example',
+  LIDRILL_KEY: 'backend-secret',
   PACKETS: {
     get: async (key: string) => kv.get(key) ?? null,
     put: async (key: string, value: string, options?: { expirationTtl?: number }) => {
@@ -188,5 +191,84 @@ describe('POST /api/explain v1 (legacy report-in)', () => {
   it('rejects the pre-packet report shape with the reload prompt', async () => {
     const res = await post('/api/explain', { ...forkReport(), best: { san: 'Nc7+' } as never })
     expect(res.status).toBe(409)
+  })
+})
+
+// --- /api/sync/* (server tier): the Worker is the only door to the backend ---
+
+interface BackendCall {
+  url: string
+  method: string
+  key: string | null
+  body: string
+}
+
+const backendCalls: BackendCall[] = []
+let accountStatus = 200
+let accountCalls = 0
+
+function stubSyncFetch() {
+  backendCalls.length = 0
+  accountCalls = 0
+  const cacheStore = new Map<string, Response>()
+  vi.stubGlobal('caches', {
+    default: {
+      match: async (k: Request) => cacheStore.get(k.url) ?? null,
+      put: async (k: Request, v: Response) => void cacheStore.set(k.url, v),
+    },
+  })
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: unknown, init?: RequestInit) => {
+      const url = String(input)
+      if (url === 'https://lichess.org/api/account') {
+        accountCalls++
+        return new Response(accountStatus === 200 ? JSON.stringify({ username: 'Player_01' }) : '{}', { status: accountStatus })
+      }
+      backendCalls.push({ url, method: init?.method ?? 'GET', key: (init?.headers as Record<string, string>)?.['x-lidrill-key'] ?? null, body: String(init?.body ?? '') })
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }),
+  )
+}
+
+async function syncRequest(path: string, opts: { method?: string; token?: string | null; body?: string } = {}): Promise<Response> {
+  const headers: Record<string, string> = {}
+  if (opts.token !== null) headers.authorization = `Bearer ${opts.token ?? 'lichess-token'}`
+  if (opts.body) headers['content-type'] = 'application/json'
+  return worker.fetch(new Request(`http://localhost${path}`, { method: opts.method ?? 'GET', headers, ...(opts.body ? { body: opts.body } : {}) }), env as never, ctx)
+}
+
+describe('/api/sync/*', () => {
+  beforeEach(() => {
+    stubSyncFetch()
+    accountStatus = 200
+  })
+
+  it('validates the token with Lichess and proxies under the account name', async () => {
+    const res = await syncRequest('/api/sync/push', { method: 'POST', body: JSON.stringify({ rows: [] }) })
+    expect(res.status).toBe(200)
+    expect(accountCalls).toBe(1)
+    expect(backendCalls).toHaveLength(1)
+    expect(backendCalls[0].url).toBe('https://backend.example/u/Player_01/push')
+    expect(backendCalls[0].method).toBe('POST')
+    expect(backendCalls[0].key).toBe('backend-secret')
+    expect(backendCalls[0].body).toBe(JSON.stringify({ rows: [] }))
+  })
+
+  it('caches the account lookup for 15 minutes', async () => {
+    await syncRequest('/api/sync/state')
+    await syncRequest('/api/sync/state')
+    expect(accountCalls).toBe(1)
+    expect(backendCalls).toHaveLength(2)
+    expect(backendCalls[0].url).toBe('https://backend.example/u/Player_01/state')
+  })
+
+  it('rejects a missing token and an expired one, without touching the backend', async () => {
+    expect((await syncRequest('/api/sync/state', { token: null })).status).toBe(401)
+    accountStatus = 401
+    const res = await syncRequest('/api/sync/state')
+    expect(res.status).toBe(401)
+    expect(await res.json()).toEqual({ error: 'sign-in-expired' })
+    expect(backendCalls).toHaveLength(0)
   })
 })

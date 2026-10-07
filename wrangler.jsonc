@@ -15,7 +15,10 @@
   // a Worker secret
   "ratelimits": [
     { "name": "EXPLAIN_LIMIT", "namespace_id": "1001", "simple": { "limit": 8, "period": 60 } },
-    { "name": "PACKET_LIMIT", "namespace_id": "1002", "simple": { "limit": 30, "period": 60 } }
+    { "name": "PACKET_LIMIT", "namespace_id": "1002", "simple": { "limit": 30, "period": 60 } },
+    // A sync cycle is ~12 small requests per device; 240/min per account
+    // covers several devices syncing at once
+    { "name": "SYNC_LIMIT", "namespace_id": "1003", "simple": { "limit": 240, "period": 60 } }
   ],
   // Packet store: key = packetHash, value = packet
   // JSON, TTL 30 days. Real namespace ids (created 2026-10-06 with

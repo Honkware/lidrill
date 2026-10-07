@@ -1,0 +1,18 @@
+[Unit]
+Description=Lidrill server-tier game analysis drainer (native Stockfish)
+After=lidrill-server.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/lidrill/server
+EnvironmentFile=-/etc/lidrill/server.env
+Environment=DATA_DIR=/opt/lidrill/data
+Environment=STOCKFISH=/opt/lidrill/tools/stockfish-19
+ExecStart=/opt/lidrill/server/.venv/bin/python analysis_daemon.py
+Nice=10
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

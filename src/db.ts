@@ -1,6 +1,6 @@
 import type { CertTier, EngineRun, Packet } from './server/packet'
 import type { Slot } from './server/render'
-import Dexie, { type EntityTable } from 'dexie'
+import Dexie, { type EntityTable, type Table } from 'dexie'
 import type { Card } from 'ts-fsrs'
 import type { Perf, Speed } from './lichess/api'
 import type { WeakTheme } from './lichess/puzzles'
@@ -218,6 +218,43 @@ export interface Auth {
   grantedAt: number
 }
 
+// Tables replicated to the lidrill server: everything
+// the export carries except explanations (those live in the packet KV) and
+// caches. `auth` (the token) is never synced.
+export const SYNC_TABLES = ['games', 'puzzles', 'reviews', 'profile', 'syncState', 'journal', 'liPuzzle', 'practice', 'replaySessions'] as const
+export type SyncTable = (typeof SYNC_TABLES)[number]
+
+// Auto-increment keys don't exist at hook time (Dexie assigns them after the
+// add resolves), so those tables are queued explicitly at their write sites
+export const SYNC_AUTO_ID: SyncTable[] = ['reviews', 'replaySessions']
+
+// Every synced table's primary-key field, for the sync queue
+export const SYNC_ID: Record<SyncTable, string> = {
+  games: 'id',
+  puzzles: 'id',
+  reviews: 'id',
+  profile: 'id',
+  syncState: 'site',
+  journal: 'gameId',
+  liPuzzle: 'week',
+  practice: 'id',
+  replaySessions: 'id',
+}
+
+// A row was written locally and hasn't reached the server yet. `at` is the
+// write time; the server compares it against what it has (newer wins).
+export interface SyncQueueEntry {
+  table: SyncTable
+  key: string
+  at: number
+}
+
+// Sync watermarks and one-shot flags for the server pass
+export interface ServerMetaEntry {
+  key: string
+  value: number
+}
+
 class LidrillDb extends Dexie {
   games!: EntityTable<Game, 'id'>
   syncState!: EntityTable<SyncState, 'site'>
@@ -232,6 +269,8 @@ class LidrillDb extends Dexie {
   explanations!: EntityTable<ExplanationRow, 'id'>
   replaySessions!: EntityTable<ReplaySession, 'id'>
   certs!: EntityTable<CertRow, 'puzzleId'>
+  syncQueue!: Table<SyncQueueEntry, [string, string]>
+  serverMeta!: EntityTable<ServerMetaEntry, 'key'>
 
   constructor() {
     super('lidrill')
@@ -260,7 +299,50 @@ class LidrillDb extends Dexie {
       replaySessions: '++id, gameId, at',
       certs: 'puzzleId, createdAt',
     })
+    this.version(7).stores({
+      syncQueue: '[table+key], table',
+      serverMeta: 'key',
+    })
   }
 }
 
 export const db = new LidrillDb()
+
+// Queue every local write to a synced table so the server pass pushes just
+// the dirty rows. A failed push keeps its entries for
+// the next pass; deletions aren't queued (v1 has no tombstones - rows are
+// only ever added or updated).
+let stampingSuspended = false
+
+// Applying pulled rows writes with the server's data; those writes must not
+// re-queue themselves for push.
+export async function withoutSyncQueue<T>(f: () => Promise<T>): Promise<T> {
+  stampingSuspended = true
+  try {
+    return await f()
+  } finally {
+    stampingSuspended = false
+  }
+}
+
+// Queue a locally-written row for the next server push. The Dexie hooks
+// below call this for tables whose key exists at write time; the
+// auto-increment tables (SYNC_AUTO_ID) call it at their write sites, where
+// the generated id is known. ignoreTransaction: hooks run inside the write's
+// transaction, which doesn't cover the syncQueue store.
+export async function queueSyncRow(table: SyncTable, key: string | number): Promise<void> {
+  if (stampingSuspended) return
+  await Dexie.ignoreTransaction(async () => {
+    await db.syncQueue.put({ table, key: String(key), at: Date.now() })
+  })
+}
+
+for (const name of SYNC_TABLES.filter(t => !SYNC_AUTO_ID.includes(t))) {
+  db.table(name).hook('creating', (pk, _obj) => {
+    if (pk !== undefined) void queueSyncRow(name, String(pk))
+  })
+  db.table(name).hook('updating', (mods, pk) => {
+    void queueSyncRow(name, String(pk))
+    return mods
+  })
+}

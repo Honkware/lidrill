@@ -7,7 +7,7 @@ import { parseUci } from 'chessops/util'
 import type { Engine } from './analysis/engine'
 import { checkColor } from './checkColor'
 import { Drill } from './drill'
-import { db, type Game, type Puzzle } from './db'
+import { db, queueSyncRow, type Game, type Puzzle } from './db'
 import { lineEvalCp, reconcileWithLine } from './server/consistency'
 import { scoreSound, sound } from './sound'
 
@@ -96,7 +96,8 @@ export class Replay {
   }
 
   private async saveSession() {
-    await db.replaySessions.add({ gameId: this.game.id, at: Date.now(), stops: this.reviewIds, scoreN: this.results.filter(Boolean).length, scoreM: this.stops.length })
+    const id = (await db.replaySessions.add({ gameId: this.game.id, at: Date.now(), stops: this.reviewIds, scoreN: this.results.filter(Boolean).length, scoreM: this.stops.length }))!
+    await queueSyncRow('replaySessions', id)
   }
 
   private show(ply: number) {

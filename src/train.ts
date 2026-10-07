@@ -1,5 +1,5 @@
 import { fsrs, Rating } from 'ts-fsrs'
-import { db, type Puzzle, type Review } from './db'
+import { db, queueSyncRow, type Puzzle, type Review } from './db'
 
 // Puzzles are reviewed once a day, so schedule in whole days: a graded
 // puzzle must leave today's due list. ts-fsrs's default short-term mode
@@ -78,7 +78,9 @@ export async function recordAttempt(puzzle: Puzzle, solved: boolean, now = new D
   const { card } = scheduler.next(puzzle.card, now, ratingFor(solved, hinted))
   await db.puzzles.update(puzzle.id, { card })
   // ++id is always set on add
-  return (await db.reviews.add({ puzzleId: puzzle.id, at: +now, solved, hinted: hinted || undefined, source }))!
+  const id = (await db.reviews.add({ puzzleId: puzzle.id, at: +now, solved, hinted: hinted || undefined, source }))!
+  await queueSyncRow('reviews', id)
+  return id
 }
 
 // What the stats count as solved
@@ -86,4 +88,5 @@ export const cleanSolve = (r: Review) => r.solved && !r.hinted
 
 export async function saveWhyMissed(reviewId: number, text: string): Promise<void> {
   await db.reviews.update(reviewId, { whyMissed: text.trim() || undefined })
+  await queueSyncRow('reviews', reviewId)
 }

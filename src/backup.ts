@@ -1,4 +1,4 @@
-import { db, type Puzzle } from './db'
+import { db, queueSyncRow, SYNC_AUTO_ID, type Puzzle } from './db'
 
 // One-file export of everything lidrill knows. The Lichess token
 // is never in it, and the explorer cache is left out because it's only a
@@ -48,13 +48,19 @@ export async function importData(text: string, signedInAs?: string): Promise<voi
       const rows = (data.tables[name] ?? []) as unknown[]
       await db.table(name).clear()
       await db.table(name).bulkAdd(name === 'puzzles' ? (rows as Puzzle[]).map(reviveCard) : rows)
+      if ((SYNC_AUTO_ID as readonly string[]).includes(name)) for (const row of rows as { id?: number }[]) if (row.id !== undefined) void queueSyncRow(name as (typeof SYNC_AUTO_ID)[number], row.id)
     }
   })
 }
 
-// Everything except the sign-in, which has its own button
+// Everything except the sign-in, which has its own button. The server copy
+// goes too (the next server pass sends the wipe), otherwise a pull would
+// resurrect everything here and on every other device.
 export async function deleteAllData(): Promise<void> {
-  await db.transaction('rw', [...TABLES, 'explorer', 'certs'].map(t => db.table(t)), async () => {
+  await db.transaction('rw', [...TABLES, 'explorer', 'certs', 'syncQueue', 'serverMeta'].map(t => db.table(t)), async () => {
     for (const name of [...TABLES, 'explorer', 'certs']) await db.table(name).clear()
+    await db.syncQueue.clear()
+    await db.serverMeta.put({ key: 'wipe', value: 1 })
+    await db.serverMeta.delete('pullSince')
   })
 }

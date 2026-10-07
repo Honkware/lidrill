@@ -26,7 +26,12 @@ interface Env {
   POW_SECRET: string
   EXPLAIN_LIMIT: RateLimit
   PACKET_LIMIT: RateLimit
+  SYNC_LIMIT: RateLimit
   PACKETS: KVNamespace
+  // Server tier (docs/server-tier.md): the loopback FastAPI service, reached
+  // through its cloudflared quick tunnel, guarded by the shared secret
+  BACKEND_URL: string
+  LIDRILL_KEY: string
 }
 
 // Bumped with the shape of explanations: the browser asks again for anything older
@@ -171,12 +176,58 @@ async function explain(request: Request, env: Env, ctx: { waitUntil(p: Promise<u
   return narrateAndCache(pkt, cacheKey, ctx, env)
 }
 
+// --- Server tier: /api/sync/* is the only
+// door to the loopback backend. The client sends its Lichess token; we
+// validate it with Lichess (cached 15 min per token), and only the account
+// username goes into the backend URL - the token never reaches the VM.
+
+const ACCOUNT_TTL = 15 * 60
+
+async function accountFor(token: string, ctx: { waitUntil(p: Promise<unknown>): void }): Promise<{ username: string } | Response> {
+  // Cloudflare extends Cache.put with expirationTtl; the DOM type doesn't know it
+  const cache = (caches as unknown as { default: Cache & { put(key: Request, response: Response, options?: { expirationTtl?: number }): Promise<void> } }).default
+  const key = new Request(`https://lidrill.org/api/sync-account/${await sha256Hex(token)}`)
+  try {
+    const hit = await cache.match(key)
+    if (hit) return (await hit.json()) as { username: string }
+  } catch {
+    // a broken cache just means we ask Lichess again
+  }
+  const res = await fetch('https://lichess.org/api/account', { headers: { Authorization: `Bearer ${token}` } })
+  if (!res.ok) return json({ error: 'sign-in-expired' }, 401)
+  const { username } = (await res.json()) as { username?: string }
+  if (!username) return json({ error: 'sign-in-expired' }, 401)
+  const account = { username }
+  ctx.waitUntil(cache.put(key, new Response(JSON.stringify(account), { headers: { 'cache-control': 'no-store' } }), { expirationTtl: ACCOUNT_TTL }).catch(() => {}))
+  return account
+}
+
+// Any /api/sync/<path> → BACKEND_URL/u/<username>/<path>. The shared secret
+// is VM-local (Worker secret → tunnel → loopback), never exposed to clients.
+async function syncProxy(request: Request, url: URL, env: Env, ctx: { waitUntil(p: Promise<unknown>): void }): Promise<Response> {
+  const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
+  if (!token) return json({ error: 'Sign in with Lichess to sync.' }, 401)
+  const account = await accountFor(token, ctx)
+  if (account instanceof Response) return account
+  if (!(await env.SYNC_LIMIT.limit({ key: account.username })).success) return json({ error: 'Too many syncs at once. Try again in a minute.' }, 429)
+  const path = url.pathname.slice('/api/sync'.length)
+  const upstream = `${env.BACKEND_URL}/u/${encodeURIComponent(account.username)}${path}${url.search}`
+  const method = request.method
+  const res = await fetch(upstream, {
+    method,
+    headers: { 'x-lidrill-key': env.LIDRILL_KEY, ...(method === 'POST' || method === 'PUT' || method === 'DELETE' ? { 'content-type': request.headers.get('content-type') ?? 'application/json' } : {}) },
+    ...(method === 'POST' || method === 'PUT' ? { body: await request.text() } : {}),
+  })
+  return new Response(res.body, { status: res.status, headers: { 'content-type': 'application/json' } })
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: { waitUntil(p: Promise<unknown>): void }): Promise<Response> {
     const url = new URL(request.url)
     if (url.pathname === '/api/challenge') return challenge(request, env)
     if (url.pathname === '/api/packet') return packet(request, env)
     if (url.pathname === '/api/explain') return explain(request, env, ctx)
+    if (url.pathname.startsWith('/api/sync/')) return syncProxy(request, url, env, ctx)
     if (url.pathname.startsWith('/api/')) return json({ error: 'Not found' }, 404)
     return env.ASSETS.fetch(request)
   },

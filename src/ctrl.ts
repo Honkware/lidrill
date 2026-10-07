@@ -17,6 +17,7 @@ import { weekReport, weeklyZeroHang, type WeekReport } from './report'
 import { corpus, exportMarks, loadMarks, saveMarks, type Mark } from './precision'
 import { sound } from './sound'
 import { SignInExpired } from './sync/lichess'
+import { serverSync as syncWithServer } from './sync/server'
 import { dueQueue, saveWhyMissed, type DayQueue } from './train'
 
 export type Screen = 'welcome' | 'today' | 'drill' | 'replay' | 'review' | 'game' | 'games' | 'drills' | 'practice' | 'settings' | 'precision'
@@ -92,6 +93,7 @@ export class Ctrl {
     this.redraw = redraw
     window.addEventListener('hashchange', () => this.route())
     window.addEventListener('keydown', e => this.onKey(e))
+    window.addEventListener('online', () => void this.serverSync())
     this.boot()
   }
 
@@ -114,6 +116,7 @@ export class Ctrl {
     if (after === 'look') this.useLichessLook()
     if (after === 'studies') this.loadStudies()
     if (this.auth || this.profile?.chesscomUser) this.sync()
+    this.startServerSync()
   }
 
   get signedOut() {
@@ -254,6 +257,39 @@ export class Ctrl {
       })
   }
 
+  // --- server sync ---
+
+  private serverSyncTimer?: ReturnType<typeof setInterval>
+  private serverSyncing?: Promise<void>
+
+  // Push dirty rows and pull newer ones on sign-in, after every game sync,
+  // every 5 minutes, and when the network comes back. Fire-and-forget:
+  // failures wait for the next pass, only an expired sign-in propagates.
+  private startServerSync() {
+    if (this.auth) void this.serverSync()
+    if (!this.auth || this.serverSyncTimer) return
+    this.serverSyncTimer = setInterval(() => void this.serverSync(), 5 * 60 * 1000)
+  }
+
+  private stopServerSync() {
+    clearInterval(this.serverSyncTimer)
+    this.serverSyncTimer = undefined
+  }
+
+  private async serverSync(): Promise<void> {
+    if (!this.auth || this.serverSyncing) return this.serverSyncing
+    this.serverSyncing = (async () => {
+      const r = await syncWithServer(this.auth!.token)
+      if (r.pulled) await this.refresh(true)
+    })()
+      .catch(async e => {
+        await this.signInExpired(e)
+        if (!(e instanceof SignInExpired)) console.warn('server sync:', e)
+      })
+      .finally(() => (this.serverSyncing = undefined))
+    return this.serverSyncing
+  }
+
   // --- account ---
 
   signIn() {
@@ -262,6 +298,7 @@ export class Ctrl {
 
   async signOut() {
     this.stopSync()
+    this.stopServerSync()
     await signOut()
     this.auth = undefined
     this.status = ''
@@ -299,6 +336,7 @@ export class Ctrl {
     }
     this.syncing = false
     this.refresh(true)
+    this.startServerSync()
     if (!this.abort.signal.aborted) {
       void precertifyDue(this.abort.signal)
       // One-time migration: stamp tiers on old rows and upload packets
