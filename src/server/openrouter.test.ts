@@ -4,10 +4,11 @@ import { openRouter } from './openrouter'
 
 // The auto-router contract (docs/21k-design.md (e), openrouter.ai/docs/guides/
 // routing/routers/auto-router): model openrouter/auto, the auto-router plugin
-// with cost_tier 'low', and provider.max_price capping what the router may
-// pick. Draft and decompose stay pinned and send no router fields.
+// with cost_tier 'low', and provider.max_price as the documented object
+// { prompt, completion } in $/M tokens capping what the router may pick.
+// Draft and decompose stay pinned and send no router fields.
 
-const routed: LlmCall = { pass: 'smooth', model: 'openrouter/auto', temperature: 0.3, maxTokens: 900, system: 's', user: 'u', schema: { type: 'object' }, routing: { maxPrice: 0.002 } }
+const routed: LlmCall = { pass: 'smooth', model: 'openrouter/auto', temperature: 0.3, maxTokens: 900, system: 's', user: 'u', schema: { type: 'object' }, routing: { usdPerMTokIn: 0.75, usdPerMTokOut: 3.75 } }
 const pinned: LlmCall = { pass: 'draft', model: 'google/gemini-3.8-flash', temperature: 0.3, maxTokens: 900, system: 's', user: 'u', schema: { type: 'object' } }
 
 afterEach(() => vi.unstubAllGlobals())
@@ -20,11 +21,14 @@ describe('openRouter caller', () => {
       return new Response(JSON.stringify({ model: 'openai/gpt-5.1', choices: [{ message: { content: '{"ok":true}' } }], usage: { cost: 0.0012 } }), { status: 200 })
     })
     const r = await openRouter('key')(routed)
+    // the documented max_price shape is an object of $/M-token rates, not a
+    // bare number - a bare number is a 400 from OpenRouter
     expect(sent).toMatchObject({
       model: 'openrouter/auto',
       plugins: [{ id: 'auto-router', cost_tier: 'low' }],
-      provider: { require_parameters: true, max_price: 0.002 },
+      provider: { require_parameters: true, max_price: { prompt: 0.75, completion: 3.75 } },
     })
+    expect((sent!.provider as Record<string, unknown>).max_price).toEqual({ prompt: 0.75, completion: 3.75 })
     expect(r).toEqual({ json: { ok: true }, cost: 0.0012, model: 'openai/gpt-5.1' })
   })
 

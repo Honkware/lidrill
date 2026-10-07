@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { templateFloor } from './floor'
-import { BUDGET_USD, MODELS, narrate, promptView, prune, SMOOTH_MODEL, type Caller, type LlmCall } from './narrate'
+import { MODELS, narrate, promptView, prune, SMOOTH, SMOOTH_MODEL, type Caller, type LlmCall } from './narrate'
 import { buildPacket, dedupeKey, nullMoveFen, packetHash, packetProblems, stampTier, validPacket, validReport, type Certificate, type EngineReport, type EngineRun, type Packet } from './packet'
 import { renderSlot, renderText, type Slot } from './render'
 import { validateSlots } from './slots'
@@ -473,8 +473,8 @@ describe('narrator pipeline', () => {
     expect(calls[1].model).toBe(MODELS.lint.model) // pinned
     const smooth = calls[2]
     expect(smooth.model).toBe(SMOOTH_MODEL)
-    expect(smooth.routing?.maxPrice).toBeGreaterThan(0)
-    expect(smooth.routing!.maxPrice).toBeLessThan(BUDGET_USD)
+    // the wire cap is the reservation basis: the pinned draft model's $/M rates
+    expect(smooth.routing).toEqual({ usdPerMTokIn: SMOOTH.usdPerMTokIn, usdPerMTokOut: SMOOTH.usdPerMTokOut })
     // the served model is recorded per response, the router's pick included
     expect(n.models).toEqual([MODELS.draft.model, MODELS.lint.model, SMOOTH_MODEL])
   })

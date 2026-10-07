@@ -3,9 +3,10 @@ import type { Caller } from './narrate'
 // One OpenRouter call: pinned model, temperature, strict JSON schema, a
 // timeout, and the provider-reported cost for the budget. A call may instead
 // ride the auto-router: model openrouter/auto,
-// the auto-router plugin with cost_tier low, and provider.max_price holding
-// the reservation the budget check made. The served model comes back in
-// `model` either way.
+// the auto-router plugin with cost_tier low, and provider.max_price as the
+// documented { prompt, completion } per-million-dollar cap holding the
+// reservation the budget check made. The served model comes back in `model`
+// either way.
 export function openRouter(apiKey: string, timeoutMs = 45_000): Caller {
   return async c => {
     const auto = c.routing
@@ -22,7 +23,7 @@ export function openRouter(apiKey: string, timeoutMs = 45_000): Caller {
           { role: 'user', content: c.user },
         ],
         response_format: { type: 'json_schema', json_schema: { name: c.pass === 'decompose' ? 'claims' : 'slots', strict: true, schema: c.schema } },
-        provider: { require_parameters: true, ...(auto ? { max_price: auto.maxPrice } : {}) },
+        provider: { require_parameters: true, ...(auto ? { max_price: { prompt: auto.usdPerMTokIn, completion: auto.usdPerMTokOut } } : {}) },
         ...(auto ? { plugins: [{ id: 'auto-router', cost_tier: 'low' }] } : {}),
         reasoning: { exclude: true, effort: 'low' },
         usage: { include: true },

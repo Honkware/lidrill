@@ -18,9 +18,10 @@ export interface LlmCall {
   system: string
   user: string
   schema: Record<string, unknown>
-  // Set for auto-router calls (smooth only): the reservation the budget
-  // check held, enforced on the wire as provider.max_price
-  routing?: { maxPrice: number }
+  // Set for auto-router calls (smooth only): the per-million-token price cap
+  // the budget check reserved with, enforced on the wire as
+  // provider.max_price = { prompt, completion }
+  routing?: { usdPerMTokIn: number; usdPerMTokOut: number }
 }
 export interface LlmResult {
   json?: unknown
@@ -181,7 +182,7 @@ export async function narrate(p: Packet, call: Caller): Promise<Narration> {
         system: SYSTEM_V2,
         user,
         schema,
-        ...(which === 'smooth' ? { routing: { maxPrice: worst } } : {}),
+        ...(which === 'smooth' ? { routing: { usdPerMTokIn: m.usdPerMTokIn, usdPerMTokOut: m.usdPerMTokOut } } : {}),
       })
       cost += r.cost
       if (r.model) models.push(r.model)
