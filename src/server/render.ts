@@ -1,3 +1,6 @@
+import { Chess } from 'chessops/chess'
+import { makeFen, parseFen } from 'chessops/fen'
+import { parseUci } from 'chessops/util'
 import type { Band } from '../db'
 import { amount, mateIn, points } from './amount'
 import { HABITS } from './habits'
@@ -111,12 +114,56 @@ export function gameFrameIds(p: Packet): Set<string> {
   return out
 }
 
-const SQUARE = /\b[a-h][1-8]\b/g
+const SQUARE_AT = /\b[a-h][1-8]\b/y
+
+// A SAN the packet holds more than one of (from different positions) stays
+// plain: the text doesn't say which one it means. Bare pawn pushes (e4, d5)
+// read as squares in certificate text ("the rook on a8"), so only SANs with a
+// piece letter, a capture, castling or a suffix link as moves; there the
+// square link wins.
+const SAN_LINK = /^(?:[NBRQK]|O-O|.*x|.*[+#=])/
+
+const moveLink = (m: PvMove): BoardLink => ({ from: m.from, to: m.to, fen: m.fenBefore, after: m.fenAfter })
+
+// The SAN → link map for certificate text: at most one owner per SAN
+function sanLinks(moves: Map<string, PvMove>): Map<string, BoardLink> {
+  const out = new Map<string, BoardLink>()
+  const ambiguous = new Set<string>()
+  for (const m of moves.values()) {
+    if (!SAN_LINK.test(m.san) || ambiguous.has(m.san)) continue
+    const prev = out.get(m.san)
+    if (prev) {
+      if (prev.fen !== m.fenBefore) {
+        out.delete(m.san)
+        ambiguous.add(m.san)
+      }
+    } else out.set(m.san, moveLink(m))
+  }
+  return out
+}
+
+// Holding and alternative moves are played from the puzzle position; the
+// packet stores only their uci, so the arrival position is derived here
+const derivedMove = (id: string, p: Packet): BoardLink | undefined => {
+  const m = p.holding.find(h => h.id === id) ?? p.alternatives.find(a => a.id === id)
+  if (!m || typeof m.uci !== 'string') return undefined // packets stored before uci was kept
+  const setup = parseFen(p.position.fenBefore)
+  if (setup.isErr) return undefined
+  const pos = Chess.fromSetup(setup.value)
+  if (pos.isErr) return undefined
+  const move = parseUci(m.uci)
+  if (!move || !pos.value.isLegal(move)) return undefined
+  pos.value.play(move)
+  return { from: m.uci.slice(0, 2), to: m.uci.slice(2, 4), fen: p.position.fenBefore, after: makeFen(pos.value.toSetup()) }
+}
 
 // A slot's text with refs replaced, split for the screen: moves link to the
-// position they're played from, squares inside certified text get a circle
+// position they're played from, squares inside certified text get a circle,
+// and a SAN inside certified text links when exactly one move in the packet
+// plays it
 export function renderSlot(s: Slot, p: Packet): Segment[] {
   const moves = movesById(p)
+  const sans = sanLinks(moves)
   const game = gameFrameIds(p)
   const out: Segment[] = []
   let last = 0
@@ -128,9 +175,18 @@ export function renderSlot(s: Slot, p: Packet): Segment[] {
     if (words.endsWith('.') && s.text[m.index + m[0].length] === '.') words = words.slice(0, -1)
     const frame = game.has(id) ? ({ frame: 'game' } as const) : {}
     const move = moves.get(id)
-    if (move) out.push({ text: words, ref: id, link: { from: move.from, to: move.to, fen: move.fenBefore, after: move.fenAfter }, ...frame })
-    else if (id.startsWith('c-')) out.push(...squareLinks(words, id, certPosition(id, p, moves), frame.frame))
-    else out.push({ text: words, ref: id, ...frame })
+    if (id === 'threat' && p.threat) {
+      // Only the SAN is the move; the consequence rides along plain
+      const t = p.threat.line[0]
+      out.push({ text: t.san, ref: id, link: moveLink(t), ...frame })
+      out.push({ text: words.slice(t.san.length), ref: id, ...frame })
+    } else if (move) out.push({ text: words, ref: id, link: moveLink(move), ...frame })
+    else {
+      const link = derivedMove(id, p)
+      if (link) out.push({ text: words, ref: id, link, ...frame })
+      else if (id.startsWith('c-')) out.push(...certLinks(words, id, certPosition(id, p, moves), sans, frame.frame))
+      else out.push({ text: words, ref: id, ...frame })
+    }
     last = m.index + m[0].length
   }
   if (last < s.text.length) out.push({ text: s.text.slice(last) })
@@ -143,15 +199,38 @@ function certPosition(id: string, p: Packet, moves: Map<string, PvMove>): string
   return moveId ? moves.get(moveId)?.fenAfter : undefined
 }
 
-function squareLinks(text: string, ref: string, fen: string | undefined, frame?: 'game'): Segment[] {
+function certLinks(text: string, ref: string, fen: string | undefined, sans: Map<string, BoardLink>, frame?: 'game'): Segment[] {
+  const byLength = [...sans.keys()].sort((a, b) => b.length - a.length)
   const out: Segment[] = []
+  const tail = () => ({ ref, ...(frame ? { frame } : {}) }) as const
   let last = 0
-  for (const m of text.matchAll(SQUARE)) {
-    if (m.index > last) out.push({ text: text.slice(last, m.index), ref, ...(frame ? { frame } : {}) })
-    out.push({ text: m[0], ref, link: { to: m[0], fen }, ...(frame ? { frame } : {}) })
-    last = m.index + m[0].length
+  let i = 0
+  while (i < text.length) {
+    let hit: { len: number; link: BoardLink } | undefined
+    if (i === 0 || !/[A-Za-z0-9]/.test(text[i - 1])) {
+      for (const san of byLength) {
+        if (!text.startsWith(san, i)) continue
+        const next = text[i + san.length]
+        if (next !== undefined && /[A-Za-z0-9+#=]/.test(next)) continue
+        hit = { len: san.length, link: sans.get(san)! }
+        break
+      }
+    }
+    if (!hit) {
+      SQUARE_AT.lastIndex = i
+      const sq = SQUARE_AT.exec(text)
+      if (sq) hit = { len: sq[0].length, link: { to: sq[0], fen } }
+    }
+    if (!hit) {
+      i++
+      continue
+    }
+    if (i > last) out.push({ text: text.slice(last, i), ...tail() })
+    out.push({ text: text.slice(i, i + hit.len), ...tail(), link: hit.link })
+    i += hit.len
+    last = i
   }
-  if (last < text.length) out.push({ text: text.slice(last), ref, ...(frame ? { frame } : {}) })
+  if (last < text.length) out.push({ text: text.slice(last), ...tail() })
   return out
 }
 

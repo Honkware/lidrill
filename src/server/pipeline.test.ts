@@ -176,6 +176,56 @@ describe('renderer', () => {
     expect(segs.find(s => s.ref === 'pv2')!.link).toMatchObject({ from: 'c7', to: 'a8' })
     expect(renderText(good(), p).pattern).toMatch(/^Your idea: Nc7\+ attacks the rook on a8 and the king on e8 at once\. A fork is/)
   })
+
+  // Every move mention a narration can produce behaves the same on screen:
+  // ref or certified text, it links to the position the move is played from
+  it('links holding and alternative moves from the puzzle position', () => {
+    const p = packetOf(forkReport({ best: forkReport().best.map(r => ({ ...r, lines: [r.lines[0], { pv: ['e1e2'], eval: cp(480) }] })), holding: ['d5c7', 'e1e2'], kind: 'hold' }))
+    const segs = renderSlot({ slot: 'why', text: '{ref:hold1} or {ref:hold2} would have held; {ref:alt1} would not.', refs: ['hold1', 'hold2', 'alt1'] }, p)
+    const hold1 = segs.find(s => s.text === 'Nc7+')!
+    expect(hold1.link).toMatchObject({ from: 'd5', to: 'c7', fen: p.position.fenBefore })
+    expect(hold1.link!.after).toBe(p.best.pv[0].fenAfter)
+    expect(segs.find(s => s.ref === 'alt1')!.link).toMatchObject({ from: 'e1', to: 'e2', fen: p.position.fenBefore })
+  })
+
+  it('links a SAN inside certified text when exactly one move in the packet plays it', () => {
+    const p = packetOf(forkReport())
+    const segs = renderSlot({ slot: 'pattern', text: 'Your idea: {ref:c-motif}.', refs: ['c-motif'] }, p)
+    expect(segs.find(s => s.text === 'Nc7+')!.link).toMatchObject({ from: 'd5', to: 'c7' })
+    // the squares it attacks circle up in the position after it
+    expect(segs.find(s => s.text === 'a8')!.link).toEqual({ to: 'a8', fen: p.best.pv[0].fenAfter })
+    expect(segs.find(s => s.text === 'e8')!.link).toEqual({ to: 'e8', fen: p.best.pv[0].fenAfter })
+  })
+
+  it('leaves a SAN in certified text plain when the packet plays it from two positions', () => {
+    // dxe5 is the certified threat from the null-move position and the game
+    // reply after Kxd1: the words don't say which, so no board jump is offered
+    const p = packetOf(legalReport())
+    const segs = renderSlot({ slot: 'why', text: '{ref:c-stops}', refs: ['c-stops'] }, p)
+    expect(segs.find(s => s.text === 'Bxf7+')!.link).toMatchObject({ from: 'c4', to: 'f7' })
+    const rest = segs.slice(segs.indexOf(segs.find(s => s.text === 'Bxf7+')!) + 1)
+    expect(rest.map(s => s.text).join('')).toBe(' stops dxe5')
+    expect(rest.every(s => !s.link)).toBe(true)
+  })
+
+  it('links only the SAN of the threat, not its consequence', () => {
+    const p = packetOf(legalReport())
+    const segs = renderSlot({ slot: 'why', text: 'They threatened {ref:threat}.', refs: ['threat'] }, p)
+    const san = segs.find(s => s.text === 'dxe5')!
+    expect(san.link).toMatchObject({ from: 'd6', to: 'e5' })
+    const after = segs.slice(segs.indexOf(san) + 1)
+    expect(after.map(s => s.text).join('')).toMatch(/^, /)
+    expect(after.every(s => !s.link)).toBe(true)
+    expect(segs.map(s => s.text).join('')).toBe(renderText([{ slot: 'why', text: 'They threatened {ref:threat}.', refs: ['threat'] }], p).why)
+  })
+
+  it('reads a bare pawn push in certified text as a square, not a move', () => {
+    const p = packetOf(forkReport())
+    p.certificates.push({ id: 'c-x', type: 'tactical', side: 'w', targetSide: 'b', payload: {}, text: 'the pawn reaches d5' })
+    p.best.pv.push({ id: 'pv9', san: 'd5', uci: 'd4d5', side: 'w', givesCheck: false, isCapture: false, mate: false, from: 'd4', to: 'd5', fenBefore: 'x', fenAfter: 'y' })
+    const segs = renderSlot({ slot: 'pattern', text: '{ref:c-x}', refs: ['c-x'] }, p)
+    expect(segs.find(s => s.text === 'd5')!.link).toEqual({ to: 'd5', fen: undefined })
+  })
 })
 
 describe('validator', () => {

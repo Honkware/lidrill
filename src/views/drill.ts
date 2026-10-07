@@ -142,10 +142,11 @@ function moveLine(d: Drill): VNode {
 const navButton = (name: string, labelText: string, onClick: () => void) =>
   el('button', 'grid size-11 place-items-center rounded-lg text-dim active:bg-raised', { attrs: { type: 'button', 'aria-label': labelText }, on: { click: onClick } }, [icon(name)])
 
-// Moves and squares in the explanation play out on the board: hover with a
-// mouse, tap on a touch screen (tap again to put the board back), or
-// Enter/Space from the keyboard. A tap also fires mouse-compatibility
-// events, so only real mouse pointers count as hovering.
+// Every move mention in the explanation is a link - ref or certified text -
+// and each one behaves the same: hover with a mouse, tap on a touch screen
+// (tap again to put the board back), or Enter/Space from the keyboard. A tap
+// also fires mouse-compatibility events, so only real mouse pointers count
+// as hovering.
 let lastPointer = 'mouse'
 
 function linked(d: Drill, segments: Segment[]): (VNode | string)[] {

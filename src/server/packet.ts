@@ -183,7 +183,7 @@ export interface Packet {
     pvTerminal: 'mate' | 'advantage-stable' | 'truncated'
   }
   holding: { id: string; san: string; uci: string }[]
-  alternatives: { id: string; san: string; side: Side; eval: TypedEval; gapCp: number; verdict: 'worse' | 'close' }[]
+  alternatives: { id: string; san: string; uci: string; side: Side; eval: TypedEval; gapCp: number; verdict: 'worse' | 'close' }[]
   threatStatus: ThreatStatus
   threat?: {
     id: 'threat'
@@ -575,7 +575,7 @@ export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION
     if (!line) return []
     const e = pov(l.eval, false)
     const gap = cpOf(bs.typed) - cpOf(e)
-    return [{ id: `alt${i + 1}`, san: line.sans[0], side: sideOf(player), eval: { type: e.type, value: e.value, stable: false }, gapCp: Math.round(gap), verdict: gap >= margin ? ('worse' as const) : ('close' as const) }]
+    return [{ id: `alt${i + 1}`, san: line.sans[0], uci: l.pv[0], side: sideOf(player), eval: { type: e.type, value: e.value, stable: false }, gapCp: Math.round(gap), verdict: gap >= margin ? ('worse' as const) : ('close' as const) }]
   })
 
   // Certificates (≤ 8): patterns detected again here, never taken on trust
