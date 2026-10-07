@@ -1,7 +1,7 @@
 import { createEmptyCard } from 'ts-fsrs'
-import { describe, expect, it } from 'vitest'
-import type { Puzzle, PuzzleTag, PuzzleType } from './db'
-import { buildQueue, DAILY_CAP, interleave, RECOVERY_CAP } from './train'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { db, type Puzzle, type PuzzleTag, type PuzzleType } from './db'
+import { buildQueue, DAILY_CAP, dueQueue, interleave, RECOVERY_CAP, recordAttempt } from './train'
 
 let n = 0
 const puzzle = (type: PuzzleType, tag: PuzzleTag = 'hang', solutionLen = 1, source: Puzzle['source'] = 'own'): Puzzle => ({
@@ -57,5 +57,40 @@ describe('interleave', () => {
   it('alternates tags while it can', () => {
     const q = interleave([puzzle('hang', 'hang'), puzzle('hang', 'hang'), puzzle('hang', 'mate'), puzzle('hang', 'mate')])
     expect(q.map(p => p.tag)).toEqual(['hang', 'mate', 'hang', 'mate'])
+  })
+})
+
+describe('due count', () => {
+  beforeEach(async () => {
+    await db.puzzles.clear()
+    await db.reviews.clear()
+  })
+
+  // Regression: the home "Due today" number derives from stored cards via
+  // dueQueue, so grading a puzzle mid-session must drop it immediately and
+  // for the rest of the day. ts-fsrs's default short-term mode instead kept a
+  // graded puzzle due 1–10 minutes later, and the count climbed back to the
+  // full queue (the next session re-served the same puzzles, forever stuck in
+  // the learning steps).
+  it('drops by one per graded puzzle, straight from the stored cards', async () => {
+    const ps = Array.from({ length: DAILY_CAP }, () => puzzle('hang'))
+    await db.puzzles.bulkPut(ps)
+    expect((await dueQueue(now)).puzzles.length).toBe(DAILY_CAP)
+
+    // Grade 5 of 12; there is no session-end step and none is needed
+    for (const p of ps.slice(0, 5)) await recordAttempt(p, true, now)
+    expect((await dueQueue(now)).puzzles.length).toBe(DAILY_CAP - 5)
+
+    // A graded puzzle stays out of today's queue for hours, not minutes
+    const stored = (await db.puzzles.get(ps[0].id))!
+    expect(+stored.card.due).toBeGreaterThan(+now + 6 * 3600e3)
+  })
+
+  it('a missed puzzle comes back tomorrow, not in minutes', async () => {
+    const p = puzzle('hang')
+    await db.puzzles.put(p)
+    await recordAttempt(p, false, now)
+    expect((await dueQueue(now)).puzzles.length).toBe(0)
+    expect((await dueQueue(new Date(+now + 2 * 86400e3))).puzzles.length).toBe(1)
   })
 })

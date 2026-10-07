@@ -1,7 +1,11 @@
 import { fsrs, Rating } from 'ts-fsrs'
 import { db, type Puzzle, type Review } from './db'
 
-const scheduler = fsrs()
+// Puzzles are reviewed once a day, so schedule in whole days: a graded
+// puzzle must leave today's due list. ts-fsrs's default short-term mode
+// (FSRS-6 learning steps of 1 m/10 m) would keep a freshly graded puzzle due
+// minutes later, so the home count and the next queue would never shrink.
+const scheduler = fsrs({ enable_short_term: false })
 
 // About 15 minutes a day: at ~75 s a puzzle that's 12.
 export const DAILY_CAP = 12
