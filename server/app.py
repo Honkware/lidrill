@@ -139,26 +139,39 @@ def push(user: str, body: PushBody, x_lidrill_key: str | None = Header(default=N
 def pull(
     user: str,
     since: int = Query(default=0),
-    cursor: int = Query(default=0),
+    cursor: str | None = Query(default=None),
     limit: int = Query(default=500),
     x_lidrill_key: str | None = Header(default=None),
 ) -> dict[str, Any]:
     guard(x_lidrill_key)
     limit = min(max(1, limit), MAX_PAGE)
+    # Keyset over (updated_at, rowid): the cursor is the last row's
+    # "updatedAt:rowid", so pages are stable even while new rows land
+    args: list[Any] = [since]
+    keyset = ""
+    if cursor:
+        try:
+            last_at, last_rowid = cursor.split(":")
+            keyset = " AND (updated_at > ? OR (updated_at = ? AND rowid > ?))"
+            args += [int(last_at), int(last_at), int(last_rowid)]
+        except (ValueError, TypeError):
+            raise HTTPException(400, "bad cursor")
+    args.append(limit)
     conn = connect(user)
-    total = conn.execute("SELECT COUNT(*) AS n FROM rows WHERE updated_at > ?", (since,)).fetchone()["n"]
     cur = conn.execute(
-        """SELECT rowid, table_name, id, updated_at, data FROM rows
-           WHERE updated_at > ? OR (updated_at = ? AND rowid > ?)
+        f"""SELECT rowid, table_name, id, updated_at, data FROM rows
+           WHERE updated_at > ?{keyset}
            ORDER BY updated_at, rowid LIMIT ?""",
-        (since, since, cursor, limit),
+        args,
     )
     fetched = cur.fetchall()
     rows = [
         {"table": r["table_name"], "id": r["id"], "updatedAt": r["updated_at"], "data": json.loads(r["data"])}
         for r in fetched
     ]
-    next_cursor = fetched[-1]["rowid"] if len(fetched) == limit else None
+    last = fetched[-1] if fetched else None
+    next_cursor = f"{last['updated_at']}:{last['rowid']}" if last and len(fetched) == limit else None
+    total = conn.execute("SELECT COUNT(*) AS n FROM rows WHERE updated_at > ?", (since,)).fetchone()["n"]
     conn.execute(
         "INSERT INTO meta (key, value) VALUES ('lastSeen', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         (int(time.time() * 1000),),

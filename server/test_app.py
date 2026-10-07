@@ -52,10 +52,8 @@ def test_push_pull_roundtrip():
     assert pulled["nextCursor"] is None
     assert pulled["rows"][0]["data"] == PUZZLE
 
-    # A pull from `since` after both rows sees nothing
+    # `since` is strictly exclusive: at the newest row's time nothing returns
     assert CLIENT.get("/u/player_01/pull", params={"since": 200}, **KEY).json()["rows"] == []
-    # ... and exactly at the newest row's time still returns it (clients
-    # watermark with their own pull-completion time, so >= is a no-op there)
     assert len(CLIENT.get("/u/player_01/pull", params={"since": 99}, **KEY).json()["rows"]) == 2
 
 

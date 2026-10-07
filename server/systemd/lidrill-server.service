@@ -5,10 +5,10 @@ After=network.target
 [Service]
 Type=simple
 User=ubuntu
-WorkingDirectory=/opt/lidrill/server
+WorkingDirectory=/opt/lidrill/server/server
 EnvironmentFile=-/etc/lidrill/server.env
 Environment=DATA_DIR=/opt/lidrill/data
-ExecStart=/opt/lidrill/server/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8010
+ExecStart=/opt/lidrill/server/server/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8010
 Restart=always
 RestartSec=3
 

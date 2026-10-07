@@ -5,11 +5,11 @@ After=lidrill-server.service
 [Service]
 Type=simple
 User=ubuntu
-WorkingDirectory=/opt/lidrill/server
+WorkingDirectory=/opt/lidrill/server/server
 EnvironmentFile=-/etc/lidrill/server.env
 Environment=DATA_DIR=/opt/lidrill/data
 Environment=STOCKFISH=/opt/lidrill/tools/stockfish-19
-ExecStart=/opt/lidrill/server/.venv/bin/python analysis_daemon.py
+ExecStart=/opt/lidrill/server/server/.venv/bin/python analysis_daemon.py
 Nice=10
 Restart=always
 RestartSec=5

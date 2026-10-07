@@ -80,7 +80,8 @@ journalctl -u lidrill-tunnel -g https | head -1   # the current tunnel URL
 sudo systemctl restart lidrill-{server,tunnel,analysis}
 ```
 
-Deploy: `git pull` in `/opt/lidrill/server` (backend; venv lives there) and
+Deploy: `git pull` in `/opt/lidrill/server` (the backend deployment checkout;
+the venv lives in its `server/` subdirectory, next to `app.py`) and
 `/opt/lidrill/app` (bun checkout, for the TS pipeline when phase-2
 certification lands), then `systemctl restart …`. Worker secrets:
 `wrangler secret put BACKEND_URL` (tunnel URL) and `LIDRILL_KEY` (shared with
