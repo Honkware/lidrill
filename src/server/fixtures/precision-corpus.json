@@ -1,357 +1,357 @@
 {
  "schema": "lidrill-precision-corpus/1",
- "source": "floor",
- "generatedAt": "2026-10-06T22:35:50.837Z",
+ "source": "model",
+ "generatedAt": "2026-10-07T01:02:49.377Z",
  "claims": [
   {
    "id": "g0-beginner-whatHappened-0",
    "fen": "r1bqkb1r/1pp2ppp/p1n2n2/1B1p4/3NP3/2N5/PPP2PPP/R1BQK2R w KQkq - 0 7",
    "band": "beginner",
    "slot": "whatHappened",
-   "text": "You played exd5 and it cost a rook's worth."
+   "text": "You played {ref:played} and gave up {ref:swing}."
   },
   {
-   "id": "g0-club-whatHappened-0",
+   "id": "g0-club-why-0",
    "fen": "r1bqkb1r/1pp2ppp/p1n2n2/1B1p4/3NP3/2N5/PPP2PPP/R1BQK2R w KQkq - 0 7",
    "band": "club",
-   "slot": "whatHappened",
-   "text": "exd5 cost 5.3 pawns."
+   "slot": "why",
+   "text": "They threatened {ref:threat}."
   },
   {
    "id": "g0-advanced-whatHappened-0",
    "fen": "r1bqkb1r/1pp2ppp/p1n2n2/1B1p4/3NP3/2N5/PPP2PPP/R1BQK2R w KQkq - 0 7",
    "band": "advanced",
    "slot": "whatHappened",
-   "text": "exd5 cost 5.3 pawns."
+   "text": "You played {ref:played}, dropping {ref:swing}."
   },
   {
-   "id": "g0-advanced-pattern-2",
+   "id": "g0-advanced-nextTime-0",
    "fen": "r1bqkb1r/1pp2ppp/p1n2n2/1B1p4/3NP3/2N5/PPP2PPP/R1BQK2R w KQkq - 0 7",
    "band": "advanced",
-   "slot": "pattern",
-   "text": "List loose pieces and the king first; forks follow from those targets."
+   "slot": "nextTime",
+   "text": "{ref:habit:cct-scan}"
   },
   {
-   "id": "g1-beginner-pattern-2",
+   "id": "g1-beginner-pattern-1",
    "fen": "8/1Rp1ppk1/3r4/8/4B1b1/1P2Q1Pr/6K1/8 w - - 4 28",
    "band": "beginner",
    "slot": "pattern",
-   "text": "Check what your pieces would open up when they move."
+   "text": "{ref:gloss:discovered-attack}"
   },
   {
-   "id": "g1-club-pattern-2",
+   "id": "g1-club-pattern-0",
    "fen": "8/1Rp1ppk1/3r4/8/4B1b1/1P2Q1Pr/6K1/8 w - - 4 28",
    "band": "club",
    "slot": "pattern",
-   "text": "Make the moving piece threaten something too, so they cannot meet both."
+   "text": "Your idea: {ref:c-motif}."
   },
   {
-   "id": "g1-advanced-pattern-1",
+   "id": "g1-advanced-why-2",
    "fen": "8/1Rp1ppk1/3r4/8/4B1b1/1P2Q1Pr/6K1/8 w - - 4 28",
    "band": "advanced",
-   "slot": "pattern",
-   "text": "A discovered attack uncovers a line piece, so the moving piece gets a free tempo."
+   "slot": "why",
+   "text": "After {ref:played}, they answer {ref:pl1}."
   },
   {
-   "id": "g2-beginner-pattern-1",
+   "id": "g2-beginner-why-0",
    "fen": "3q3r/2pbn1k1/prn2pp1/1p2b2p/1P2P1P1/PQP4P/1B1NN1B1/K2R1R2 b - - 0 21",
    "band": "beginner",
-   "slot": "pattern",
-   "text": "Look at checks, then takes, then threats."
+   "slot": "why",
+   "text": "They were ready for {ref:threat}."
   },
   {
-   "id": "g2-club-pattern-1",
+   "id": "g2-club-why-1",
    "fen": "3q3r/2pbn1k1/prn2pp1/1p2b2p/1P2P1P1/PQP4P/1B1NN1B1/K2R1R2 b - - 0 21",
    "band": "club",
-   "slot": "pattern",
-   "text": "Check checks, captures and threats, in that order."
+   "slot": "why",
+   "text": "Your {ref:best} was needed because {ref:c-stops}."
   },
   {
-   "id": "g2-advanced-pattern-1",
+   "id": "g2-advanced-why-2",
    "fen": "3q3r/2pbn1k1/prn2pp1/1p2b2p/1P2P1P1/PQP4P/1B1NN1B1/K2R1R2 b - - 0 21",
    "band": "advanced",
-   "slot": "pattern",
-   "text": "Rank candidate moves by how forcing they are, and calculate those first."
+   "slot": "why",
+   "text": "They then play their {ref:pv1}."
   },
   {
-   "id": "g3-beginner-nextTime-0",
+   "id": "g3-beginner-why-2",
    "fen": "r4rk1/pppqpp2/4bn1b/6pp/R3P3/1P4PP/3N1PB1/2BQR1K1 w - - 4 15",
    "band": "beginner",
-   "slot": "nextTime",
-   "text": "When I move, I first look at checks, captures and threats."
+   "slot": "why",
+   "text": "Then they play their {ref:pv1}."
   },
   {
-   "id": "g3-advanced-whatHappened-0",
+   "id": "g3-club-why-2",
+   "fen": "r4rk1/pppqpp2/4bn1b/6pp/R3P3/1P4PP/3N1PB1/2BQR1K1 w - - 4 15",
+   "band": "club",
+   "slot": "why",
+   "text": "After {ref:played}, they answer {ref:pl1}."
+  },
+  {
+   "id": "g3-advanced-pattern-0",
    "fen": "r4rk1/pppqpp2/4bn1b/6pp/R3P3/1P4PP/3N1PB1/2BQR1K1 w - - 4 15",
    "band": "advanced",
-   "slot": "whatHappened",
-   "text": "f3 cost 4.9 pawns."
+   "slot": "pattern",
+   "text": "{ref:gloss:none}"
   },
   {
-   "id": "g4-beginner-whatHappened-0",
+   "id": "g4-beginner-pattern-0",
    "fen": "r1b1qrk1/2p1bppp/p1N5/2p5/8/2P5/P1P1QPPP/R1BR2K1 w - - 1 14",
    "band": "beginner",
-   "slot": "whatHappened",
-   "text": "You played Rd8 and it cost a queen's worth."
-  },
-  {
-   "id": "g4-beginner-nextTime-0",
-   "fen": "r1b1qrk1/2p1bppp/p1N5/2p5/8/2P5/P1P1QPPP/R1BR2K1 w - - 1 14",
-   "band": "beginner",
-   "slot": "nextTime",
-   "text": "When I am worse, I list their checks, captures and threats."
+   "slot": "pattern",
+   "text": "{ref:gloss:none}"
   },
   {
    "id": "g4-club-nextTime-0",
    "fen": "r1b1qrk1/2p1bppp/p1N5/2p5/8/2P5/P1P1QPPP/R1BR2K1 w - - 1 14",
    "band": "club",
    "slot": "nextTime",
-   "text": "When I am worse, I list their checks, captures and threats."
+   "text": "{ref:habit:list-forcing}"
   },
   {
-   "id": "g4-advanced-pattern-1",
+   "id": "g4-advanced-pattern-0",
    "fen": "r1b1qrk1/2p1bppp/p1N5/2p5/8/2P5/P1P1QPPP/R1BR2K1 w - - 1 14",
    "band": "advanced",
    "slot": "pattern",
-   "text": "Rank candidate moves by how forcing they are, and calculate those first."
+   "text": "{ref:gloss:none}"
   },
   {
-   "id": "g5-beginner-nextTime-0",
+   "id": "g5-beginner-pattern-0",
    "fen": "r1bq1rk1/2p1bppp/p1p5/3n4/3N4/2N5/PPP1QPPP/R1B2RK1 w - - 4 11",
    "band": "beginner",
-   "slot": "nextTime",
-   "text": "When I move, I first look at checks, captures and threats."
+   "slot": "pattern",
+   "text": "{ref:gloss:none}"
   },
   {
-   "id": "g5-advanced-whatHappened-0",
+   "id": "g5-club-pattern-0",
+   "fen": "r1bq1rk1/2p1bppp/p1p5/3n4/3N4/2N5/PPP1QPPP/R1B2RK1 w - - 4 11",
+   "band": "club",
+   "slot": "pattern",
+   "text": "{ref:gloss:none}"
+  },
+  {
+   "id": "g5-advanced-pattern-0",
    "fen": "r1bq1rk1/2p1bppp/p1p5/3n4/3N4/2N5/PPP1QPPP/R1B2RK1 w - - 4 11",
    "band": "advanced",
-   "slot": "whatHappened",
-   "text": "Rd1 cost 6.4 pawns."
+   "slot": "pattern",
+   "text": "{ref:gloss:none}"
   },
   {
-   "id": "g5-advanced-nextTime-0",
-   "fen": "r1bq1rk1/2p1bppp/p1p5/3n4/3N4/2N5/PPP1QPPP/R1B2RK1 w - - 4 11",
-   "band": "advanced",
-   "slot": "nextTime",
-   "text": "When I move, I first look at checks, captures and threats."
-  },
-  {
-   "id": "g6-beginner-nextTime-0",
+   "id": "g6-beginner-why-3",
    "fen": "2rk3r/pp1b1ppp/5n1n/2b5/2B1PB2/1PN2P2/P1P3PP/R2R2K1 w - - 1 15",
    "band": "beginner",
-   "slot": "nextTime",
-   "text": "When I am worse, I list their checks, captures and threats."
+   "slot": "why",
+   "text": "Against {ref:played}, they had this: {ref:c-punish}."
   },
   {
-   "id": "g6-club-nextTime-0",
+   "id": "g6-club-why-2",
    "fen": "2rk3r/pp1b1ppp/5n1n/2b5/2B1PB2/1PN2P2/P1P3PP/R2R2K1 w - - 1 15",
    "band": "club",
-   "slot": "nextTime",
-   "text": "When I am worse, I list their checks, captures and threats."
+   "slot": "why",
+   "text": "{ref:hold1} was one way to hold."
   },
   {
-   "id": "g6-advanced-pattern-1",
+   "id": "g6-advanced-why-1",
    "fen": "2rk3r/pp1b1ppp/5n1n/2b5/2B1PB2/1PN2P2/P1P3PP/R2R2K1 w - - 1 15",
    "band": "advanced",
-   "slot": "pattern",
-   "text": "Rank candidate moves by how forcing they are, and calculate those first."
+   "slot": "why",
+   "text": "{ref:best} is met by {ref:pv1}, then {ref:pv2}."
   },
   {
-   "id": "g7-beginner-pattern-2",
+   "id": "g7-beginner-whatHappened-0",
    "fen": "8/2R1ppk1/5r2/8/4B1b1/1P2Q1Pr/6K1/8 w - - 1 29",
    "band": "beginner",
-   "slot": "pattern",
-   "text": "Look for a move that hits two of their pieces."
+   "slot": "whatHappened",
+   "text": "You played {ref:played}, missing {ref:swing}."
+  },
+  {
+   "id": "g7-beginner-nextTime-0",
+   "fen": "8/2R1ppk1/5r2/8/4B1b1/1P2Q1Pr/6K1/8 w - - 1 29",
+   "band": "beginner",
+   "slot": "nextTime",
+   "text": "{ref:habit:cct-scan}"
   },
   {
    "id": "g7-club-pattern-1",
    "fen": "8/2R1ppk1/5r2/8/4B1b1/1P2Q1Pr/6K1/8 w - - 1 29",
    "band": "club",
    "slot": "pattern",
-   "text": "A fork is one piece attacking two targets at once."
+   "text": "{ref:gloss:fork}"
   },
   {
    "id": "g7-advanced-pattern-0",
    "fen": "8/2R1ppk1/5r2/8/4B1b1/1P2Q1Pr/6K1/8 w - - 1 29",
    "band": "advanced",
    "slot": "pattern",
-   "text": "Your idea: Qg5+ attacks the bishop on g4 and the king on g7 at once."
+   "text": "Your {ref:c-motif}."
   },
   {
-   "id": "g8-beginner-why-3",
+   "id": "g8-beginner-why-2",
    "fen": "r4rk1/3b1ppp/p3p3/3p4/1n1Pn3/1PR1PN2/3BBPPP/1K5R w - - 5 19",
    "band": "beginner",
    "slot": "why",
-   "text": "Against Kc1, they had this: Na2+ attacks the king on c1 and the rook on c3 at once."
+   "text": "After your {ref:played}, they play their {ref:pl1} because {ref:c-punish}."
   },
   {
-   "id": "g8-club-why-3",
+   "id": "g8-club-pattern-0",
    "fen": "r4rk1/3b1ppp/p3p3/3p4/1n1Pn3/1PR1PN2/3BBPPP/1K5R w - - 5 19",
    "band": "club",
-   "slot": "why",
-   "text": "Against Kc1, they had this: Na2+ attacks the king on c1 and the rook on c3 at once."
+   "slot": "pattern",
+   "text": "{ref:gloss:none}"
   },
   {
-   "id": "g8-advanced-why-2",
+   "id": "g8-advanced-why-3",
    "fen": "r4rk1/3b1ppp/p3p3/3p4/1n1Pn3/1PR1PN2/3BBPPP/1K5R w - - 5 19",
    "band": "advanced",
    "slot": "why",
-   "text": "Rc7 was one way to hold."
+   "text": "Against {ref:played}, they had this: {ref:c-punish}."
   },
   {
    "id": "g9-beginner-why-1",
    "fen": "r1qr2k1/p1p1bpp1/bp3n1p/n2p4/2P5/P2QPN2/2BN1PPP/R1B2RK1 w - - 0 16",
    "band": "beginner",
    "slot": "why",
-   "text": "Bb2 was one way to hold."
+   "text": "{ref:hold1} was one way to hold."
   },
   {
-   "id": "g9-club-why-2",
+   "id": "g9-club-why-1",
    "fen": "r1qr2k1/p1p1bpp1/bp3n1p/n2p4/2P5/P2QPN2/2BN1PPP/R1B2RK1 w - - 0 16",
    "band": "club",
    "slot": "why",
-   "text": "Bb2 was one way to hold."
+   "text": "You could hold with {ref:hold1}, because after they play {ref:pv1}, your {ref:pv2} fights back and {ref:c-fd1}."
   },
   {
-   "id": "g9-advanced-why-2",
+   "id": "g9-advanced-pattern-0",
    "fen": "r1qr2k1/p1p1bpp1/bp3n1p/n2p4/2P5/P2QPN2/2BN1PPP/R1B2RK1 w - - 0 16",
    "band": "advanced",
-   "slot": "why",
-   "text": "Bb2 was one way to hold."
+   "slot": "pattern",
+   "text": "{ref:gloss:none}"
   },
   {
-   "id": "g10-beginner-why-1",
+   "id": "g10-beginner-pattern-0",
    "fen": "r2k1b1r/pp1b1ppp/5n2/8/2p1PBn1/2N5/PPP1BPPP/R2R2K1 w - - 4 12",
    "band": "beginner",
-   "slot": "why",
-   "text": "e5 was one way to hold."
+   "slot": "pattern",
+   "text": "{ref:gloss:none}"
   },
   {
-   "id": "g10-club-why-1",
+   "id": "g10-club-pattern-0",
    "fen": "r2k1b1r/pp1b1ppp/5n2/8/2p1PBn1/2N5/PPP1BPPP/R2R2K1 w - - 4 12",
    "band": "club",
-   "slot": "why",
-   "text": "e5 was one way to hold."
+   "slot": "pattern",
+   "text": "{ref:gloss:none}"
   },
   {
-   "id": "g10-advanced-why-2",
+   "id": "g10-advanced-why-3",
    "fen": "r2k1b1r/pp1b1ppp/5n2/8/2p1PBn1/2N5/PPP1BPPP/R2R2K1 w - - 4 12",
    "band": "advanced",
    "slot": "why",
-   "text": "After f3, they answer Bc5+."
+   "text": "The next choice, {ref:alt1}, was worse."
   },
   {
-   "id": "g11-beginner-why-2",
+   "id": "g11-beginner-pattern-0",
    "fen": "r2qkb1r/ppp1ppp1/2n1bn2/7p/2pPP3/1P3N1P/P2N1PP1/R1BQKB1R w KQkq - 3 8",
    "band": "beginner",
-   "slot": "why",
-   "text": "d5 was one way to hold."
+   "slot": "pattern",
+   "text": "{ref:gloss:none}"
   },
   {
-   "id": "g11-club-why-2",
+   "id": "g11-club-nextTime-0",
    "fen": "r2qkb1r/ppp1ppp1/2n1bn2/7p/2pPP3/1P3N1P/P2N1PP1/R1BQKB1R w KQkq - 3 8",
    "band": "club",
-   "slot": "why",
-   "text": "d5 was one way to hold."
+   "slot": "nextTime",
+   "text": "{ref:habit:list-forcing}"
   },
   {
-   "id": "g11-advanced-why-2",
+   "id": "g11-advanced-why-3",
    "fen": "r2qkb1r/ppp1ppp1/2n1bn2/7p/2pPP3/1P3N1P/P2N1PP1/R1BQKB1R w KQkq - 3 8",
    "band": "advanced",
    "slot": "why",
-   "text": "d5 was one way to hold."
+   "text": "After {ref:played}, they answer {ref:pl1}."
   },
   {
-   "id": "g12-beginner-why-0",
+   "id": "g12-beginner-why-1",
    "fen": "8/2p1b3/1p1p1pPk/p4B2/3nP3/P1PP4/1P3P2/3K4 b - - 1 33",
    "band": "beginner",
    "slot": "why",
-   "text": "They threatened cxd4, which would win a piece."
+   "text": "Instead, your {ref:hold1} stops it because {ref:c-stops}."
   },
   {
-   "id": "g12-club-why-0",
+   "id": "g12-club-why-2",
    "fen": "8/2p1b3/1p1p1pPk/p4B2/3nP3/P1PP4/1P3P2/3K4 b - - 1 33",
    "band": "club",
    "slot": "why",
-   "text": "They threatened cxd4, which would win a piece."
+   "text": "{ref:hold1} was one way to hold."
   },
   {
-   "id": "g12-advanced-why-0",
+   "id": "g12-advanced-why-1",
    "fen": "8/2p1b3/1p1p1pPk/p4B2/3nP3/P1PP4/1P3P2/3K4 b - - 1 33",
    "band": "advanced",
    "slot": "why",
-   "text": "They threatened cxd4, which would win a piece."
+   "text": "You hold with {ref:hold1}, because {ref:c-stops}."
   },
   {
-   "id": "g13-beginner-whatHappened-0",
+   "id": "g13-beginner-why-1",
    "fen": "r1bqk2r/1pp2pp1/p1n1p2p/3p4/Pb1Pn3/1PN1PNP1/2PQ1P1P/R1B1KB1R w KQkq - 3 9",
    "band": "beginner",
-   "slot": "whatHappened",
-   "text": "You played Qd3 and it cost a piece's worth."
+   "slot": "why",
+   "text": "After {ref:played}, they answer {ref:pl1}."
   },
   {
-   "id": "g13-club-why-1",
+   "id": "g13-club-why-2",
    "fen": "r1bqk2r/1pp2pp1/p1n1p2p/3p4/Pb1Pn3/1PN1PNP1/2PQ1P1P/R1B1KB1R w KQkq - 3 9",
    "band": "club",
    "slot": "why",
-   "text": "Nxe4 is met by Bxd2+, then Nexd2."
+   "text": "Your {ref:best} prevents it because {ref:c-stops}."
   },
   {
    "id": "g13-advanced-why-1",
    "fen": "r1bqk2r/1pp2pp1/p1n1p2p/3p4/Pb1Pn3/1PN1PNP1/2PQ1P1P/R1B1KB1R w KQkq - 3 9",
    "band": "advanced",
    "slot": "why",
-   "text": "Nxe4 is met by Bxd2+, then Nexd2."
+   "text": "Your {ref:best} was forced because {ref:c-forced}, after which they play {ref:pv1} and you respond {ref:pv2}."
   },
   {
-   "id": "g14-beginner-why-1",
+   "id": "g14-beginner-pattern-0",
    "fen": "2r3k1/5ppp/4p3/p2pN3/3P4/1P1KP3/2r2PPP/3R4 w - - 3 29",
    "band": "beginner",
-   "slot": "why",
-   "text": "Nc4 is met by Rxf2, then Nxa5."
+   "slot": "pattern",
+   "text": "{ref:gloss:none}"
   },
   {
-   "id": "g14-club-why-1",
+   "id": "g14-club-why-3",
    "fen": "2r3k1/5ppp/4p3/p2pN3/3P4/1P1KP3/2r2PPP/3R4 w - - 3 29",
    "band": "club",
    "slot": "why",
-   "text": "Nc4 is met by Rxf2, then Nxa5."
+   "text": "After {ref:played}, they answer {ref:pl1}."
   },
   {
-   "id": "g14-advanced-why-1",
+   "id": "g14-advanced-why-2",
    "fen": "2r3k1/5ppp/4p3/p2pN3/3P4/1P1KP3/2r2PPP/3R4 w - - 3 29",
    "band": "advanced",
    "slot": "why",
-   "text": "Nc4 is met by Rxf2, then Nxa5."
+   "text": "Then {ref:c-fd1}."
   },
   {
-   "id": "g15-beginner-why-0",
+   "id": "g15-beginner-pattern-0",
    "fen": "r2q4/2p1b1k1/1pnp1pPr/p4B1p/4P3/P1PPBN2/1PK2P1R/7R b - - 6 27",
    "band": "beginner",
-   "slot": "why",
-   "text": "They threatened Bxh6+, which would mate."
+   "slot": "pattern",
+   "text": "{ref:gloss:none}"
   },
   {
-   "id": "g15-club-whatHappened-0",
+   "id": "g15-club-nextTime-0",
    "fen": "r2q4/2p1b1k1/1pnp1pPr/p4B1p/4P3/P1PPBN2/1PK2P1R/7R b - - 6 27",
    "band": "club",
-   "slot": "whatHappened",
-   "text": "Qh8 cost 3.6 pawns."
-  },
-  {
-   "id": "g15-advanced-whatHappened-0",
-   "fen": "r2q4/2p1b1k1/1pnp1pPr/p4B1p/4P3/P1PPBN2/1PK2P1R/7R b - - 6 27",
-   "band": "advanced",
-   "slot": "whatHappened",
-   "text": "Qh8 cost 3.6 pawns."
+   "slot": "nextTime",
+   "text": "{ref:habit:list-forcing}"
   },
   {
    "id": "g15-advanced-nextTime-0",
    "fen": "r2q4/2p1b1k1/1pnp1pPr/p4B1p/4P3/P1PPBN2/1PK2P1R/7R b - - 6 27",
    "band": "advanced",
    "slot": "nextTime",
-   "text": "When I am worse, I list their checks, captures and threats."
+   "text": "{ref:habit:list-forcing}"
   }
  ]
 }
