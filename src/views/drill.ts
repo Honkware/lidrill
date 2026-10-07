@@ -60,7 +60,8 @@ export function drillContext(d: Drill): VNode | null {
   const p = d.puzzle
   if (p.source === 'lichess')
     return el('p', 'text-sm text-dim', [
-      `Lichess puzzle${p.rating ? `, rated ${p.rating}` : ''}. `,
+      // Lichess hides the rating while you solve; it shows in review
+      `Lichess puzzle${p.rating && d.state !== 'playing' ? `, rated ${p.rating}` : ''}. `,
       el('a', 'underline', { attrs: { href: `https://lichess.org/training/${p.id.replace('lichess:', '')}`, target: '_blank', rel: 'noopener' } }, 'Open on Lichess'),
     ])
   const g = d.game
@@ -94,15 +95,17 @@ function playing(d: Drill): VNode {
           )
   return el('div', 'space-y-3', [
     box,
-    el('div', 'flex flex-wrap gap-2', [
-      el(
-        'button',
-        'inline-flex min-h-11 items-center gap-2 rounded-lg bg-raised px-4 text-sm font-medium',
-        { attrs: { type: 'button', disabled: !d.yourTurn }, class: { 'text-warn': d.showHint, 'opacity-50': !d.yourTurn }, on: { click: () => d.hint() } },
-        [icon('hint', 18), d.showHint ? 'Hide hint' : 'Hint'],
-      ),
-      d.canViewSolution ? button('View the solution', () => d.viewSolution(), 'plain') : null,
-    ]),
+    // Standing chrome is one line: the hint appears only after a failed try
+    // (Lichess feedback.ts); the solution button only when it's earned
+    d.feedback === 'fail' || d.showHint
+      ? el(
+          'button',
+          'inline-flex min-h-11 items-center gap-2 rounded-lg bg-raised px-4 text-sm font-medium',
+          { attrs: { type: 'button', disabled: !d.yourTurn }, class: { 'text-warn': d.showHint, 'opacity-50': !d.yourTurn }, on: { click: () => d.hint() } },
+          [icon('hint', 18), d.showHint ? 'Hide hint' : 'Hint'],
+        )
+      : null,
+    d.canViewSolution ? button('View the solution', () => d.viewSolution(), 'plain') : null,
     // Typing moves is for keyboards; on a phone it's clutter
     el('div', 'hidden md:block', [moveInput(t => d.typeMove(t))]),
     drillContext(d),
@@ -112,8 +115,9 @@ function playing(d: Drill): VNode {
 const TITLES = {
   clean: ['good', 'Solved'],
   hinted: ['good', 'Solved with the hint'],
+  // missed and shown end the same way: the answer line carries the difference
   missed: ['bad', 'Puzzle complete'],
-  shown: ['bad', 'Solution shown'],
+  shown: ['bad', 'Puzzle complete'],
 } as const
 
 // The line from the puzzle position on: ✓ for moves the player found,

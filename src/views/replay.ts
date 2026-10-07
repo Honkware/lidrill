@@ -3,7 +3,7 @@ import type { Ctrl } from '../ctrl'
 import { el } from '../el'
 import type { Replay } from '../replay'
 import { puzzleSide } from './drill'
-import { board, button, card, label, topBar } from './ui'
+import { board, button, card, label, plural, topBar } from './ui'
 
 export function replayView(ctrl: Ctrl): VNode {
   const r = ctrl.replay
@@ -15,13 +15,24 @@ export function replayView(ctrl: Ctrl): VNode {
   ])
 }
 
+// One square per stop, styled like the drill's session row: green found,
+// red missed, grey to come, outlined for the current one
 function progressDots(r: Replay): VNode {
+  const found = r.results.filter(Boolean).length
+  const current = r.current ? r.stopIndex : -1
   return el(
     'div',
-    'flex gap-1',
+    'flex flex-wrap gap-1',
+    { attrs: { 'aria-label': `${found} of ${r.stops.length} found` } },
     r.stops.map((_, i) =>
-      el('span', 'h-2 flex-1 rounded-full', {
-        class: { 'bg-accent': r.results[i] === true, 'bg-bad': r.results[i] === false, 'bg-raised': r.results[i] === undefined },
+      el('span', 'size-3 rounded-sm', {
+        class: {
+          'bg-accent': r.results[i] === true,
+          'bg-bad': r.results[i] === false,
+          'bg-raised': r.results[i] === undefined,
+          'ring-2': i === current,
+          'ring-fg': i === current,
+        },
       }),
     ),
   )
@@ -34,7 +45,7 @@ function side(ctrl: Ctrl, r: Replay): VNode {
     return el('div', 'space-y-4', [
       progressDots(r),
       el('p', 'font-display text-2xl', `${score} of ${n} found`),
-      el('p', 'text-sm text-dim', score === n ? 'Every turning point. Next time, find them over the board.' : 'The ones you missed are in your puzzle queue too.'),
+      score < n ? el('p', 'text-sm text-dim', 'Missed ones join your puzzle queue.') : null,
       card(
         [
           label('Journal'),
@@ -56,8 +67,7 @@ function side(ctrl: Ctrl, r: Replay): VNode {
     ])
   return el('div', 'space-y-4', [
     progressDots(r),
-    el('p', 'font-display text-xl', 'Replaying…'),
-    el('p', 'text-sm text-dim', `Move ${Math.ceil(r.ply / 2)}. The board stops where the game turned and asks for your move.`),
-    button(r.current ? 'Skip to the next stop' : 'Skip to the end', () => r.skip(), 'plain'),
+    el('p', 'text-sm text-dim', `Replaying. Find the ${plural(n, 'move')} where the game turned.`),
+    button(r.current ? 'Skip to the next stop' : 'Skip to the end', () => r.skip(), 'quiet'),
   ])
 }

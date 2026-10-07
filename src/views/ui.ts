@@ -84,13 +84,13 @@ export function weekBars(weeks: { games: number; clean: number }[]): VNode {
   const ht = 40
   const bw = 10
   const gap = 5
-  return svgEl('svg', { viewBox: `0 0 ${weeks.length * (bw + gap) - gap} ${ht}`, width: weeks.length * (bw + gap) - gap, height: ht, role: 'img', 'aria-label': 'Games per week, zero-hang games in green' }, weeks.flatMap((w, i) => {
+  return svgEl('svg', { viewBox: `0 0 ${weeks.length * (bw + gap) - gap} ${ht}`, width: weeks.length * (bw + gap) - gap, height: ht, role: 'img', 'aria-label': 'Games per week, clean games in green' }, weeks.flatMap((w, i) => {
     const x = i * (bw + gap)
     if (!w.games) return [svgEl('rect', { x, y: ht - 2, width: bw, height: 2, rx: 1, class: 'fill-raised' })]
     const total = Math.max(4, (w.games / max) * ht)
     const clean = (w.clean / w.games) * total
     return [
-      svgEl('rect', { x, y: ht - total, width: bw, height: total, rx: 2, class: 'fill-bad opacity-60' }, [svgEl('title', {}, [`${w.clean} of ${w.games} without a hang`])]),
+      svgEl('rect', { x, y: ht - total, width: bw, height: total, rx: 2, class: 'fill-bad opacity-60' }, [svgEl('title', {}, [`${w.clean} of ${w.games} clean`])]),
       clean ? svgEl('rect', { x, y: ht - clean, width: bw, height: clean, rx: 2, class: 'fill-accent' }) : null,
     ]
   }))

@@ -1,7 +1,8 @@
 import { h, type VNode } from 'snabbdom'
 import type { Ctrl } from '../ctrl'
 import { el } from '../el'
-import { button, card, label, pawnsWorth } from './ui'
+import { button, card, label } from './ui'
+import { whatCountsLink } from './today'
 import { chesscomField } from './welcome'
 
 export function gamesView(ctrl: Ctrl): VNode {
@@ -28,7 +29,7 @@ export function gamesView(ctrl: Ctrl): VNode {
             ])
           : null,
         el('p', 'text-sm text-dim', `${games} games, ${analyzed} analyzed, ${puzzles} puzzles.`),
-        p ? el('p', 'text-sm text-dim', `lidrill sees you as a ${p.band} player, so puzzles come from moves that gave away ${pawnsWorth(p.swingThresholdCp)} or more.`) : null,
+        p ? el('p', 'text-sm text-dim', [`lidrill sees you as a ${p.band} player. `, whatCountsLink()]) : null,
       ],
       'space-y-3',
     ),

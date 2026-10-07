@@ -7,7 +7,7 @@ import { STUDY_READ_SCOPE } from '../lichess/repertoire'
 import { STUDY_SCOPE } from '../lichess/study'
 import { BOARDS, DEFAULT_BOARD, DEFAULT_PIECES, PIECE_SETS } from '../look'
 import { setSound, soundOn } from '../sound'
-import { button, card, label } from './ui'
+import { button, card, HANG_RULE, label } from './ui'
 import { chesscomField } from './welcome'
 
 // What each Lichess permission is used for
@@ -31,8 +31,20 @@ export function settingsView(ctrl: Ctrl): VNode {
   const pieces = p?.pieces ?? DEFAULT_PIECES
   const boardKey = p?.board ?? DEFAULT_BOARD
   const theme = p?.theme ?? 'dark'
+  const perf = ctrl.today?.puzzlePerf
+  const weak = p?.weakThemes ?? []
   return el('div', 'mx-auto max-w-xl space-y-4', [
     el('h1', 'font-display text-2xl', 'Settings'),
+    card(
+      [
+        label('What counts'),
+        el('p', 'text-sm text-dim', 'A streak game is one with nothing given away. At your level:'),
+        ...(['beginner', 'club', 'advanced'] as const).map(b =>
+          el('p', 'text-sm', { class: { 'text-dim': p?.band !== b } }, [p?.band === b ? el('strong', '', 'You: ') : '', HANG_RULE[b]]),
+        ),
+      ],
+      'space-y-2',
+    ),
     card(
       [
         label('Look'),
@@ -94,6 +106,19 @@ export function settingsView(ctrl: Ctrl): VNode {
           [
             label('Lichess'),
             el('p', 'text-sm', `Signed in as ${ctrl.auth.username}. Games, ratings and the opening book need no extra permission.`),
+            perf
+              ? el('p', 'text-sm', [
+                  `Puzzle performance ${perf.now}`,
+                  perf.delta ? el('span', 'text-dim', ` (${perf.delta > 0 ? '+' : ''}${perf.delta} since last week)`) : '',
+                  ', last 90 days.',
+                ])
+              : null,
+            weak.length
+              ? el('div', [
+                  el('p', 'text-sm text-dim', 'Weakest themes, which get extra puzzles:'),
+                  el('div', 'mt-2 flex flex-wrap gap-2', weak.slice(0, 6).map(w => el('span', 'rounded-full bg-raised px-3 py-1 text-sm', `${w.name} ${w.performance}`))),
+                ])
+              : null,
             el(
               'ul',
               'space-y-2 text-sm',
@@ -111,7 +136,7 @@ export function settingsView(ctrl: Ctrl): VNode {
     card(
       [
         label('Your data'),
-        el('p', 'text-sm text-dim', 'Everything lives in this browser. Export it to keep a copy or move to another device. The Lichess sign-in is never in the file.'),
+        el('p', 'text-sm text-dim', 'Everything lives in this browser; export keeps a copy, and the Lichess sign-in is never in the file.'),
         el('p', 'text-sm text-dim', '"Why?" after a puzzle sends that position and Stockfish\'s lines, nothing else, through lidrill\'s server to an AI model (via OpenRouter).'),
         el('div', 'flex flex-wrap gap-2', [
           button('Export', () => ctrl.exportFile(), 'plain'),

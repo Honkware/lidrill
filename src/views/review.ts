@@ -7,6 +7,7 @@ import { board, button, card, dateLabel, icon, judgColor, judgMark, label, pawns
 
 export function reviewView(ctrl: Ctrl): VNode {
   const rows = ctrl.reviewList
+  const openings = ctrl.today?.openings ?? []
   return el('div', 'mx-auto max-w-2xl space-y-3', [
     el('h1', 'font-display text-2xl', 'Review'),
     !rows
@@ -14,7 +15,41 @@ export function reviewView(ctrl: Ctrl): VNode {
       : !rows.length
         ? card([el('p', 'text-dim', ctrl.syncing ? 'Your games are being analyzed. They show up here one by one.' : 'No analyzed games yet.')])
         : el('ul', 'divide-y divide-raised overflow-hidden rounded-xl bg-surface', rows.map(r => row(r))),
+    openings.length ? openingsCard(openings) : null,
   ])
+}
+
+// Per-opening record, moved off the home screen: win/draw/loss and how
+// often a game had something given away
+function openingsCard(rows: NonNullable<Ctrl['today']>['openings']): VNode {
+  return card(
+    [
+      label('Openings'),
+      el('div', 'mt-2 -mx-1 overflow-x-auto', [
+        el('table', 'w-full min-w-[20rem] text-sm', [
+          el('thead', [
+            el('tr', 'text-left text-xs text-dim', [
+              el('th', 'px-1 py-1 font-normal', 'Opening'),
+              el('th', 'px-1 py-1 text-right font-normal', 'Games'),
+              el('th', 'px-1 py-1 text-right font-normal', 'W / D / L'),
+              el('th', 'px-1 py-1 text-right font-normal', 'With a hang'),
+            ]),
+          ]),
+          el(
+            'tbody',
+            rows.map(r =>
+              el('tr', 'border-t border-raised', [
+                el('td', 'max-w-[12rem] truncate px-1 py-2', r.family),
+                el('td', 'px-1 py-2 text-right tabular-nums', String(r.games)),
+                el('td', 'px-1 py-2 text-right tabular-nums', `${r.win} / ${r.draw} / ${r.loss}`),
+                el('td', 'px-1 py-2 text-right tabular-nums', { class: { 'text-dim': !r.analyzed } }, r.analyzed ? `${r.hangs} of ${r.analyzed}` : 'not analyzed'),
+              ]),
+            ),
+          ),
+        ]),
+      ]),
+    ],
+  )
 }
 
 function row(r: ReviewRow): VNode {
@@ -33,7 +68,7 @@ function row(r: ReviewRow): VNode {
           'flex gap-2 tabular-nums',
           marks.length ? marks.map(j => el('span', judgColor[j], `${r[j]}${judgMark[j]}`)) : [el('span', 'text-accent', 'clean')],
         ),
-        r.journal && !r.journal.hung ? el('p', 'text-xs text-accent', 'no hang') : r.puzzles ? el('p', 'text-xs text-dim', plural(r.puzzles, 'stop')) : null,
+        r.journal && !r.journal.hung ? (marks.length ? el('p', 'text-xs text-accent', 'clean game') : null) : r.puzzles ? el('p', 'text-xs text-dim', plural(r.puzzles, 'stop')) : null,
       ]),
     ]),
   ])
@@ -142,8 +177,8 @@ function journalCard(ctrl: Ctrl, v: GameView): VNode | null {
         'p',
         '',
         j.hung
-          ? [`You hung material on move ${Math.ceil(j.hung.ply / 2)} (`, el('button', 'underline', { attrs: { type: 'button' }, on: { click: () => v.go(j.hung!.ply) } }, j.hung.san), `), giving away about ${pawnsWorth(j.hung.swingCp)}.`]
-          : 'No hangs in this game. It counts toward your streak.',
+          ? [`Gave away about ${pawnsWorth(j.hung.swingCp)} on move ${Math.ceil(j.hung.ply / 2)} (`, el('button', 'underline', { attrs: { type: 'button' }, on: { click: () => v.go(j.hung!.ply) } }, j.hung.san), `).`]
+          : 'Nothing given away. Counts toward your streak.',
       ),
       el('label', 'flex items-center gap-2 text-sm', [
         el('input', 'size-5 accent-accent', { attrs: { type: 'checkbox' }, props: { checked: j.confirmed }, on: { change: e => ctrl.saveJournal({ confirmed: (e.target as HTMLInputElement).checked }) } }),

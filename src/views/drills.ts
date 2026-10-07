@@ -67,10 +67,11 @@ export function practiceView(ctrl: Ctrl): VNode {
   if (!run) return el('p', 'p-4 text-dim', 'Loading…')
   const p = run.practice
   const title = ABOUT[p.kind].title
-  const goal =
-    p.kind === 'conversion'
-      ? 'Win from here: reach a decisive advantage (+10) or mate. Dropping below +2 ends it.'
-      : 'Hold for 12 moves without slipping more than a pawn from where you started.'
+  // The rule is stated once, on the list page (ABOUT). Here: one line, and
+  // the numbers live in the side stats, not in sentences.
+  const goal = p.kind === 'conversion' ? 'Win from here.' : 'Hold.'
+  const target = p.kind === 'conversion' ? '+10' : '12 moves'
+  const targetNote = p.kind === 'conversion' ? 'Reach +10 or mate; dropping below +2 ends it.' : 'Slip at most a pawn from where you started.'
   const done = run.state === 'won' || run.state === 'lost'
   return el('div', 'md:grid md:grid-cols-[auto_minmax(0,1fr)] md:gap-6 md:pt-4', [
     el('div', [el('div', 'md:hidden', [topBar(title, () => ctrl.back('drills'))]), board(`${p.id}:${p.attempts}`, e => run.mount(e))]),
@@ -78,6 +79,7 @@ export function practiceView(ctrl: Ctrl): VNode {
       el('div', 'hidden md:block', [topBar(title, () => ctrl.back('drills'))]),
       el('p', 'text-sm', goal),
       el('div', 'flex gap-6 text-sm', [
+        el('div', [el('p', 'text-xs text-dim', 'Target'), el('p', 'font-medium tabular-nums', { attrs: { title: targetNote } }, target)]),
         el('div', [el('p', 'text-xs text-dim', 'Eval'), el('p', 'font-medium tabular-nums', pawns(run.cp))]),
         el('div', [el('p', 'text-xs text-dim', 'Your moves'), el('p', 'font-medium tabular-nums', String(run.moves))]),
         run.last ? el('div', [el('p', 'text-xs text-dim', 'Stockfish played'), el('p', 'font-medium', run.last)]) : null,
@@ -89,7 +91,8 @@ export function practiceView(ctrl: Ctrl): VNode {
           ])
         : el('div', 'space-y-2', [
             el('p', 'text-sm text-dim', run.state === 'thinking' ? 'Stockfish is thinking…' : 'Your move.'),
-            moveInput(t => run.typeMove(t)),
+            // Same rule as the drill: typing is for keyboards
+            el('div', 'hidden md:block', [moveInput(t => run.typeMove(t))]),
           ]),
     ]),
   ])

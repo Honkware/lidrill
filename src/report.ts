@@ -79,7 +79,7 @@ export function recurringLeak(games: Game[], journal: JournalEntry[], now: Date)
 export function leakLine(leak: Leak): string {
   const where = leak.file ? ` on the ${leak.file}-file` : ''
   const piece = leak.role === 'queen' ? 'your queen' : `${leak.role}s`
-  return `Your hangs keep involving ${piece}${where}: ${leak.count} in the last 90 days. Before moving one, check what attacks the square it lands on.`
+  return `Your ${piece} keep getting given away${where}: ${leak.count} in the last 90 days. Before moving one, check what attacks the square it lands on.`
 }
 
 // One focus for the week: the recurring leak if there is one, else the
