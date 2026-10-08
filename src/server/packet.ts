@@ -26,7 +26,7 @@ export const BANDS: Band[] = ['beginner', 'club', 'advanced']
 
 export const PACKET_SCHEMA = 'lidrill-packet/2.3'
 export const REPORT_SCHEMA = 'lidrill-report/1'
-export const BUILDER_VERSION = 'builder/1.1'
+export const BUILDER_VERSION = 'builder/1.2'
 export const DETECTOR_VERSION = 'det/1.0'
 export const THREAT_DEF = 'nullmove/1.0'
 export const ENGINE = { name: 'stockfish', version: '19-wasm-lite', id: 'sf19-wasm-lite' } as const
@@ -486,7 +486,7 @@ function stability(p: RunPair, flip: boolean) {
 
 export type BuildResult = { ok: true; packet: Packet } | { ok: false; error: string }
 
-export const PROMPT_VERSION = 'p2.4'
+export const PROMPT_VERSION = 'p2.5'
 export const RENDERER_VERSION = 'render/1.0'
 
 export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION): BuildResult {
@@ -717,9 +717,12 @@ export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION
   const glossKey: MotifKey = motifKey !== 'none' || mateCert || threatStatus !== 'certified' ? motifKey : 'meeting the threat'
   // Trigger-aware habit selection: only a habit whose motifs match
   // this packet's certified concepts, or family advice, is eligible; the
-  // weekly focus wins only inside that set
+  // weekly focus wins only inside that set. mechanism-matching: when
+  // the packet's task is meeting the certified threat (the meeting-the-threat
+  // gloss), the meet-threat mechanism habit rides along whatever the puzzle
+  // family - never a generic gloss
   const habit = selectHabit(
-    { kind, band, weeklyFocusHabitId: report.habit.weeklyFocus, recent: report.habit.recent, threatCertified: threatStatus === 'certified' },
+    { kind, band, weeklyFocusHabitId: report.habit.weeklyFocus, recent: report.habit.recent, threatCertified: threatStatus === 'certified', threatMeeting: glossKey === 'meeting the threat' },
     concepts.map(c => c.tag),
   )
   const gloss = motifEntry(glossKey, band)
@@ -827,7 +830,10 @@ export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION
       requiredRefs: required,
       habitSlotId: habit?.id ?? null,
       glossId: gloss.id,
-      mechanismMin: band === 'beginner' ? 1 : 2,
+      // A direct mate ends the game at the move - the certified
+      // line is one ply, so one mechanism fact is the whole truth; asking
+      // the why for a second step only floors mate-in-1 packets
+      mechanismMin: mateIn === 1 ? 1 : band === 'beginner' ? 1 : 2,
     },
     context: { opening: report.opening, eco: report.eco, band },
   }

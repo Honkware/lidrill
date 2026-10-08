@@ -148,6 +148,14 @@ export function templateFloor(p: Packet, frame: FrameContext = MISS_FRAME): Slot
   // pattern's polarity (the motif certificate is the player's); the wordy
   // lead-ins stay short so the floor fits the budget; the also-good frame
   // credits the position's point, not the player's idea ("Your point:")
+  // The gloss never substitutes for the instance - when the pattern
+  // is a definition (meeting the threat, no named pattern), it opens with
+  // the position ref that makes it true
+  const glossPattern = has('c-stops')
+    ? `${ref('c-stops')}. ${ref(p.didactic.glossId)}`
+    : p.threat
+      ? `The problem was their ${ref('threat')}. ${ref(p.didactic.glossId)}`
+      : `The point here is ${ref('best')}. ${ref(p.didactic.glossId)}`
   const pattern =
     frame.membership === 'set' && p.didactic.motifCert
       ? `Your point: ${ref(p.didactic.motifCert)}. ${ref(p.didactic.glossId)}`
@@ -155,7 +163,7 @@ export function templateFloor(p: Packet, frame: FrameContext = MISS_FRAME): Slot
         ? `Your idea: ${ref(p.didactic.motifCert)}. ${ref(p.didactic.glossId)}`
         : has('c-mate')
           ? `Your point: ${ref('c-mate')}.`
-          : ref(p.didactic.glossId)
+          : glossPattern
   const out = [slot('whatHappened', what), slot('why', why.join(' ')), slot('pattern', pattern)]
   // The habit only rides along when it matches the packet's mechanism:
   // its tagged motifs are certified here, and a threat-keyed habit only

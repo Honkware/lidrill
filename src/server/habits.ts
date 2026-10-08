@@ -8,7 +8,7 @@ import type { PuzzleKind } from './packet'
 // <trigger>, I <action>."), the form that turns advice into a cue the player
 // meets over the board. Change the texts only together with the version.
 
-export const HABIT_LIB_VERSION = 'habit/1.1'
+export const HABIT_LIB_VERSION = 'habit/1.2'
 
 export type Family = 'safety' | 'tactics' | 'conversion' | 'defense'
 
@@ -156,6 +156,11 @@ export interface HabitQuery {
   weeklyFocusHabitId?: string
   recent: string[] // habit ids of past explanations, oldest first
   threatCertified?: boolean
+  // Mechanism-matching: the packet's task is meeting a certified
+  // threat (the meeting-the-threat gloss). Threat-mechanism habits ride
+  // along whatever the puzzle family - a threat-meeting missed-win's
+  // nextTime is the meet-threat habit, not generic family advice.
+  threatMeeting?: boolean
 }
 
 // How many past explanations a habit sits out after it is used
@@ -164,21 +169,23 @@ const RECENT_WINDOW = 3
 // Picked mechanically when the packet is built (family+band+
 // rotation, extended with trigger-awareness over the packet's certified
 // concepts). A habit tagged with `when` is only eligible when one of those
-// motifs is certified for this position; a habit tagged with `threat` is
-// only eligible when the packet certified a threat; untagged habits are
-// family advice, eligible for every puzzle of the family. Eligible order:
-// concept-matched habits first, then threat-mechanism habits, then family
-// advice. The weekly focus wins only inside the eligible set - a focus about
-// pins never overrides a fork puzzle. Fail closed: no eligible habit at all
-// means no habit slot (a shorter explanation beats an irrelevant tip).
+// motifs is certified for this position; a habit tagged `threat` is a
+// mechanism habit - eligible when the packet certified a threat (its own
+// defense family) or, whatever the family, when the packet's task is meeting
+// the threat; untagged habits are family advice,
+// eligible for every puzzle of the family. Eligible order: concept-matched
+// habits first, then threat-mechanism habits, then family advice. The weekly
+// focus wins only inside the eligible set - a focus about pins never
+// overrides a fork puzzle. Fail closed: no eligible habit at all means no
+// habit slot (a shorter explanation beats an irrelevant tip).
 export function pickHabit(
   pool: Habit[],
   concepts: readonly MotifName[],
   weeklyFocusHabitId?: string,
   recent: string[] = [],
-  threatCertified = false,
+  threatMechanism = false,
 ): Habit | undefined {
-  const matched = pool.filter(h => h.when?.some(c => concepts.includes(c)) || (h.threat !== undefined && threatCertified))
+  const matched = pool.filter(h => h.when?.some(c => concepts.includes(c)) || (h.threat !== undefined && threatMechanism))
   const familyAdvice = pool.filter(h => !h.when && !h.threat)
   const eligible = [...matched, ...familyAdvice]
   const focus = weeklyFocusHabitId && eligible.find(h => h.id === weeklyFocusHabitId)
@@ -190,6 +197,11 @@ export function pickHabit(
 }
 
 export function selectHabit(q: HabitQuery, concepts: readonly MotifName[] = []): Habit | undefined {
-  const pool = HABITS.filter(h => h.family === family(q.kind) && h.bands.includes(q.band) && (!h.threat || q.threatCertified === true))
-  return pickHabit(pool, concepts, q.weeklyFocusHabitId, q.recent, q.threatCertified)
+  const fam = family(q.kind)
+  const pool = HABITS.filter(h => {
+    if (!h.bands.includes(q.band)) return false
+    if (h.threat) return q.threatMeeting === true || (fam === 'defense' && q.threatCertified === true)
+    return h.family === fam
+  })
+  return pickHabit(pool, concepts, q.weeklyFocusHabitId, q.recent, q.threatMeeting === true || (fam === 'defense' && q.threatCertified === true))
 }

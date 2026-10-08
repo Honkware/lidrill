@@ -14,6 +14,24 @@ export interface Verdict {
   slots?: Slot[] // normalized, when the shape was readable
 }
 
+// V-DUP: one swing renders once. A sentence restating the same
+// magnitude in a second bucket ("about three pawns (about a knight or
+// bishop)") is the seeded live failure - one swing, one bucket
+const MAGNITUDE_WORDS = /\b(?:two|three|four|five|six|seven|eight|nine|ten|\d+(?:\.\d+)?) pawns?\b|\ba (?:queen|rook|piece|pawn)'s worth\b|\ba (?:queen|rook|piece|pawn) and a half\b|\ba queen or more\b|\bmore than ten pawns\b|\ba small edge\b/i
+const PAREN = /[([][^)\]]*[)\]]/g
+
+// Which ref ids render a magnitude, and the identity of the swing they
+// render - two renderings of the same identity in one sentence is V-DUP.
+// Only the threat's head ref renders its consequence; the t1… follow-ups
+// render plain SANs, and c-stops renders "X stops Y" - none is a magnitude.
+function magnitudeKey(id: string): string | undefined {
+  if (id === 'swing' || id === 'tryswing' || id === 'material') return id
+  if (id === 'threat') return 'threat'
+  if (/^c-acc\d+$/.test(id)) return id
+  if (id === 'c-forced' || id === 'c-mate') return id
+  return undefined
+}
+
 // Which solve frame the draft is validated against - "cost you" and
 // the retired "Answer:" token are legal only in the miss frame, and the
 // also-good frame must open with "Your move works."
@@ -236,6 +254,29 @@ export function validateSlots(out: unknown, p: Packet, frame: FrameContext = MIS
     if (/\bAnswer:/.test(m)) v.push(`${s.slot}: "Answer:" is retired - with an acceptance set there is no single answer (label it "Best was:" in the miss frame)`)
     // "cost you" is contrast-frame language, legal only on a miss
     if (frame.membership !== 'miss' && /\bcost(s|ed)?\s+you\b/i.test(m)) v.push(`${s.slot}: "cost you" belongs to the miss frame - affirm the solving move here`)
+    // Same frame rule for the game move's cost in other words: the affirm
+    // frames explain the found move on its merits, never the game's price
+    if (frame.membership !== 'miss' && /\b(gave|giving|gives) away\b/i.test(m)) v.push(`${s.slot}: the game move's cost belongs to the miss frame - affirm the solving move here`)
+    // V-DUP: two renderings of the same magnitude in one sentence -
+    // the same swing ref twice, or a bucket restated inside a parenthetical
+    for (const sent of sentencesOf(s.text)) {
+      const keys = [...sent.matchAll(REF)].map(rm => magnitudeKey(rm[1] ?? NO_THREAT_ID)).filter((k): k is string => !!k)
+      if (new Set(keys).size !== keys.length) v.push(`${s.slot}: one swing renders once - the same magnitude is rendered twice ("${sent.trim()}")`)
+      const bare = mask(sent)
+      const outside = bare.replace(PAREN, '')
+      if (MAGNITUDE_WORDS.test(outside) && (bare.match(PAREN) ?? []).some(par => /\b(pawns?|queen|rook|piece|knight|bishop|worth)\b/i.test(par)))
+        v.push(`${s.slot}: one swing renders once - two bucket phrasings of the same amount ("${sent.trim()}")`)
+    }
+    // The pattern slot opens with the position-anchored instance
+    // (≥1 packet ref that is not library text), then at most one verbatim
+    // definition - a bare definition with no anchors fails M-NOVEL, and the
+    // definition never substitutes for the instance
+    if (s.slot === 'pattern') {
+      const ids = [...s.text.matchAll(REF)].map(rm => rm[1] ?? NO_THREAT_ID)
+      const instance = ids.filter(id => !id.startsWith('gloss:') && !id.startsWith('habit:'))
+      if (!instance.length) v.push(`${s.slot}: a bare definition with no position ref - open with the instance (the move, square or certificate that makes it true), then the gloss`)
+      else if (ids[0]!.startsWith('gloss:')) v.push(`${s.slot}: instance first, gloss second - open with ${instance[0]}, not the definition`)
+    }
   }
 
   const all = slots.map(s => mask(s.text)).join(' ')
@@ -295,10 +336,13 @@ export function validateSlots(out: unknown, p: Packet, frame: FrameContext = MIS
   // the pattern slot's motif is the generator's
   const patternCerts = by.pattern.refs.filter(r => p.certificates.find(c => c.id === r && c.type === 'tactical'))
   if (patternCerts.some(r => r !== p.didactic.motifCert)) v.push(`pattern must be about ${p.didactic.motifCert ?? 'no detected pattern'}`)
-  // the habit is the packet's, from the library, for this band and family
+  // the habit is the packet's, from the library, for this band and
+  // family - a threat-mechanism habit rides a threat-meeting packet of any
+  // family
   if (hasHabit) {
     const habit = HABITS.find(h => h.id === p.didactic.habitSlotId)
-    if (!habit || !habit.bands.includes(band) || habit.family !== family(p.didactic.puzzleType)) v.push('the habit does not fit this band or puzzle type')
+    const mechanismOk = !!habit?.threat && p.didactic.glossId === 'gloss:meeting-the-threat'
+    if (!habit || !habit.bands.includes(band) || (habit.family !== family(p.didactic.puzzleType) && !mechanismOk)) v.push('the habit does not fit this band or puzzle type')
   }
   // M-COUNT and M-NOVEL
   const mech = new Set(by.why.refs.filter(r => MECHANISM.test(r)))

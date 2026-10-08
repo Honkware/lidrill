@@ -14,7 +14,7 @@ const problems = (text: string, band: Band) => [...checkCeilings(text, band), ..
 describe('versions', () => {
   it('are pinned', () => {
     expect(READABILITY_VERSION).toBe('fk-smog/1.0')
-    expect(HABIT_LIB_VERSION).toBe('habit/1.1')
+    expect(HABIT_LIB_VERSION).toBe('habit/1.2')
     expect(MOTIF_LIB_VERSION).toBe('motifLib/1.1')
     expect(TONE_VERSION).toBe('tone/1.0')
   })
@@ -301,6 +301,23 @@ describe('library entries', () => {
     // No certified threat: the threat-keyed habit is never served, focus included
     expect(selectHabit(q('defensive', 'beginner'), [])?.id).toBe('habit:list-forcing')
     expect(selectHabit(q('defensive', 'beginner', { weeklyFocusHabitId: 'habit:meet-threat' }), [])?.id).toBe('habit:list-forcing')
+  })
+
+  it('a threat-meeting puzzle gets the meet-threat habit, not generic family advice', () => {
+    // The packet's task is meeting the certified threat - whatever the
+    // puzzle family, the mechanism habit wins over the family gloss
+    expect(selectHabit(q('missed-win', 'club', { threatMeeting: true }), [])?.id).toBe('habit:meet-threat')
+    expect(selectHabit(q('missed-win', 'beginner', { threatMeeting: true }), [])?.id).toBe('habit:meet-threat')
+    expect(selectHabit(q('hang', 'club', { threatMeeting: true }), [])?.id).toBe('habit:meet-threat')
+    // A certified threat that is not the puzzle's task (a mating attack, a
+    // certified motif) does not override the family habit
+    expect(selectHabit(q('missed-win', 'club', { threatCertified: true }), [])?.id).toBe('habit:cct-scan')
+    expect(selectHabit(q('missed-win', 'club', { threatCertified: true }), ['fork'])?.id).toBe('habit:two-targets')
+    // The weekly focus still only wins inside the eligible set - a focus
+    // from another family is ignored, the mechanism habit stands
+    expect(selectHabit(q('missed-win', 'club', { threatMeeting: true, weeklyFocusHabitId: 'habit:trade-down' }), [])?.id).toBe('habit:meet-threat')
+    // No threat meeting without the mechanism
+    expect(selectHabit(q('missed-win', 'club'), [])?.id).toBe('habit:cct-scan')
   })
 
   it('the removing-the-defender defensive habit is concept-keyed and band-gated', () => {

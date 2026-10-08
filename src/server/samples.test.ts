@@ -50,7 +50,9 @@ const sample1Text: Slot[] = [
 const sample2Text: Slot[] = [
   { slot: 'whatHappened', text: 'In the game, you played {ref:played}, costing {ref:swing}.', refs: ['played', 'swing'] },
   { slot: 'why', text: 'They threatened {ref:threat}. Instead, your {ref:pv0} meets it because {ref:c-stops}. After their {ref:pv1}, your {ref:pv2} drives their {ref:pv3}.', refs: ['threat', 'pv0', 'c-stops', 'pv1', 'pv2', 'pv3'] },
-  { slot: 'pattern', text: '{ref:gloss:discovered-attack} Here, your {ref:c-motif}.', refs: ['gloss:discovered-attack', 'c-motif'] },
+  // Instance first, gloss second - the gloss-first form is
+  // a seeded failure in findings.test.ts
+  { slot: 'pattern', text: 'Here, your {ref:c-motif}. {ref:gloss:discovered-attack}', refs: ['c-motif', 'gloss:discovered-attack'] },
   { slot: 'nextTime', text: '{ref:habit:cct-scan}', refs: ['habit:cct-scan'] },
 ]
 const sample3Text: Slot[] = [

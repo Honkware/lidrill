@@ -110,14 +110,17 @@ describe('exemplar pair', () => {
     expect(text.nextTime).toBe('When I move, I first look at checks, captures and threats.')
   })
 
-  it('the good half also fits club and advanced; above B1 the mechanism minimum is the only addition', () => {
-    for (const band of ['club', 'advanced'] as const) {
-      const p = exemplarPacket(band)
-      const verdict = validateSlots({ slots: goodExemplar() }, p)
-      // M-COUNT: B2/B3 need two mechanism refs, the exemplar why has one
-      expect(verdict.ok, band).toBe(false)
-      expect(verdict.violations.join(), band).toMatch(/needs at least 2 steps/)
-    }
+  it('the good half also fits club; at advanced the deep-ref requirement stands, and a direct mate carries a one-fact mechanism minimum at every band', () => {
+    // A mate in 1 ends the game at the move - the certified line
+    // is one ply, so one mechanism fact is the whole truth (
+    // asking for a second step only floored live mate-in-1 packets)
+    for (const band of ['club', 'advanced'] as const) expect(exemplarPacket(band).didactic.mechanismMin).toBe(1)
+    expect(validateSlots({ slots: goodExemplar() }, exemplarPacket('club'))).toMatchObject({ ok: true, violations: [] })
+    // Above club the exemplar draft still owes a deep fact (the packet
+    // holds certified alternatives) - that requirement is unchanged
+    const verdict = validateSlots({ slots: goodExemplar() }, exemplarPacket('advanced'))
+    expect(verdict.ok).toBe(false)
+    expect(verdict.violations.join()).toMatch(/needs an alternative, a forced certificate or a feature change/)
   })
 
   it('the bad half floors: bare "in the game", no term, filler habit, no trigger anchor', () => {

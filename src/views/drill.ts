@@ -93,18 +93,25 @@ function playing(d: Drill): VNode {
             hold ? `Find a move that holds for ${d.color}` : `Find the best move for ${d.color}`,
             hold && d.step === 0 ? `Your move in the game lost material. ${d.puzzle.alternatives!.length} moves would have kept the position.` : null,
           )
+  // Earned after a failed try or once shown; the slot stays reserved either
+  // way (invisible keeps the box, so the reveal shifts nothing)
+  const available = d.feedback === 'fail' || d.showHint
   return el('div', 'space-y-3', [
     box,
-    // Standing chrome is one line: the hint appears only after a failed try
-    // (Lichess feedback.ts); the solution button only when it's earned
-    d.feedback === 'fail' || d.showHint
-      ? el(
-          'button',
-          'inline-flex min-h-11 items-center gap-2 rounded-lg bg-raised px-4 text-sm font-medium',
-          { attrs: { type: 'button', disabled: !d.yourTurn }, class: { 'text-warn': d.showHint, 'opacity-50': !d.yourTurn }, on: { click: () => d.hint() } },
-          [icon('hint', 18), d.showHint ? 'Hide hint' : 'Hint'],
-        )
-      : null,
+    // The hint keeps a fixed slot once the puzzle is running, so revealing
+    // it never shifts the layout (the packet is precomputed at sync,
+    // so the hint is ready the moment a try fails - gating is only whose
+    // turn it is)
+    el(
+      'button',
+      'inline-flex min-h-11 items-center gap-2 rounded-lg bg-raised px-4 text-sm font-medium',
+      {
+        attrs: { type: 'button', disabled: !d.yourTurn, 'aria-hidden': available ? 'false' : 'true' },
+        class: { 'text-warn': d.showHint, 'opacity-50': !d.yourTurn, invisible: !available },
+        on: { click: () => d.hint() },
+      },
+      [icon('hint', 18), d.showHint ? 'Hide hint' : 'Hint'],
+    ),
     d.canViewSolution ? button('View the solution', () => d.viewSolution(), 'plain') : null,
     // Typing moves is for keyboards; on a phone it's clutter
     el('div', 'hidden md:block', [moveInput(t => d.typeMove(t))]),
@@ -223,7 +230,12 @@ export function puzzleSide(d: Drill, after: (VNode | null)[]): VNode {
   const p = d.puzzle
   const [tone, title] = TITLES[d.outcome ?? 'clean']
   const answer = p.alternatives ? `${d.holdingSans.join(' or ')} held.` : d.outcome === 'clean' ? '' : `The move was ${d.sanAt(p.solution[0])}.`
-  const game = p.played ? ` In the game: ${d.sanAt(p.played)}, giving away about ${pawnsWorth(p.swingCp)}.` : ''
+  // The game move's cost is contrast-frame language - it belongs on
+  // a miss, never on an affirm frame (best/also-good). The solve frame the
+  // Why? card uses is the server's membership of the solving move; the card
+  // mirrors it (the found move against the puzzle's own solutions)
+  const affirmed = !!d.solvedMove && (p.solution[0] === d.solvedMove || !!p.alternatives?.includes(d.solvedMove))
+  const game = p.played && !affirmed ? ` In the game: ${d.sanAt(p.played)}, giving away about ${pawnsWorth(p.swingCp)}.` : ''
   const why = d.why ? null : el('button', 'shrink-0 rounded-full bg-raised px-3 py-1 text-sm font-medium', { attrs: { type: 'button' }, on: { click: () => d.explain() } }, 'Why?')
   return el('div', 'space-y-3', [
     whyCard(feedbackBox(tone, title, `${answer}${game}`.trim() || null, why), whyPart(d)),
