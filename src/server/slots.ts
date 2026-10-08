@@ -1,6 +1,6 @@
 import type { Band } from '../db'
 import { family, HABITS } from './habits'
-import type { Packet, SlotName } from './packet'
+import type { Packet, SetMembership, SlotName } from './packet'
 import { checkCeilings, styleBudget } from './readability'
 import { gameFrameIds, movesById, NO_THREAT_ID, REF, renderRef, renderText, SLOTS, type Slot } from './render'
 import { toneViolations } from './tone'
@@ -13,6 +13,15 @@ export interface Verdict {
   violations: string[]
   slots?: Slot[] // normalized, when the shape was readable
 }
+
+// Which solve frame the draft is validated against - "cost you" and
+// the retired "Answer:" token are legal only in the miss frame, and the
+// also-good frame must open with "Your move works."
+export interface FrameContext {
+  membership: SetMembership
+  solvingRef?: string // the packet's fact id for the solving move (set frame)
+}
+export const MISS_FRAME: FrameContext = { membership: 'miss' }
 
 // NFKC and no zero-width or bidi characters, before any matching
 export const normalize = (t: string) => t.normalize('NFKC').replace(/[​-‏‪-‮⁠-⁩﻿]/g, '')
@@ -84,7 +93,20 @@ const PLAYER_POSSESSIVE = /\byour\s+\{ref:([a-z0-9:-]+)\}/gi
 // introduced as game context in the same sentence
 const GAME_MARK = /\b(?:in the game|the game move|your game move|from the game)\b/i
 
-export function validateSlots(out: unknown, p: Packet): Verdict {
+// The required refs per solve frame - the miss frame keeps the
+// packet's contrast requirements; best relaxes whatHappened to crediting the
+// found move; also-good requires the solving move, best, and the certified gap
+export function requiredFor(p: Packet, frame: FrameContext): Record<SlotName, string[]> {
+  const required: Record<SlotName, string[]> = { ...p.didactic.requiredRefs }
+  if (frame.membership === 'best') required.whatHappened = ['best']
+  if (frame.membership === 'set') {
+    const accCert = frame.solvingRef ? p.certificates.find(c => c.type === 'acceptance' && c.subject === frame.solvingRef) : undefined
+    required.whatHappened = [...new Set([frame.solvingRef ?? 'best', 'best', ...(accCert ? [accCert.id] : [])])]
+  }
+  return required
+}
+
+export function validateSlots(out: unknown, p: Packet, frame: FrameContext = MISS_FRAME): Verdict {
   const v: string[] = []
   const band: Band = p.context.band
   const anchors = new Set(p.claimAnchors)
@@ -209,6 +231,11 @@ export function validateSlots(out: unknown, p: Packet): Verdict {
       const id = m2[1]!
       if (moves.has(id) && id !== 'played') v.push(`${s.slot}: "your" attaches to ${id} - possessives attach only to the game move ({ref:played})`)
     }
+    // "Answer:" is retired everywhere - with an acceptance set there
+    // is no single answer; the miss frame labels best "Best was:"
+    if (/\bAnswer:/.test(m)) v.push(`${s.slot}: "Answer:" is retired - with an acceptance set there is no single answer (label it "Best was:" in the miss frame)`)
+    // "cost you" is contrast-frame language, legal only on a miss
+    if (frame.membership !== 'miss' && /\bcost(s|ed)?\s+you\b/i.test(m)) v.push(`${s.slot}: "cost you" belongs to the miss frame - affirm the solving move here`)
   }
 
   const all = slots.map(s => mask(s.text)).join(' ')
@@ -248,11 +275,18 @@ export function validateSlots(out: unknown, p: Packet): Verdict {
     v.push('saying the answer stops the threat needs the c-stops fact')
   const anyMate = p.certificates.some(c => c.type === 'mate') || p.threat?.consequence.type === 'mate' || [p.played, p.tried].some(f => f?.reply.some(r => r.mate))
   if (/\b(check)?mat(e|es|ed|ing)\b/i.test(all) && !anyMate) v.push('mate is mentioned but no mate is certified')
-  if (/\b(best|winning|wins|won)\b/i.test(all) && p.meta.certification.refusals.some(r => /differs|not the puzzle/.test(r))) v.push('"best"/"wins" is not certified here')
+  if (/\b(best|winning|wins|won)\b/i.test(all.replace(/\bbest was:/gi, '§')) && p.meta.certification.refusals.some(r => /differs|not the puzzle/.test(r)))
+    v.push('"best"/"wins" is not certified here - the "Best was:" label is exempt; any other best-claim is not')
 
-  // 7. Didactics
+  // 7. Didactics - per solve frame
+  const required = requiredFor(p, frame)
   for (const name of SLOTS)
-    for (const req of p.didactic.requiredRefs[name]) if (!req.split('|').some(r => by[name].refs.includes(r))) v.push(`${name} must use ${req.split('|').join(' or ')}`)
+    for (const req of required[name]) if (!req.split('|').some(r => by[name].refs.includes(r))) v.push(`${name} must use ${req.split('|').join(' or ')}`)
+  // The also-good frame opens by affirming the player's move
+  if (frame.membership === 'set') {
+    if (!frame.solvingRef) v.push('set frame without a packet fact for the solving move')
+    else if (!by.whatHappened.text.includes('Your move works.')) v.push('whatHappened: the also-good frame opens with "Your move works."')
+  }
   // the threat or a certified "no threat"; a direct mate (mate in 1)
   // ends the game at the move, so no threat can matter
   const usesNoThreat = slots.some(s => s.refs.includes(NO_THREAT_ID))

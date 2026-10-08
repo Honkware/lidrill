@@ -1,9 +1,11 @@
 import { issue, verify } from '../src/server/guard'
 import type { Band } from '../src/db'
+import { explainCacheKey } from '../src/server/explainCache'
+import { EXPLAIN_VERSION } from '../src/server/explainVersion'
 import { narrate } from '../src/server/narrate'
 import { openRouter } from '../src/server/openrouter'
 import { reconcileWithLine } from '../src/server/consistency'
-import { BANDS, buildPacket, packetHash, packetProblems, stampTier, validPacket, validReport, type Packet } from '../src/server/packet'
+import { BANDS, buildPacket, membershipOf, packetHash, packetProblems, stampTier, validPacket, validReport, type Packet } from '../src/server/packet'
 import { templateFloor } from '../src/server/floor'
 import { sha256Hex } from '../src/server/sha256'
 
@@ -34,12 +36,14 @@ interface Env {
   LIDRILL_KEY: string
 }
 
-// Bumped with the shape of explanations: the browser asks again for anything older
-const EXPLAIN_VERSION = 12
+// The explanation version lives in src/server/explainVersion.ts, shared with
+// the client, so a bump never leaves the two sides disagreeing.
 
 // Packets are a deterministic rebuild of a report plus config: a cache, not a
 // record. 30 days is longer than any sync cycle.
 const PACKET_TTL = 30 * 86400
+
+const UCI = /^[a-h][1-8][a-h][1-8][qrbn]?$/
 
 const ORIGINS = [/^https:\/\/(www\.)?lidrill\.org$/, /^https:\/\/lidrill\.lidrill\.workers\.dev$/, /^http:\/\/localhost:\d+$/]
 
@@ -100,12 +104,17 @@ async function packet(request: Request, env: Env): Promise<Response> {
 }
 
 // One narration over a packet that already passed its self-check: the
-// narrator (or the floor), cost-accounted, cached by request body.
-async function narrateAndCache(pkt: Packet, cacheKey: Request, ctx: { waitUntil(p: Promise<unknown>): void }, env: Env): Promise<Response> {
+// narrator (or the floor), cost-accounted, cached by request body - the key
+// carries the solve frame, so a different solving move never
+// receives another player's framing.
+async function narrateAndCache(pkt: Packet, solved: string | undefined, cacheKey: Request, ctx: { waitUntil(p: Promise<unknown>): void }, env: Env): Promise<Response> {
   const problems = packetProblems(pkt)
-  const n = problems.length ? { slots: templateFloor(pkt), source: 'floor' as const, reason: `packet self-check: ${problems[0]}`, calls: 0, cost: 0, models: [] } : await narrate(pkt, openRouter(env.OPENROUTER_API_KEY))
+  const solve = { move: solved, membership: membershipOf(solved, pkt) }
+  const n = problems.length
+    ? { slots: templateFloor(pkt, { membership: solve.membership, solvingRef: solve.membership === 'set' ? (pkt.alternatives.find(a => a.uci === solved)?.id ?? undefined) : undefined }), source: 'floor' as const, reason: `packet self-check: ${problems[0]}`, calls: 0, cost: 0, models: [] }
+    : await narrate(pkt, openRouter(env.OPENROUTER_API_KEY), solve)
   const response = json(
-    { slots: n.slots, packet: pkt, source: n.source, reason: n.reason, models: n.models, calls: n.calls, cost: Number(n.cost.toFixed(5)), version: EXPLAIN_VERSION },
+    { slots: n.slots, packet: pkt, source: n.source, reason: n.reason, models: n.models, calls: n.calls, cost: Number(n.cost.toFixed(5)), version: EXPLAIN_VERSION, frame: solve.membership },
     200,
     { 'cache-control': 'public, max-age=86400' },
   )
@@ -117,10 +126,11 @@ async function narrateAndCache(pkt: Packet, cacheKey: Request, ctx: { waitUntil(
 // reference; the packet - including its narrative context - was baked at
 // POST /api/packet time. A miss sends the client back to the legacy
 // certify-and-POST path, which is the migration safety net.
-async function explainV2(raw: unknown, packetHashWanted: string, env: Env): Promise<Packet | Response> {
-  const q = raw as { band?: unknown; tried?: unknown }
+async function explainV2(raw: unknown, packetHashWanted: string, env: Env): Promise<{ packet: Packet; solved?: string } | Response> {
+  const q = raw as { band?: unknown; tried?: unknown; solved?: unknown }
   if (!BANDS.includes(q.band as Band)) return json({ error: 'That isn’t a packet reference.' }, 400)
   if (q.tried !== undefined && typeof q.tried !== 'string') return json({ error: 'That isn’t a packet reference.' }, 400)
+  if (q.solved !== undefined && (typeof q.solved !== 'string' || !UCI.test(q.solved))) return json({ error: 'That isn’t a packet reference.' }, 400)
   const stored = await env.PACKETS.get(packetHashWanted)
   let pkt: Packet | undefined
   try {
@@ -132,7 +142,7 @@ async function explainV2(raw: unknown, packetHashWanted: string, env: Env): Prom
   if (!pkt) return json({ error: 'packet-miss' }, 404)
   if (pkt.context.band !== q.band) return json({ error: 'This explanation was built for another level.' }, 409)
   if (q.tried !== undefined && pkt.tried?.uci !== q.tried) return json({ error: 'packet-miss' }, 404)
-  return pkt
+  return { packet: pkt, solved: q.solved }
 }
 
 // The browser's Stockfish report → packet → narrator (or floor). The answer
@@ -142,8 +152,10 @@ async function explain(request: Request, env: Env, ctx: { waitUntil(p: Promise<u
   const g = await guarded(request, env)
   if (g instanceof Response) return g
 
-  // Version in the key: an EXPLAIN_VERSION bump must not serve the old shape
-  const cacheKey = new Request(`https://lidrill.org/api/explain-cache/${sha256Hex(`${EXPLAIN_VERSION}.${g.body}`)}`)
+  // Version in the key: an EXPLAIN_VERSION bump must not serve the old shape;
+  // the key also carries the solve frame via the request's solving move
+  //a different move - a different frame - is a different entry
+  const cacheKey = explainCacheKey(EXPLAIN_VERSION, g.body)
   const cache = (caches as unknown as { default: Cache }).default
   const hit = await cache.match(cacheKey)
   if (hit) return hit
@@ -161,19 +173,23 @@ async function explain(request: Request, env: Env, ctx: { waitUntil(p: Promise<u
     if (typeof wanted !== 'string' || !wanted.startsWith('sha256:')) return json({ error: 'That isn’t a packet reference.' }, 400)
     const v2 = await explainV2(raw, wanted, env)
     if (v2 instanceof Response) return v2
-    return narrateAndCache(v2, cacheKey, ctx, env)
+    return narrateAndCache(v2.packet, v2.solved, cacheKey, ctx, env)
   }
 
   if (raw && typeof raw === 'object' && 'best' in raw && (raw as { best: { san?: unknown } }).best?.san) return json({ error: 'lidrill was updated. Reload the page.' }, 409)
   const report = validReport(raw)
   if (!report) return json({ error: 'That isn’t a puzzle report.' }, 400)
+  // The solving move selects the explanation frame; absent, the
+  // contrast (miss) frame serves, as before
+  const solved = (raw as { solved?: unknown }).solved
+  if (solved !== undefined && (typeof solved !== 'string' || !UCI.test(solved))) return json({ error: 'That isn’t a puzzle report.' }, 400)
   const built = buildPacket(report)
   if (!built.ok) return json({ error: `That position can’t be explained (${built.error}).` }, 422)
   const pkt = reconcileWithLine(stampTier(built.packet, 'client-lite'), report.lineCp)
   pkt.meta.packetHash = await packetHash({ fen: report.fen, solution: report.solution, band: report.band })
 
   // A packet that fails its own self-check never reaches the model
-  return narrateAndCache(pkt, cacheKey, ctx, env)
+  return narrateAndCache(pkt, solved, cacheKey, ctx, env)
 }
 
 // --- Server tier: /api/sync/* is the only

@@ -7,10 +7,16 @@ import type { Caller } from './narrate'
 // documented { prompt, completion } per-million-dollar cap holding the
 // reservation the budget check made. The served model comes back in `model`
 // either way.
+// Captured at module load: the Stockfish WASM loader nulls globalThis.fetch
+// on the node main thread, and the gate runs the engine and the narrator in
+// the same process - a call-time lookup would find null and every pass would
+// fail closed to the floor.
+const fetchImpl: typeof fetch | undefined = typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : undefined
+
 export function openRouter(apiKey: string, timeoutMs = 45_000): Caller {
   return async c => {
     const auto = c.routing
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const res = await (typeof globalThis.fetch === 'function' ? globalThis.fetch : fetchImpl!)('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       signal: AbortSignal.timeout(timeoutMs),
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://lidrill.org', 'X-Title': 'lidrill' },

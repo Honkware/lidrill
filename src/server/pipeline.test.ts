@@ -124,7 +124,7 @@ describe('packet', () => {
   it('names a missed mate as a mate, never as pawns', () => {
     const p = packetOf(legalReport())
     expect(p.played!.swing).toMatchObject({ type: 'mate', value: 2 })
-    expect(renderText(templateFloor(p), p).whatHappened).toBe('In the game, Kxd1 cost you a mate in 2. Answer: Bxf7+.')
+    expect(renderText(templateFloor(p), p).whatHappened).toBe('In the game, Kxd1 cost you a mate in 2. Best was: Bxf7+.')
   })
 
   it('dead draws carry no concepts and no threat', () => {
@@ -383,7 +383,7 @@ describe('explanation context', () => {
     expect(p.didactic.requiredRefs.whatHappened).toEqual(['tried', 'best', 'tryswing|c-try'])
     expect(p.claimAnchors).toContain('tryswing')
     const text = renderText(templateFloor(p), p)
-    expect(text.whatHappened).toBe('You tried Ne3 and it cost you 5.0 pawns. Answer: Nc7+.')
+    expect(text.whatHappened).toBe('You tried Ne3 and it cost you 5.0 pawns. Best was: Nc7+.')
     expect(text.whatHappened).not.toContain('Ke2')
     expect(validateSlots({ slots: templateFloor(p) }, p).violations.filter(x => !/^readability/.test(x))).toEqual([])
   })

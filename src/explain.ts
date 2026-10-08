@@ -4,6 +4,7 @@ import { parseUci } from 'chessops/util'
 import type { CertifiedRun, Engine } from './analysis/engine'
 import { db, type Band, type ExplanationRow, type Game, type Puzzle } from './db'
 import { CERT, dedupeKey, nullMoveFen, packetHash, PROMPT_VERSION, REPORT_SCHEMA, type EngineReport, type Packet, type PuzzleKind } from './server/packet'
+import { EXPLAIN_VERSION } from './server/explainVersion'
 import { gameState } from './server/gamestate'
 import { lineEvalCp } from './server/consistency'
 import type { Slot } from './server/render'
@@ -12,9 +13,11 @@ import { sha256Hex, solve } from './server/sha256'
 // Client side of "Why?": Stockfish certifies the facts here, in
 // the browser; lidrill's Worker builds the packet from that report, has the
 // narrator word it, checks it, and sends back the four slots in ref form
-// with the packet that renders them. Stored per (puzzle, first wrong try).
+// with the packet that renders them. Stored per (puzzle, first wrong try,
+// solving move) - the solving move selects the explanation frame,
+// so it is part of the row key.
 
-export const EXPLAIN_VERSION = 13
+export { EXPLAIN_VERSION } from './server/explainVersion'
 
 export interface ExplainContext {
   band: Band
@@ -183,7 +186,7 @@ export async function contextFor(p: Puzzle, game?: Game): Promise<ExplainContext
   return { band: profile?.band ?? 'beginner', history, lineCp, weeklyFocusHabit, opening: game?.opening, eco: game?.eco }
 }
 
-export const rowId = (puzzleId: string, tried?: string) => `${puzzleId}|${tried ?? ''}`
+export const rowId = (puzzleId: string, tried?: string, solved?: string) => `${puzzleId}|${tried ?? ''}|${solved ?? ''}`
 
 export const isCurrent = (e: ExplanationRow | undefined, band: Band): e is ExplanationRow => !!e && e.version === EXPLAIN_VERSION && e.band === band && e.promptVersion === PROMPT_VERSION
 
@@ -205,11 +208,13 @@ interface ExplainResponse {
 // The slim shape: one cheap request carrying only the
 // packet reference. A miss, a band/tried mismatch, or any failure resolves
 // undefined and the caller falls back to the certify-and-POST path - the
-// legacy path is the safety net, not a parallel code path.
-async function explainSlim(p: Puzzle, band: Band, tried?: string): Promise<ExplainResponse | undefined> {
+// legacy path is the safety net, not a parallel code path. `solved` is the
+// move that solved the puzzle: the Worker frames the explanation by it
+// And the cache key carries it.
+async function explainSlim(p: Puzzle, band: Band, tried: string | undefined, solved?: string): Promise<ExplainResponse | undefined> {
   try {
     const hash = await packetHash({ fen: p.fen, solution: p.solution, band })
-    const body = JSON.stringify({ v: 2, packetHash: hash, band, ...(tried ? { tried } : {}) })
+    const body = JSON.stringify({ v: 2, packetHash: hash, band, ...(tried ? { tried } : {}), ...(solved ? { solved } : {}) })
     const res = await fetch('/api/explain', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-lidrill-proof': await proof(body) }, body })
     if (!res.ok) return undefined
     const data = (await res.json()) as ExplainResponse
@@ -219,21 +224,21 @@ async function explainSlim(p: Puzzle, band: Band, tried?: string): Promise<Expla
   }
 }
 
-export async function explain(p: Puzzle, engines: Engine[], ctx: ExplainContext, tried?: string, progress?: Progress): Promise<ExplainResult> {
-  const id = rowId(p.id, tried)
+export async function explain(p: Puzzle, engines: Engine[], ctx: ExplainContext, tried?: string, progress?: Progress, solved?: string): Promise<ExplainResult> {
+  const id = rowId(p.id, tried, solved)
   const saved = await db.explanations.get(id)
   if (isCurrent(saved, ctx.band)) return { slots: saved.slots, packet: saved.packet, floor: saved.floor }
   const recent = await recentHabits()
 
   // Slim first: no engine work when the packet is already stored
-  const slim = await explainSlim(p, ctx.band, tried)
+  const slim = await explainSlim(p, ctx.band, tried, solved)
   if (slim) return storeRow(id, p, ctx, tried, slim)
 
   // Fail closed to the certify-and-POST path on a packet-miss or any failure
   if (!engines.length) throw new Error('Stockfish isn’t ready yet.')
   const report = await certifyReport(p, engines, ctx, tried, recent, progress)
   void uploadPacket(report)
-  const body = JSON.stringify(report)
+  const body = JSON.stringify({ ...report, ...(solved ? { solved } : {}) })
   const res = await fetch('/api/explain', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-lidrill-proof': await proof(body) }, body })
   const data = (await res.json().catch(() => ({}))) as ExplainResponse
   if (!res.ok || !data.slots || !data.packet) throw new Error(data.error ?? 'No explanation right now. Try again later.')

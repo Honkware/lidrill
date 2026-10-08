@@ -24,9 +24,9 @@ export type PuzzleKind = 'missed-win' | 'hang' | 'conversion' | 'hold' | 'defens
 export const KINDS: PuzzleKind[] = ['missed-win', 'hang', 'conversion', 'hold', 'defensive', 'lichess']
 export const BANDS: Band[] = ['beginner', 'club', 'advanced']
 
-export const PACKET_SCHEMA = 'lidrill-packet/2.2'
+export const PACKET_SCHEMA = 'lidrill-packet/2.3'
 export const REPORT_SCHEMA = 'lidrill-report/1'
-export const BUILDER_VERSION = 'builder/1.0'
+export const BUILDER_VERSION = 'builder/1.1'
 export const DETECTOR_VERSION = 'det/1.0'
 export const THREAT_DEF = 'nullmove/1.0'
 export const ENGINE = { name: 'stockfish', version: '19-wasm-lite', id: 'sf19-wasm-lite' } as const
@@ -47,6 +47,9 @@ export const CERT = {
   budgetMs: { best: 15000, threat: 15000, line: 8000 },
   multipv: 2,
   threatMultipv: 3,
+  // Grading accepts any move within τ_accept of best (any certified
+  // mate counts when best is mate); selection margins stay much wider
+  tauAccept: 30,
   margin: { beginner: 150, club: 100, advanced: 80 } as Record<Band, number>,
   threat: { beginner: 300, club: 150, advanced: 100 } as Record<Band, number>, // τ_threat
 } as const
@@ -124,7 +127,7 @@ export interface MoveFact extends PvMove {
 
 export interface Certificate {
   id: string
-  type: 'forced' | 'tactical' | 'mate' | 'featureDelta' | 'noThreat' | 'drawRule' | 'stopsThreat'
+  type: 'forced' | 'tactical' | 'mate' | 'featureDelta' | 'noThreat' | 'drawRule' | 'stopsThreat' | 'acceptance'
   subject?: string
   side: Side
   targetSide?: Side
@@ -184,6 +187,9 @@ export interface Packet {
   }
   holding: { id: string; san: string; uci: string }[]
   alternatives: { id: string; san: string; uci: string; side: Side; eval: TypedEval; gapCp: number; verdict: 'worse' | 'close' }[]
+  // The grading set - best first, any move within τ_accept of best
+  // (any certified mate when best is mate), at most 3, UCIs
+  acceptanceSet: string[]
   threatStatus: ThreatStatus
   threat?: {
     id: 'threat'
@@ -398,6 +404,57 @@ export function validReport(body: unknown): EngineReport | undefined {
 
 // --- certification decisions ----------------------------------------------------
 
+// Acceptance set: any move within τ_accept of best, evaluated from the
+// best search's own MultiPV lines; when best is mate, any certified mate
+// counts. A move only counts when the second opinion (when there is one)
+// agrees it stays inside the window. Hold puzzles additionally accept every
+// holding move by design (the client validates against the set, not
+// a single solution UCI). Best first, at most 3.
+export function acceptanceOf(a: EngineRun, b: EngineRun | undefined, answer: string, holding: string[] = []): string[] {
+  const head = a.lines[0]
+  if (!head) return [answer]
+  const bestE = pov(head.eval, false)
+  const inWindow = (e: RawEval): boolean => {
+    const v = pov(e, false)
+    if (bestE.type === 'mate' && bestE.value > 0) return v.type === 'mate' && v.value > 0
+    if (bestE.type !== 'cp') return false
+    return v.type === 'cp' && cpOf(v) >= cpOf(bestE) - CERT.tauAccept
+  }
+  const set = [answer]
+  for (const h of holding) {
+    if (!set.includes(h)) set.push(h)
+    if (set.length >= 3) return set
+  }
+  for (const l of a.lines.slice(1, 4)) {
+    const move = l.pv[0]
+    if (!move || set.includes(move) || !inWindow(l.eval)) continue
+    if (b) {
+      const lb = b.lines.find(x => x.pv[0] === move)
+      if (!lb || !inWindow(lb.eval)) continue
+    }
+    set.push(move)
+    if (set.length >= 3) break
+  }
+  return set
+}
+
+// How the puzzle was solved - the solving move against the set
+export type SetMembership = 'best' | 'set' | 'miss'
+export type SolveFrame = 'best' | 'also-good' | 'miss'
+export function membershipOf(move: string | undefined, p: Packet): SetMembership {
+  if (!move) return 'miss'
+  if (move === p.best.uci) return 'best'
+  return p.acceptanceSet.includes(move) ? 'set' : 'miss'
+}
+export const frameOf = (m: SetMembership): SolveFrame => (m === 'set' ? 'also-good' : m)
+
+// The packet's fact id for the solving move, when the packet holds one
+export function solvingRefOf(move: string | undefined, p: Packet): string | undefined {
+  if (!move) return undefined
+  if (move === p.best.uci) return 'best'
+  return p.alternatives.find(a => a.uci === move)?.id ?? p.holding.find(h => h.uci === move)?.id
+}
+
 interface RunPair {
   a: EngineRun
   b?: EngineRun
@@ -578,8 +635,30 @@ export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION
     return [{ id: `alt${i + 1}`, san: line.sans[0], uci: l.pv[0], side: sideOf(player), eval: { type: e.type, value: e.value, stable: false }, gapCp: Math.round(gap), verdict: gap >= margin ? ('worse' as const) : ('close' as const) }]
   })
 
-  // Certificates (≤ 8): patterns detected again here, never taken on trust
-  const certificates: Certificate[] = []
+  // The grading set, stored in the packet (best first, ≤ 3) - the
+  // τ_accept window over the evaluated lines, plus every holding move on a
+  // hold puzzle (those are the puzzle's declared solutions)
+  const acceptanceSet = acceptanceOf(best.a, best.b, answer, report.holding ?? [])
+  // The also-good frame names best as the engine's first choice with
+  // the certified gap - one certificate per accepted move the lines evaluated,
+  // so the gap is a packet fact, never a model-written number
+  const acceptanceCerts: Certificate[] = acceptanceSet.slice(1).flatMap((uci, i) => {
+    const alt = alternatives.find(a => a.uci === uci)
+    if (!alt) return []
+    const bestE = bs.typed
+    const text =
+      bestE.type === 'mate' && bestE.value > 0 && alt.eval.type === 'mate'
+        ? bestE.value === alt.eval.value
+          ? `mate in ${bestE.value} either way`
+          : `mate in ${bestE.value} rather than mate in ${alt.eval.value}`
+        : `worth only about ${amount(Math.max(0, alt.gapCp), band)} more`
+    return [{ id: `c-acc${i + 1}`, type: 'acceptance' as const, subject: alt.id, side: sideOf(player), targetSide: sideOf(opp), payload: { move: uci, gapCp: alt.gapCp }, text }]
+  })
+
+  // Certificates (≤ 8): patterns detected again here, never taken on trust.
+  // The acceptance-gap certificates go first: they carry the also-good frame
+  // and must not fall off the end in a crowded packet
+  const certificates: Certificate[] = [...acceptanceCerts]
   const add = (c: Certificate) => certificates.length < 8 && certificates.push(c)
   if (rule) add({ id: 'c-draw', type: 'drawRule', side: sideOf(player), payload: { rule, gameState: gs }, text: DRAW_TEXT[rule] })
   if (mateIn !== null && pv.some(m => m.mate)) add({ id: 'c-mate', type: 'mate', subject: 'best', side: sideOf(player), targetSide: sideOf(opp), payload: { mateIn, lineIds: pv.slice(0, pv.findIndex(m => m.mate) + 1).map(m => m.id) }, text: `mate in at most ${mateIn}` })
@@ -669,8 +748,9 @@ export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION
   const required: Record<SlotName, string[]> = {
     // Three beats: whatHappened contrasts the game move (or
     // the player's try) and its category with the best move in this
-    // position; the category rides the swing or the punishment certificate
-    whatHappened: tried ? ['tried', 'best', 'tryswing|c-try'] : played ? ['played', 'best', 'swing|c-punish'] : ['best'],
+    // position; the category rides the swing or the punishment certificate.
+    // A hold puzzle's beat is its holding moves - the declared solutions
+    whatHappened: tried ? ['tried', 'best', 'tryswing|c-try'] : played ? ['played', 'best', 'swing|c-punish'] : holding.length > 1 ? [holding.map(h => h.id).join('|')] : ['best'],
     why: [threatRequirement(threatStatus, threat, pos.isCheck(), mateIn)].filter((x): x is string => !!x),
     // The pattern slot names the certified point: the tactical motif, the
     // mate when there is no motif, or the meeting-the-threat gloss when a
@@ -731,6 +811,7 @@ export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION
     },
     holding,
     alternatives,
+    acceptanceSet,
     threatStatus,
     threat,
     features,
@@ -911,6 +992,7 @@ export function validPacket(x: unknown): Packet | undefined {
   if (!p.context || !BANDS.includes(p.context.band)) return undefined
   if (!p.position || typeof p.position.fenBefore !== 'string' || !['white', 'black'].includes(p.position.playerColor)) return undefined
   if (!Array.isArray(p.claimAnchors) || !p.claimAnchors.every(a => typeof a === 'string')) return undefined
+  if (!Array.isArray(p.acceptanceSet) || p.acceptanceSet.length < 1 || p.acceptanceSet.length > 3 || !p.acceptanceSet.every(u => typeof u === 'string' && UCI.test(u))) return undefined
   if (!Array.isArray(p.certificates) || p.certificates.length > 8) return undefined
   if (!p.didactic || (p.didactic.habitSlotId !== null && (typeof p.didactic.habitSlotId !== 'string' || !p.didactic.habitSlotId.startsWith('habit:')))) return undefined
   if (!p.best || typeof p.best.san !== 'string' || !Array.isArray(p.best.pv)) return undefined
@@ -934,6 +1016,8 @@ export function packetProblems(p: Packet): string[] {
     for (const r of refs) if (!r.split('|').some(x => anchors.has(x))) problems.push(`required ref ${r} in ${slot} is not an anchor`)
   if (p.certificates.length > 8) problems.push('more than 8 certificates')
   if (p.alternatives.length > 3) problems.push('more than 3 alternatives')
+  if (!p.acceptanceSet.includes(p.best.uci)) problems.push('the acceptance set does not contain the best move')
+  if (new Set(p.acceptanceSet).size !== p.acceptanceSet.length) problems.push('the acceptance set has duplicates')
   if (p.features && JSON.stringify(p.features).length > 4096) problems.push('features block over 4 KB')
   const forced = p.certificates.find(c => c.id === 'c-forced')
   if (forced) {

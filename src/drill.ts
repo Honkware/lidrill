@@ -70,6 +70,7 @@ export class Drill {
   outcome?: Outcome
   misses: string[] = [] // SAN of wrong tries
   firstTry?: string // UCI of the first wrong try at the first move, for "Why?"
+  solvedMove?: string // UCI of the first-ply move that solved the puzzle - it selects the explanation frame
   nodes: Node[]
   cursor = 0
   start = 0 // index of the puzzle position in nodes
@@ -277,6 +278,7 @@ export class Drill {
 
     this.showHint = false
     const end = this.push(hit ?? uci, { mark: 'good' })
+    if (this.step === 0) this.solvedMove ??= hit ?? uci
     this.step++
     sound.good() // the grade: right move
     if (end.isCheckmate() || this.step >= this.puzzle.solution.length) {
@@ -430,7 +432,7 @@ export class Drill {
         explain(this.puzzle, engines, ctx, this.firstTry, (done, total) => {
           if (this.why?.loading) this.why = { loading: true, progress: [done, total] }
           this.redraw()
-        }),
+        }, this.solvedMove),
       )
       const packet = this.opts.consistency?.(e.packet) ?? e.packet
       this.why = { slots: e.slots.map(s => ({ slot: s.slot, segments: renderSlot(s, packet) })), floor: e.floor }

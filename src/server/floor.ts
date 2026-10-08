@@ -1,5 +1,6 @@
 import type { Packet, SlotName } from './packet'
 import { HABITS } from './habits'
+import { MISS_FRAME, type FrameContext } from './slots'
 import type { Slot } from './render'
 
 // The deterministic floor: pre-authored slot text in ref form,
@@ -10,6 +11,9 @@ import type { Slot } from './render'
 // line past it, a certified threat makes the "meeting the threat" type
 // (never "no named pattern"), the line stops at the certified consequence,
 // and the habit is the mechanism-matched one or omitted.
+// The floor is authored per solve frame - best affirms the found
+// move, also-good opens "Your move works." and names best with the certified
+// gap, and only the miss frame keeps the contrast ("cost you", "Best was:").
 
 const ref = (id: string) => `{ref:${id}}`
 
@@ -18,20 +22,32 @@ function slot(name: SlotName, text: string): Slot {
   return { slot: name, text, refs }
 }
 
-export function templateFloor(p: Packet): Slot[] {
+export function templateFloor(p: Packet, frame: FrameContext = MISS_FRAME): Slot[] {
   const band = p.context.band
   const anchors = new Set(p.claimAnchors)
   const has = (id: string) => anchors.has(id)
 
-  // What happened: the game move and its cost, or
-  // the player's try when one is recorded, contrasted with the answer -
-  // the puzzle position is the default frame; a game fact is marked as
-  // game context, never the bare game move as if it happened in the puzzle
+  // What happened: the miss frame keeps
+  // the contrast - the game move (or the player's try) and its cost against
+  // "Best was:"; best credits the found move; also-good affirms the solving
+  // move and names best as the engine's first choice with the certified gap
   let what: string
-  if (p.position.drawRule) what = `The rules matter here: ${ref('c-draw')}.`
-  else if (p.tried && has('tryswing')) what = `You tried ${ref('tried')} and it cost you ${ref('tryswing')}. Answer: ${ref('best')}.`
-  else if (p.played && has('swing')) what = `In the game, ${ref('played')} cost you ${ref('swing')}. Answer: ${ref('best')}.`
-  else what = p.holding.length > 1 ? `Any of ${p.holding.map(h => ref(h.id)).join(', ')} held the position.` : `Answer: ${ref('best')}.`
+  if (frame.membership === 'best') what = `You played ${ref('best')}, the engine's best move.`
+  else if (frame.membership === 'set') {
+    const accCert = frame.solvingRef ? p.certificates.find(c => c.type === 'acceptance' && c.subject === frame.solvingRef) : undefined
+    const alt = frame.solvingRef ? p.alternatives.find(a => a.id === frame.solvingRef) : undefined
+    what =
+      frame.solvingRef && accCert
+        ? alt?.eval.type === 'mate'
+          ? `Your move works. ${ref(frame.solvingRef)} mates too - the engine's first choice is ${ref('best')}, ${ref(accCert.id)}.`
+          : `Your move works. ${ref(frame.solvingRef)} holds up - the engine's first choice is ${ref('best')}, ${ref(accCert.id)}.`
+        : frame.solvingRef
+          ? `Your move works. ${ref(frame.solvingRef)} held up - the engine's first choice is ${ref('best')}.`
+          : `Your move works. The engine's first choice is ${ref('best')}.`
+  } else if (p.position.drawRule) what = `The rules matter here: ${ref('c-draw')}.`
+  else if (p.tried && has('tryswing')) what = `You tried ${ref('tried')} and it cost you ${ref('tryswing')}. Best was: ${ref('best')}.`
+  else if (p.played && has('swing')) what = `In the game, ${ref('played')} cost you ${ref('swing')}. Best was: ${ref('best')}.`
+  else what = p.holding.length > 1 ? `Any of ${p.holding.map(h => ref(h.id)).join(', ')} held the position.` : `Best was: ${ref('best')}.`
 
   // Why: the threat (or certified none), then the answer with its certified
   // consequence. Every line cited stops at that consequence - the last
@@ -76,13 +92,14 @@ export function templateFloor(p: Packet): Slot[] {
       why.push(`Their idea ran ${p.threat.line.slice(1).map(m => ref(m.id)).join(', ')}: ${ref('threat')}.`)
     else if (!outcomeCertified && quietLine.length)
       why.push(`After ${ref('best')}, ${quietLine.join(', ')} ${quietLine.length > 1 ? 'follow' : 'follows'}.`)
-    else why.push(`Answer: ${ref('best')}.`)
+    else why.push(`Best was: ${ref('best')}.`)
   }
   if (p.holding.length > 1 && !why.some(w => w.includes('{ref:hold'))) why.push(`${ref(p.holding[0].id)} was one way to hold.`)
   // The punishment of the game move: a post-mortem, so Beginner floors (the
   // 80-word budget) skip it - carries the failure by category label
-  // and swing; Club and Advanced keep it
-  const punish = band === 'beginner' ? undefined : has('c-try') ? 'c-try' : has('c-punish') ? 'c-punish' : undefined
+  // and swing; Club and Advanced keep it; the affirm frames never carry it -
+  // they explain the solving move on its merits
+  const punish = band === 'beginner' || frame.membership !== 'miss' ? undefined : has('c-try') ? 'c-try' : has('c-punish') ? 'c-punish' : undefined
   if (punish === 'c-try') why.push(`Against ${ref('tried')}, they had this: ${ref(punish)}.`)
   else if (punish) why.push(`Against the game move ${ref('played')}, they had this: ${ref(punish)}.`)
   // Meeting the threat: when the why is short of the band's
@@ -129,12 +146,16 @@ export function templateFloor(p: Packet): Slot[] {
   // a certified threat; only a position with none of those gets the generic
   // gloss, and those floor by design at the narrator. "Your" carries the
   // pattern's polarity (the motif certificate is the player's); the wordy
-  // lead-ins stay short so the floor fits the budget
-  const pattern = p.didactic.motifCert
-    ? `Your idea: ${ref(p.didactic.motifCert)}. ${ref(p.didactic.glossId)}`
-    : has('c-mate')
-      ? `Your point: ${ref('c-mate')}.`
-      : ref(p.didactic.glossId)
+  // lead-ins stay short so the floor fits the budget; the also-good frame
+  // credits the position's point, not the player's idea ("Your point:")
+  const pattern =
+    frame.membership === 'set' && p.didactic.motifCert
+      ? `Your point: ${ref(p.didactic.motifCert)}. ${ref(p.didactic.glossId)}`
+      : p.didactic.motifCert
+        ? `Your idea: ${ref(p.didactic.motifCert)}. ${ref(p.didactic.glossId)}`
+        : has('c-mate')
+          ? `Your point: ${ref('c-mate')}.`
+          : ref(p.didactic.glossId)
   const out = [slot('whatHappened', what), slot('why', why.join(' ')), slot('pattern', pattern)]
   // The habit only rides along when it matches the packet's mechanism:
   // its tagged motifs are certified here, and a threat-keyed habit only

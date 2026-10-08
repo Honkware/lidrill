@@ -1,15 +1,17 @@
 import { templateFloor } from './floor'
 import { fromFen } from './facts'
-import type { Packet } from './packet'
+import { solvingRefOf, type Packet, type SetMembership } from './packet'
 import { STYLE_WORDS } from './readability'
 import { movesById, gameFrameIds, NO_THREAT_ID, REF, renderRef, SLOTS, type Slot } from './render'
-import { validateSlots } from './slots'
+import { MISS_FRAME, requiredFor, validateSlots, type FrameContext } from './slots'
 
 // The narrator. A cheap model drafts the
 // four slots in ref form; the mechanical validator decides; one repair try;
 // then a temperature-0 pass splits the draft into claims and any claim not
 // tied to a fact id is deleted (never repaired); a smoothing pass may rejoin
 // what's left. Anything that fails, or runs past the budget, gets the floor.
+// The draft is validated in the solve frame - how the player solved
+// the puzzle (best | set | miss) selects what the slots must do.
 
 export interface LlmCall {
   pass: 'draft' | 'repair' | 'decompose' | 'smooth'
@@ -64,6 +66,8 @@ export const SYSTEM_V2 = [
   'Trigger-anchor rule: a claim about an abstract idea (pressure, space, the initiative) must carry the fact id that makes it true in the same sentence; if no fact proves it, leave it out.',
   'Stay under the word budget the packet gives for the whole rendered explanation. Short sentences, subject-verb-object first, no stacked subordinate clauses.',
   'whatHappened: the move made here and what it cost - the player\'s try in this puzzle when one is recorded, otherwise the original game move, marked as game context. why: the mechanism, using the required ids and enough line steps. pattern: the certified pattern and its library text. nextTime: the habit id, nothing else of substance.',
+  'solve frames - the input says which: best - the player found the engine\'s best move: whatHappened opens by crediting it ({ref:best}), then explain that move on its merits. also-good - the player\'s move is in the acceptance set: open whatHappened with "Your move works.", name the solving move ({ref:alt1}…) and why it is sound, then name the engine\'s first choice ({ref:best}) with the certified gap ({ref:c-acc1}, "worth about … more"). miss - the contrast frame: the game move (or try) and what it cost, then "Best was: {ref:best}".',
+  'tokens: "Answer:" is retired everywhere - with an acceptance set there is no single answer; the miss frame labels best "Best was:". "cost you" is legal only in the miss frame - never in best or also-good.',
   'Ownership: say "you"/"your" for the player\'s moves and patterns and "they"/"their" for the opponent\'s, right before the id, in the same sentence. Amounts like {ref:swing} take no "your". V-POV: a possessive attaches only to the game move ({ref:played}); the answer and its line are not yours yet - no "your" on them.',
   'V-LINE: line steps beyond the answer are evidence, and evidence ends at the certified consequence - the capture, mate or certified amount that decides the line. Never run the line past the answer mid-hunt; when the consequence is certified, stop there.',
   'Certificate ids (c-…) render as a whole clause, like "every other move is at least 0.8 pawns worse": put them after a colon or after "because", never inside a phrase.',
@@ -116,7 +120,9 @@ const CLAIM_SCHEMA = {
 
 // What the narrator sees: ids with their rendered meaning, owner and frame.
 // No FEN (the narrator never reads the board) and nothing about the opponent.
-export function promptView(p: Packet) {
+// The solve frame travels with it - how the puzzle was solved
+// selects what the slots must do.
+export function promptView(p: Packet, frame: FrameContext = MISS_FRAME) {
   const mine = p.position.playerColor === 'white' ? 'w' : 'b'
   const moves = movesById(p)
   const gameIds = gameFrameIds(p)
@@ -128,6 +134,17 @@ export function promptView(p: Packet) {
     return '-'
   }
   const facts = p.claimAnchors.map(id => ({ id, means: id === NO_THREAT_ID ? 'no forcing reply (write NO_THREAT)' : renderRef(id, p), owner: owner(id), frame: gameIds.has(id) ? 'game' : 'puzzle' }))
+  const accCert = frame.solvingRef ? p.certificates.find(c => c.type === 'acceptance' && c.subject === frame.solvingRef) : undefined
+  const whatByFrame =
+    frame.membership === 'best'
+      ? `the move the player just solved with - credit it: {ref:best} is the engine's best move and they found it. No "cost you", no "Best was:".`
+      : frame.membership === 'set'
+        ? `the move the player just solved with - open with "Your move works.", name it (${frame.solvingRef ? `{ref:${frame.solvingRef}}` : 'its fact id'}) and why it holds up${accCert ? `, then the engine's first choice {ref:best} with the certified gap {ref:${accCert.id}}` : ', then the engine\'s first choice {ref:best}'}: "worth about … more". No "cost you".`
+        : p.tried
+          ? 'about the move the player tried in this puzzle'
+          : p.played
+            ? 'about the original game move, as game context ("in the game")'
+            : 'about the answer'
   return {
     level: p.context.band,
     // Style economy: the whole rendered explanation stays under this
@@ -136,8 +153,10 @@ export function promptView(p: Packet) {
     youPlay: p.position.playerColor,
     verdictBefore: p.eval.verdict.before,
     verdictAfterGameMove: p.eval.verdict.afterPlayed,
+    // The solve frame and the solving move's set membership
+    solve: { membership: frame.membership, move: frame.solvingRef ?? null, acceptanceSet: p.acceptanceSet },
     // The puzzle position is the default frame; game facts must be marked
-    whatHappened: p.tried ? 'about the move the player tried in this puzzle' : p.played ? 'about the original game move, as game context ("in the game")' : 'about the answer',
+    whatHappened: whatByFrame,
     nextTime: p.didactic.habitSlotId ? 'the habit fact' : 'omit this slot entirely: no habit fits this position',
     lines: {
       answer: p.best.pv.map(m => m.id),
@@ -147,7 +166,7 @@ export function promptView(p: Packet) {
     },
     threat: p.threatStatus === 'certified' ? 'use {ref:threat} in why' : p.threatStatus === 'certifiedNull' ? 'there is no threat: write NO_THREAT in why' : p.position.check.before ? 'the player was in check: use {ref:check} in why' : 'unknown',
     facts,
-    required: Object.fromEntries(SLOTS.map(s => [s, p.didactic.requiredRefs[s].map(r => r.split('|').join(' or '))])),
+    required: Object.fromEntries(SLOTS.map(s => [s, requiredFor(p, frame)[s].map(r => r.split('|').join(' or '))])),
     whyNeedsAtLeastThisManyLineStepsOrCertificates: p.didactic.mechanismMin,
     whyMustAddSomethingNotInWhatHappened: true,
     canSay: { forced: p.certificates.some(c => c.id === 'c-forced'), mate: p.certificates.some(c => c.type === 'mate') || p.threat?.consequence.type === 'mate' },
@@ -162,13 +181,22 @@ export interface Narration {
   cost: number
   models: string[]
   pruned?: number
+  frame: FrameContext['membership']
 }
 
-export async function narrate(p: Packet, call: Caller): Promise<Narration> {
+// How the puzzle was solved - the solving move and its set
+// membership, carried in the narrator input (best | set | miss)
+export interface SolveInput {
+  move?: string
+  membership: SetMembership
+}
+
+export async function narrate(p: Packet, call: Caller, solve: SolveInput = { membership: 'miss' }): Promise<Narration> {
   let calls = 0
   let cost = 0
   const models: string[] = []
-  const floor = (reason: string): Narration => ({ slots: templateFloor(p), source: 'floor', reason, calls, cost, models })
+  const frame: FrameContext = { membership: solve.membership, solvingRef: solvingRefOf(solve.move, p) }
+  const floor = (reason: string): Narration => ({ slots: templateFloor(p, frame), source: 'floor', reason, calls, cost, models, frame: frame.membership })
   if (p.meta.certification.status !== 'certified') return floor(`not certified: ${p.meta.certification.refusals.join('; ')}`)
   // The pattern slot must name a certified term. A quiet
   // position with a certified threat names the meeting-the-threat gloss; one
@@ -180,7 +208,7 @@ export async function narrate(p: Packet, call: Caller): Promise<Narration> {
   // matter, so it is no longer a floor reason
   if (p.threatStatus === 'uncertified' && !p.position.check.before && p.best.mateIn !== 1) return floor('threat not certified')
 
-  const view = JSON.stringify(promptView(p))
+  const view = JSON.stringify(promptView(p, frame))
   const slotSchema = SLOT_SCHEMA(p.didactic.habitSlotId ? 4 : 3)
   // Reserve each call's worst case before making it (fail closed at the cap)
   const ask = async (pass: LlmCall['pass'], user: string, which: keyof typeof MODELS | 'smooth', schema: Record<string, unknown>) => {
@@ -209,12 +237,12 @@ export async function narrate(p: Packet, call: Caller): Promise<Narration> {
   }
 
   let draft = await ask('draft', `Facts packet:\n${view}\n\nWrite the slots.`, 'draft', slotSchema)
-  let verdict = validateSlots(draft, p)
+  let verdict = validateSlots(draft, p, frame)
   if (!verdict.ok) {
     const again = await ask('repair', `Facts packet:\n${view}\n\nYour draft:\n${JSON.stringify(draft ?? null)}\n\nFix every problem and answer with the slots again:\n- ${verdict.violations.slice(0, 20).join('\n- ')}`, 'draft', slotSchema)
     if (again === undefined) return floor(`draft failed: ${verdict.violations.slice(0, 3).join('; ')}`)
     draft = again
-    verdict = validateSlots(draft, p)
+    verdict = validateSlots(draft, p, frame)
     if (!verdict.ok) return floor(`repair failed: ${verdict.violations.slice(0, 3).join('; ')}`)
   }
   let slots = verdict.slots!
@@ -230,15 +258,15 @@ export async function narrate(p: Packet, call: Caller): Promise<Narration> {
   if (pruning.total && pruning.removed / pruning.total > PRUNE_MAX) return floor(`${pruning.removed} of ${pruning.total} claims had no fact behind them`)
   if (pruning.removed) {
     slots = pruning.slots
-    verdict = validateSlots({ slots }, p)
+    verdict = validateSlots({ slots }, p, frame)
     if (!verdict.ok) {
       const smooth = await ask('smooth', `Facts packet:\n${view}\n\nSome claims were removed from this explanation. Rejoin the text so it reads well. Keep every {ref:…} token and NO_THREAT exactly, add no facts, and fix these problems:\n- ${verdict.violations.slice(0, 12).join('\n- ')}\n\n${JSON.stringify({ slots })}`, 'smooth', slotSchema)
-      verdict = validateSlots(smooth, p)
+      verdict = validateSlots(smooth, p, frame)
       if (!verdict.ok) return floor('could not rejoin after removing claims')
       slots = verdict.slots!
     }
   }
-  return { slots, source: 'model', calls, cost, models, pruned: pruning.removed }
+  return { slots, source: 'model', calls, cost, models, pruned: pruning.removed, frame: frame.membership }
 }
 
 interface Claim {
@@ -297,7 +325,7 @@ function magnitudeOk(text: string, ids: string[], p: Packet): boolean {
   return ids.some(id => {
     if (id === 'swing' || id === 'tryswing' || id === 'material' || id === 'threat' || /^t\d+$/.test(id)) return true
     const cert = p.certificates.find(c => c.id === id)
-    return !!cert && (cert.type === 'tactical' || cert.type === 'stopsThreat' || cert.type === 'forced')
+    return !!cert && (cert.type === 'tactical' || cert.type === 'stopsThreat' || cert.type === 'forced' || cert.type === 'acceptance')
   })
 }
 

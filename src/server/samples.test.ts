@@ -71,8 +71,8 @@ describe('samples as permanent fixtures', () => {
     const p = sample2.packet
     expect(p.didactic.habitSlotId).toBe('habit:line-behind')
     const compliant: Slot[] = [
-      { slot: 'whatHappened', text: 'In the game, {ref:played} cost you {ref:swing}. Answer: {ref:best}.', refs: ['played', 'swing', 'best'] },
-      { slot: 'why', text: 'They threatened {ref:threat}. Answer: {ref:best}. {ref:c-stops}.', refs: ['threat', 'best', 'c-stops'] },
+      { slot: 'whatHappened', text: 'In the game, {ref:played} cost you {ref:swing}. Best was: {ref:best}.', refs: ['played', 'swing', 'best'] },
+      { slot: 'why', text: 'They threatened {ref:threat}. Best was: {ref:best}. {ref:c-stops}.', refs: ['threat', 'best', 'c-stops'] },
       sample2Text[2]!,
       { slot: 'nextTime', text: '{ref:habit:line-behind}', refs: ['habit:line-behind'] },
     ]
