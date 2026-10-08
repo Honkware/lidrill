@@ -21,9 +21,10 @@ export const fromFen = (fen: string): Chess | undefined => {
   return pos.isOk ? pos.value : undefined
 }
 
-function attackers(pos: Chess, square: Square, by: Color): { role: Role; square: Square }[] {
+function attackers(pos: Chess, square: Square, by: Color, occupied?: typeof pos.board.occupied): { role: Role; square: Square }[] {
+  const occ = occupied ?? pos.board.occupied
   const out: { role: Role; square: Square }[] = []
-  for (const [sq, piece] of pos.board) if (piece.color === by && attacks(piece, sq, pos.board.occupied).has(square)) out.push({ role: piece.role, square: sq })
+  for (const [sq, piece] of pos.board) if (piece.color === by && attacks(piece, sq, occ).has(square)) out.push({ role: piece.role, square: sq })
   return out.sort((a, b) => VALUE[a.role] - VALUE[b.role])
 }
 
@@ -147,6 +148,79 @@ export function replay(fen: string, sans: string[]): LineReplay | undefined {
 }
 
 export const pieceName = (r: Role) => NAME[r]
+
+// MateNet: why the king cannot run. Enumerated at the terminal
+// position of a certified mating line, with the mated side to move: every
+// square adjacent to the king is either blocked by its own piece or covered
+// by an attacker of the mating side (chessops attacks include the enemy
+// king, so adjacency is covered too). A genuine checkmate refutes every
+// flight square; an open square means the line was not mate and the caller
+// must fail closed rather than certify.
+export interface EscapeSquare {
+  square: string
+  blockedBy?: Role // an own piece sits on the square
+  coveredBy?: { role: Role; square: string }[] // mating side's attackers
+}
+
+export function escapeSquares(pos: Chess, mated: Color): { squares: EscapeSquare[]; complete: boolean } {
+  const king = pos.board.kingOf(mated)
+  if (king === undefined) return { squares: [], complete: false }
+  const mating = other(mated)
+  // Coverage is computed with the mated king lifted off the board: it blocks
+  // the checking piece's ray, but the squares behind it are still flight
+  // squares it could never reach (the ray re-opens the moment it moves)
+  const noKing = pos.board.occupied.without(king)
+  const squares: EscapeSquare[] = []
+  let complete = true
+  const kf = king % 8
+  const kr = Math.floor(king / 8)
+  for (let df = -1; df <= 1; df++) {
+    for (let dr = -1; dr <= 1; dr++) {
+      if (!df && !dr) continue
+      const f = kf + df
+      const r = kr + dr
+      if (f < 0 || f > 7 || r < 0 || r > 7) continue
+      const sq = f + r * 8
+      const square = makeSquare(sq)
+      const piece = pos.board.get(sq)
+      if (piece && piece.color === mated) {
+        squares.push({ square, blockedBy: piece.role })
+        continue
+      }
+      const cover = attackers(pos, sq, mating, noKing).map(a => ({ role: a.role, square: makeSquare(a.square) }))
+      if (cover.length) squares.push({ square, coveredBy: cover })
+      else {
+        squares.push({ square })
+        complete = false
+      }
+    }
+  }
+  return { squares, complete }
+}
+
+// MateNet, in words: the certified refutation sentence the mate
+// certificate's companion carries ("the king cannot run" + one clause per
+// flight square, squares sharing a blocker or cover grouped). Composed once
+// here at build time; every surface renders the stored text verbatim.
+export function escapeNetText(net: { squares: EscapeSquare[] }): string {
+  const blocked = new Map<string, string[]>()
+  const covered = new Map<string, string[]>()
+  for (const e of net.squares) {
+    if (e.blockedBy) {
+      const key = pieceName(e.blockedBy)
+      blocked.set(key, [...(blocked.get(key) ?? []), e.square])
+      continue
+    }
+    const cover = (e.coveredBy ?? []).map(c => `the ${pieceName(c.role)} on ${c.square}`).join(' and ')
+    const key = cover || 'open'
+    covered.set(key, [...(covered.get(key) ?? []), e.square])
+  }
+  const join = (sq: string[]) => (sq.length > 2 ? `${sq.slice(0, -1).join(', ')} and ${sq[sq.length - 1]}` : sq.join(' and '))
+  const items: string[] = []
+  for (const [role, sq] of blocked) items.push(`${join(sq)} ${sq.length > 1 ? 'are' : 'is'} blocked by its own ${role}${sq.length > 1 ? 's' : ''}`)
+  for (const [cover, sq] of covered) items.push(cover === 'open' ? `${join(sq)} is open` : `${join(sq)} ${sq.length > 1 ? 'are' : 'is'} covered by ${cover}`)
+  return `The king cannot run: ${items.join('; ')}`
+}
 
 function material(pos: Chess): number {
   let d = 0

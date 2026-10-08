@@ -5,5 +5,6 @@
 // solve frame over the acceptance set. 15 - V-DUP +
 // pattern-instance lints and the mechanism-keyed meet-threat habit: drafts
 // from the older contract can carry a doubled magnitude or a gloss-first
-// pattern.
-export const EXPLAIN_VERSION = 15
+// pattern. 16 - mateNet: the c-mate certificate renders with the
+// escape-square refutations, and stored packets rebuild at builder/1.3.
+export const EXPLAIN_VERSION = 16

@@ -111,18 +111,10 @@ export const resultChip = (result: 'win' | 'loss' | 'draw') =>
     result === 'win' ? 'W' : result === 'loss' ? 'L' : 'D',
   )
 
-// Centipawns in words a player uses: "a pawn and a half", "three pawns".
-// One magnitude, one rendering - the old parenthetical second bucket
-// ("three pawns (about a knight or bishop)") restated the same swing and is
-// gone
-export function pawnsWorth(cp: number): string {
-  const n = Math.round(cp / 50) / 2
-  if (n >= 9) return 'a queen or more'
-  if (n <= 1) return 'a pawn'
-  if (n === 1.5) return 'a pawn and a half'
-  const word = ['', '', 'two', 'three', 'four', 'five'][Math.floor(n)]
-  return Number.isInteger(n) && word ? `${word} pawns` : `${n} pawns`
-}
+// Swing/cost words now live in src/server/surface.ts (single rendering
+// surface,): the one place a certified swing is phrased outside a
+// packet. Kept as a re-export so older imports stay on the sanctioned path.
+export { costWords as pawnsWorth } from '../server/surface'
 
 export const LEVEL_WORD = { beginner: 'beginner', club: 'club', advanced: 'advanced' } as const
 

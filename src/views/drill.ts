@@ -3,7 +3,8 @@ import type { Ctrl } from '../ctrl'
 import type { Drill } from '../drill'
 import { el } from '../el'
 import type { BoardLink, Segment } from '../server/render'
-import { board, button, icon, moveInput, pawnsWorth, topBar } from './ui'
+import { board, button, icon, moveInput, topBar } from './ui'
+import { drillGameLine } from '../server/surface'
 
 export function drillView(ctrl: Ctrl): VNode {
   const d = ctrl.drill
@@ -235,7 +236,9 @@ export function puzzleSide(d: Drill, after: (VNode | null)[]): VNode {
   // Why? card uses is the server's membership of the solving move; the card
   // mirrors it (the found move against the puzzle's own solutions)
   const affirmed = !!d.solvedMove && (p.solution[0] === d.solvedMove || !!p.alternatives?.includes(d.solvedMove))
-  const game = p.played && !affirmed ? ` In the game: ${d.sanAt(p.played)}, giving away about ${pawnsWorth(p.swingCp)}.` : ''
+  // The cost words come from the shared validated surface, never
+  // composed here; an unmeasurable swing omits the clause
+  const game = p.played && !affirmed ? (drillGameLine({ san: d.sanAt(p.played) }, p.swingCp) ?? '') : ''
   const why = d.why ? null : el('button', 'shrink-0 rounded-full bg-raised px-3 py-1 text-sm font-medium', { attrs: { type: 'button' }, on: { click: () => d.explain() } }, 'Why?')
   return el('div', 'space-y-3', [
     whyCard(feedbackBox(tone, title, `${answer}${game}`.trim() || null, why), whyPart(d)),

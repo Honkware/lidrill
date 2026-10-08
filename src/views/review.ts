@@ -1,9 +1,10 @@
-import type { VNode } from 'snabbdom'
+import type { VNode, VNodeChildren } from 'snabbdom'
 import type { Ctrl, ReviewRow } from '../ctrl'
 import { el } from '../el'
 import type { GameView } from '../gameview'
 import { deviation } from '../lichess/repertoire'
-import { board, button, card, dateLabel, icon, judgColor, judgMark, label, pawnsWorth, plural, resultChip, topBar } from './ui'
+import { board, button, card, dateLabel, icon, judgColor, judgMark, label, plural, resultChip, topBar } from './ui'
+import { journalHangParts } from '../server/surface'
 
 export function reviewView(ctrl: Ctrl): VNode {
   const rows = ctrl.reviewList
@@ -170,16 +171,16 @@ function moveList(v: GameView): VNode {
 function journalCard(ctrl: Ctrl, v: GameView): VNode | null {
   const j = v.journal
   if (!j) return null
+  // The hang line's words come from the shared validated surface;
+  // only the stored SAN renders as a link, and it is never composed here
+  const hang = j.hung ? journalHangParts(j.hung) : undefined
+  const hangRow: VNodeChildren = hang
+    ? [hang[0], el('button', 'underline', { attrs: { type: 'button' }, on: { click: () => v.go(j.hung!.ply) } }, hang[1]), hang[2]]
+    : 'Nothing given away. Counts toward your streak.'
   return card(
     [
       label('Journal'),
-      el(
-        'p',
-        '',
-        j.hung
-          ? [`Gave away about ${pawnsWorth(j.hung.swingCp)} on move ${Math.ceil(j.hung.ply / 2)} (`, el('button', 'underline', { attrs: { type: 'button' }, on: { click: () => v.go(j.hung!.ply) } }, j.hung.san), `).`]
-          : 'Nothing given away. Counts toward your streak.',
-      ),
+      el('p', '', hangRow),
       el('label', 'flex items-center gap-2 text-sm', [
         el('input', 'size-5 accent-accent', { attrs: { type: 'checkbox' }, props: { checked: j.confirmed }, on: { change: e => ctrl.saveJournal({ confirmed: (e.target as HTMLInputElement).checked }) } }),
         "That's right",

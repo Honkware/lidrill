@@ -1,7 +1,8 @@
 import type { VNode } from 'snabbdom'
 import type { Ctrl } from '../ctrl'
 import { el } from '../el'
-import { button, card, label, pawnsWorth, plural, weekBars } from './ui'
+import { button, card, label, plural, weekBars } from './ui'
+import { thresholdWords } from '../server/surface'
 
 // Home IA: one hero (streak), one primary action (due), then at most three
 // half cards (turning points, this week's focus, drills). Everything else
@@ -149,7 +150,7 @@ function bandNote(ctrl: Ctrl): VNode | null {
   return card(
     [
       el('div', 'flex items-start justify-between gap-3', [
-        el('p', 'text-sm', [`lidrill now sees you as a ${last.band} player, from your Lichess rating. Puzzles come from moves that gave away ${pawnsWorth(ctrl.profile!.swingThresholdCp)} or more.${extra} `, whatCountsLink()]),
+        el('p', 'text-sm', [`lidrill now sees you as a ${last.band} player, from your Lichess rating. Puzzles come from moves that gave away ${thresholdWords(ctrl.profile!.swingThresholdCp) ?? 'material'} or more.${extra} `, whatCountsLink()]),
         el(
           'button',
           'shrink-0 rounded-lg px-2 py-1 text-dim active:bg-raised',

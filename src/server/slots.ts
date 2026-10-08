@@ -229,7 +229,7 @@ export function validateSlots(out: unknown, p: Packet, frame: FrameContext = MIS
     const endsAtOutcome = (id: string): boolean => {
       const mv = moves.get(id)
       if (mv && (mv.isCapture || mv.mate)) return true
-      if (id === 'material' || id === 'swing' || id === 'tryswing' || id === 'c-mate') return true
+      if (id === 'material' || id === 'swing' || id === 'tryswing' || id === 'c-mate' || id === 'c-mate-net') return true
       if ((id === 'threat' || /^t\d+$/.test(id)) && p.threat && p.threat.consequence.type !== 'other') return true
       const cert = p.certificates.find(c => c.id === id)
       return !!cert && (cert.type === 'tactical' || cert.type === 'stopsThreat' || cert.type === 'forced')

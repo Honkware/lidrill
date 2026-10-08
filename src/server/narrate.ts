@@ -37,7 +37,11 @@ export type Caller = (call: LlmCall) => Promise<LlmResult>
 // one of these changes
 export const MODELS = {
   draft: { model: 'google/gemini-3.8-flash', temperature: 0.3, maxTokens: 900, usdPerMTokIn: 0.75, usdPerMTokOut: 3.75 },
-  lint: { model: 'anthropic/claude-haiku-4.5', temperature: 0, maxTokens: 2000, usdPerMTokIn: 1, usdPerMTokOut: 5 },
+  // Measured: haiku truncates at 2000 (finish_reason "length" -
+  // 3 of 20 decompose calls, some with the whole budget spent before any
+  // content). 4000 leaves the prune untouched; it only gives the claim
+  // check room to finish. Gate re-runs on this change.
+  lint: { model: 'anthropic/claude-haiku-4.5', temperature: 0, maxTokens: 4000, usdPerMTokIn: 1, usdPerMTokOut: 5 },
 } as const
 export const BUDGET_USD = 0.05
 export const MAX_CALLS = 5
@@ -95,7 +99,7 @@ const SLOT_SCHEMA = (minSlots = 4): Record<string, unknown> => ({
   additionalProperties: false,
 })
 
-const CLAIM_SCHEMA = {
+export const CLAIM_SCHEMA = {
   type: 'object',
   properties: {
     claims: {
@@ -191,6 +195,13 @@ export interface SolveInput {
   membership: SetMembership
 }
 
+// Decompose into claims; the exact ask the flake loop replays (scripts/
+// decompose-flake-loop.mjs) - one definition so the instrumented run and the
+// production pass can never drift
+export function decomposeAskFor(view: string, slots: Slot[]): string {
+  return `Facts packet:\n${view}\n\nExplanation in ref form:\n${JSON.stringify({ slots })}\n\nSplit every slot into its atomic claims. For each claim give the slot, its exact text (a substring of the slot text), the fact ids it rests on (from its {ref:…} and NO_THREAT tokens), and its tense: past, present, or none if it states no fact. Cover all the text.`
+}
+
 export async function narrate(p: Packet, call: Caller, solve: SolveInput = { membership: 'miss' }): Promise<Narration> {
   let calls = 0
   let cost = 0
@@ -248,10 +259,9 @@ export async function narrate(p: Packet, call: Caller, solve: SolveInput = { mem
   let slots = verdict.slots!
 
   // Decompose into claims; delete the unanchored ones
-  const decomposeAsk = `Facts packet:\n${view}\n\nExplanation in ref form:\n${JSON.stringify({ slots })}\n\nSplit every slot into its atomic claims. For each claim give the slot, its exact text (a substring of the slot text), the fact ids it rests on (from its {ref:…} and NO_THREAT tokens), and its tense: past, present, or none if it states no fact. Cover all the text.`
   // One more try if the claim check times out or fails: it's the check that
   // makes model text servable, so it gets a second chance before the floor
-  const decomposed = (await ask('decompose', decomposeAsk, 'lint', CLAIM_SCHEMA)) ?? (await ask('decompose', decomposeAsk, 'lint', CLAIM_SCHEMA))
+  const decomposed = (await ask('decompose', decomposeAskFor(view, slots), 'lint', CLAIM_SCHEMA)) ?? (await ask('decompose', decomposeAskFor(view, slots), 'lint', CLAIM_SCHEMA))
   if (decomposed === undefined) return floor('claim check unavailable')
   const pruning = prune(slots, decomposed, p)
   if (!pruning) return floor('claim check unreadable')
@@ -307,7 +317,7 @@ export function prune(slots: Slot[], raw: unknown, p: Packet): { slots: Slot[]; 
 function bound(text: string, ids: string[], p: Packet): boolean {
   const moves = movesById(p)
   if (/\b(check)?mat(e|es|ed|ing)\b/i.test(text)) {
-    const mateIds = ids.filter(id => moves.get(id)?.mate || id === 'c-mate' || (id === 'threat' && p.threat?.consequence.type === 'mate'))
+    const mateIds = ids.filter(id => moves.get(id)?.mate || id === 'c-mate' || id === 'c-mate-net' || (id === 'threat' && p.threat?.consequence.type === 'mate'))
     if (!mateIds.length) return false
   }
   if (/\bthreat\w*/i.test(text) && !ids.some(id => id === 'threat' || /^t\d+$/.test(id) || id === NO_THREAT_ID)) return false
@@ -325,7 +335,7 @@ function magnitudeOk(text: string, ids: string[], p: Packet): boolean {
   return ids.some(id => {
     if (id === 'swing' || id === 'tryswing' || id === 'material' || id === 'threat' || /^t\d+$/.test(id)) return true
     const cert = p.certificates.find(c => c.id === id)
-    return !!cert && (cert.type === 'tactical' || cert.type === 'stopsThreat' || cert.type === 'forced' || cert.type === 'acceptance')
+    return !!cert && (cert.type === 'tactical' || cert.type === 'stopsThreat' || cert.type === 'forced' || cert.type === 'acceptance' || cert.type === 'mate')
   })
 }
 

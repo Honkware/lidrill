@@ -10,7 +10,7 @@ import { canonicalFen, drawRule, gameState, validPosition, type DrawRule, type G
 import { family, HABIT_LIB_VERSION, selectHabit } from './habits'
 import { MOTIF_LIB_VERSION, motifEntry, type MotifKey } from './motifLib'
 import { motifs, type Motif, type MotifName } from './motifs'
-import { fromFen, replay, type LineReplay, type PlayedMove } from './facts'
+import { fromFen, replay, escapeNetText, escapeSquares, type LineReplay, type PlayedMove } from './facts'
 import { READABILITY_VERSION } from './readability'
 
 // The facts packet. The browser runs Stockfish and sends
@@ -26,7 +26,7 @@ export const BANDS: Band[] = ['beginner', 'club', 'advanced']
 
 export const PACKET_SCHEMA = 'lidrill-packet/2.3'
 export const REPORT_SCHEMA = 'lidrill-report/1'
-export const BUILDER_VERSION = 'builder/1.2'
+export const BUILDER_VERSION = 'builder/1.3'
 export const DETECTOR_VERSION = 'det/1.0'
 export const THREAT_DEF = 'nullmove/1.0'
 export const ENGINE = { name: 'stockfish', version: '19-wasm-lite', id: 'sf19-wasm-lite' } as const
@@ -487,7 +487,7 @@ function stability(p: RunPair, flip: boolean) {
 export type BuildResult = { ok: true; packet: Packet } | { ok: false; error: string }
 
 export const PROMPT_VERSION = 'p2.5'
-export const RENDERER_VERSION = 'render/1.0'
+export const RENDERER_VERSION = 'render/1.1'
 
 export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION): BuildResult {
   const v = validPosition(report.fen)
@@ -661,7 +661,24 @@ export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION
   const certificates: Certificate[] = [...acceptanceCerts]
   const add = (c: Certificate) => certificates.length < 8 && certificates.push(c)
   if (rule) add({ id: 'c-draw', type: 'drawRule', side: sideOf(player), payload: { rule, gameState: gs }, text: DRAW_TEXT[rule] })
-  if (mateIn !== null && pv.some(m => m.mate)) add({ id: 'c-mate', type: 'mate', subject: 'best', side: sideOf(player), targetSide: sideOf(opp), payload: { mateIn, lineIds: pv.slice(0, pv.findIndex(m => m.mate) + 1).map(m => m.id) }, text: `mate in at most ${mateIn}` })
+  // MateNet: the mate certificate carries why the king cannot run -
+  // per flight square, covered-by / blocked-by-own-piece - so mate packets
+  // stop being sparse and cheap drafts have concrete facts to cite (
+  // widen the packet, never lower the bar). The enumeration is a definition
+  // test: if the PV's terminal position is not checkmate, or any flight
+  // square is neither blocked nor covered, the mate net fails and the claim
+  // never enters the packet (fail closed).
+  if (mateIn !== null && pv.some(m => m.mate)) {
+    const mateIdx = pv.findIndex(m => m.mate)
+    const matePos = fromFen(pv[mateIdx]!.fenAfter)
+    const net = matePos ? escapeSquares(matePos, opp) : { squares: [], complete: false }
+    if (net.complete && matePos?.isCheckmate()) {
+      const mateCert: Certificate = { id: 'c-mate', type: 'mate', subject: 'best', side: sideOf(player), targetSide: sideOf(opp), payload: { mateIn, lineIds: pv.slice(0, mateIdx + 1).map(m => m.id), escapeSquares: net.squares, complete: true }, text: `mate in at most ${mateIn}` }
+      const netCert: Certificate = { id: 'c-mate-net', type: 'mate', subject: 'best', side: sideOf(player), targetSide: sideOf(opp), payload: { escapeSquares: net.squares, complete: true }, text: escapeNetText(net) }
+      add(mateCert)
+      add(netCert)
+    } else refusals.push('mate net unverified: the mating line leaves a flight square')
+  }
   if (unique && bs.stable) {
     const alts = alternatives.map(a => ({ move: a.san, gapCp: a.gapCp }))
     add({ id: 'c-forced', type: 'forced', subject: 'best', side: sideOf(player), payload: { allAlternativesWorse: true, checkedAtDepth: CERT.depth, reachedDepth: bs.reached, marginCp: margin, complete: true, alternatives: alts }, text: `every other move is at least ${amount(margin, band)} worse` })
@@ -1033,6 +1050,25 @@ export function packetProblems(p: Packet): string[] {
     if (p.best.uniquenessGapCp !== null && p.best.uniquenessGapCp < pl.marginCp) problems.push('uniqueness gap below the margin')
   }
   if (p.threatStatus === 'certified' && !p.threat) problems.push('certified threat without a threat')
+  // MateNet consistency: the escape enumeration must actually refute
+  // every flight square, and each refutation must name a real blocker or
+  // attacker
+  const mate = p.certificates.find(c => c.id === 'c-mate' && c.subject === 'best')
+  if (mate) {
+    const pl = mate.payload as { escapeSquares?: { square?: unknown; blockedBy?: unknown; coveredBy?: unknown }[]; complete?: unknown }
+    if (pl.escapeSquares !== undefined) {
+      if (pl.complete !== true) problems.push('mate certificate with an incomplete escape net')
+      if (!Array.isArray(pl.escapeSquares) || !pl.escapeSquares.length) problems.push('mate certificate with an empty escape net')
+      else
+        for (const e of pl.escapeSquares) {
+          if (typeof e.square !== 'string' || !/^[a-h][1-8]$/.test(e.square)) problems.push('escape square without a valid square name')
+          const covered = Array.isArray(e.coveredBy) && e.coveredBy.length > 0
+          if (!e.blockedBy && !covered) problems.push(`escape square ${e.square} is neither blocked nor covered`)
+          if (e.blockedBy !== undefined && typeof e.blockedBy !== 'string') problems.push('escape square with a malformed blocker')
+          if (e.coveredBy !== undefined && (!Array.isArray(e.coveredBy) || e.coveredBy.some(c => !c || typeof (c as { role?: unknown }).role !== 'string' || typeof (c as { square?: unknown }).square !== 'string'))) problems.push('escape square with a malformed cover')
+        }
+    }
+  }
   if (p.threatStatus !== 'certifiedNull' && anchors.has('c-nothreat')) problems.push('no-threat certificate without certifiedNull')
   if (p.threat && p.threat.side === sideOf(p.position.playerColor)) problems.push('threat owned by the player')
   if (p.meta.certification.status === 'certified' && p.meta.certification.refusals.length) problems.push('certified with refusals')

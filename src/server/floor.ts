@@ -1,7 +1,8 @@
 import type { Packet, SlotName } from './packet'
 import { HABITS } from './habits'
 import { MISS_FRAME, type FrameContext } from './slots'
-import type { Slot } from './render'
+import { renderText, type Slot } from './render'
+import { STYLE_WORDS, words } from './readability'
 
 // The deterministic floor: pre-authored slot text in ref form,
 // per puzzle type and band, built only from what the packet certified. It
@@ -54,6 +55,7 @@ export function templateFloor(p: Packet, frame: FrameContext = MISS_FRAME): Slot
   // capture or mate the certified line actually contains;
   // nothing runs past it, and nothing sits past a certified mate.
   const why: string[] = []
+  let netLine: string | undefined // mateNet clause, budget-checked below
   if (p.threatStatus === 'certified' && p.threat) why.push(`They threatened ${ref('threat')}.`)
   else if (p.threatStatus === 'certifiedNull') why.push(`They had NO_THREAT: ${ref('best')}.`)
   else if (p.position.check.before && has('check')) why.push(`They gave ${ref('check')}, so the reply came first.`)
@@ -83,6 +85,11 @@ export function templateFloor(p: Packet, frame: FrameContext = MISS_FRAME): Slot
     const steps = line.length > 3 ? [line[0]!, line[line.length - 1]!] : line
     if (steps.length) why.push(`${ref('best')}, then ${steps.map(ref).join(', ')}: ${ref('c-mate')}.`)
     else why.push(`${ref('best')} gives ${ref('c-mate')}.`)
+    // MateNet: why the king cannot run rides along as its own
+    // certified clause whenever the packet verified every flight square -
+    // budget-checked below (the clause is supplementary; the band's style
+    // budget is the hard contract)
+    if (has('c-mate-net')) why.push((netLine = `${ref('c-mate-net')}.`))
   } else {
     const steps = outcomeSteps()
     const quietLine = p.best.pv.slice(1, 4).map(m => ref(m.id))
@@ -174,6 +181,17 @@ export function templateFloor(p: Packet, frame: FrameContext = MISS_FRAME): Slot
     const mechanismMatches = !habit.when || habit.when.some(m => concepts.includes(m))
     const threatMatches = !habit.threat || p.threatStatus === 'certified'
     if (mechanismMatches && threatMatches) out.push(slot('nextTime', ref(p.didactic.habitSlotId!)))
+  }
+  // The mateNet clause is supplementary - the band's style budget is
+  // the hard contract, so a floor that would overflow without fitting drops
+  // the clause (Beginner floors, and any motif-rich floor at any band)
+  if (netLine) {
+    const total = words(Object.values(renderText(out, p)).join(' ')).length
+    if (total > STYLE_WORDS[band]) {
+      const whySlot = out.find(s => s.slot === 'why')!
+      whySlot.text = whySlot.text.replace(netLine, ' ').replace(/\s{2,}/g, ' ').trim()
+      whySlot.refs = whySlot.refs.filter(r => r !== 'c-mate-net')
+    }
   }
   return out
 }
