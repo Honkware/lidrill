@@ -2,7 +2,7 @@ import type { Band } from '../db'
 import { family, HABITS } from './habits'
 import type { Packet, SlotName } from './packet'
 import { checkCeilings, styleBudget } from './readability'
-import { gameFrameIds, NO_THREAT_ID, REF, renderRef, renderText, SLOTS, type Slot } from './render'
+import { gameFrameIds, movesById, NO_THREAT_ID, REF, renderRef, renderText, SLOTS, type Slot } from './render'
 import { toneViolations } from './tone'
 
 // Mechanical checks only. A draft passes or names
@@ -76,6 +76,9 @@ const refIds = (t: string) => [...t.matchAll(REF)].map(m => m[1] ?? NO_THREAT_ID
 
 const MECHANISM = /^(t\d+|pv[1-9]\d*|pl\d+|tr\d+|alt\d+|threat|c-(?!nothreat$|draw$).+)$/
 const DEEP = /^(alt\d+|c-fd\d+|c-forced)$/
+
+// V-POV: a player possessive sits directly on a move ref
+const PLAYER_POSSESSIVE = /\byour\s+\{ref:([a-z0-9:-]+)\}/gi
 
 // The puzzle position is the default frame; a game-line fact must be
 // introduced as game context in the same sentence
@@ -169,6 +172,42 @@ export function validateSlots(out: unknown, p: Packet): Verdict {
     for (const sent of sentencesOf(s.text)) {
       if (/\bthe game\b/i.test(mask(sent)) && ![...sent.matchAll(REF)].some(rm => gameIds.has(rm[1] ?? NO_THREAT_ID)))
         v.push(`${s.slot}: "the game" with no game fact in the sentence - attach it to the played fact or say "this position"`)
+    }
+    // V-LINE: line refs stop at the certified consequence. When a
+    // material or mate outcome is certified, plys beyond the answer (pv1…,
+    // and the threat's follow-ups t1…) are allowed only as compact certified
+    // evidence ending at that outcome - a line that runs past the answer
+    // mid-hunt fails. (A quiet position with no such outcome has nothing to
+    // end at: its certified line is the evidence, and game and try replies
+    // are game-frame facts whose consequence is the swing in whatHappened.)
+    const moves = movesById(p)
+    const mateCert = p.certificates.find(c => c.id === 'c-mate' && c.subject === 'best')
+    const mateLine = new Set(((mateCert?.payload as { lineIds?: string[] } | undefined)?.lineIds) ?? [])
+    const outcomeCertified =
+      p.certificates.some(c => c.type === 'tactical' || c.type === 'mate' || c.type === 'stopsThreat') ||
+      (!!p.threat && p.threat.consequence.type !== 'other')
+    const endsAtOutcome = (id: string): boolean => {
+      const mv = moves.get(id)
+      if (mv && (mv.isCapture || mv.mate)) return true
+      if (id === 'material' || id === 'swing' || id === 'tryswing' || id === 'c-mate') return true
+      if ((id === 'threat' || /^t\d+$/.test(id)) && p.threat && p.threat.consequence.type !== 'other') return true
+      const cert = p.certificates.find(c => c.id === id)
+      return !!cert && (cert.type === 'tactical' || cert.type === 'stopsThreat' || cert.type === 'forced')
+    }
+    for (const sent of sentencesOf(s.text)) {
+      const ids = [...sent.matchAll(REF)].map(rm => rm[1] ?? NO_THREAT_ID)
+      for (const id of ids) {
+        if (mateLine.size && /^pv\d+$/.test(id) && !mateLine.has(id)) v.push(`${s.slot}: ${id} is past the certified mate line - the line ends at the mate`)
+      }
+      const continuation = ids.filter(id => /^(pv[1-9]\d*|t[1-9]\d*)$/.test(id))
+      if (outcomeCertified && continuation.length && !endsAtOutcome(ids[ids.length - 1]!))
+        v.push(`${s.slot}: the line runs past the answer without ending at the certified outcome - end at the capture, mate or certified amount that decides it ("${sent.trim()}")`)
+    }
+    // V-POV: possessives attach only to the game move ({ref:played});
+    // "your" on the answer or its line claims moves the player never played
+    for (const m2 of s.text.matchAll(PLAYER_POSSESSIVE)) {
+      const id = m2[1]!
+      if (moves.has(id) && id !== 'played') v.push(`${s.slot}: "your" attaches to ${id} - possessives attach only to the game move ({ref:played})`)
     }
   }
 

@@ -1,6 +1,7 @@
-// Sample gate: three real corpus puzzles from the committed
-// gate reports - one mate, one material win, one quiet position - narrated
-// live and printed with band, source and word counts.
+// Sample gate: three real corpus
+// puzzles from the committed gate reports - one mate, one material win, one
+// quiet position - narrated live and printed with band, source, word counts
+// and cost.
 //
 //   OPENROUTER_API_KEY=… bun scripts/sample-gate.ts [band]
 //

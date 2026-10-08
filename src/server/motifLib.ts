@@ -8,9 +8,9 @@ import type { MotifName } from './motifs'
 // plainly, without talking down. Change the texts only together with the
 // version.
 
-export const MOTIF_LIB_VERSION = 'motifLib/1.0'
+export const MOTIF_LIB_VERSION = 'motifLib/1.1'
 
-export type MotifKey = MotifName | 'none'
+export type MotifKey = MotifName | 'none' | 'meeting the threat'
 
 export interface MotifEntry {
   id: string // 'gloss:<motif-in-kebab-case>', the same at every band
@@ -187,6 +187,24 @@ const TEXTS: Record<MotifKey, Texts> = {
     advanced: {
       gloss: 'No named pattern decides this; it comes down to concrete calculation.',
       rule: 'Rank candidate moves by how forcing they are, and calculate those first.',
+    },
+  },
+  // The defensive gloss for a quiet position whose task is a certified
+  // threat: the mechanism is meeting the threat, never "no named
+  // pattern". Served in the pattern slot when the threat certified and no
+  // tactical motif or mate did.
+  'meeting the threat': {
+    beginner: {
+      gloss: 'Meeting the threat: their threat sets the task here.',
+      rule: 'First name their threat, then look for the move that answers it.',
+    },
+    club: {
+      gloss: 'Meeting the threat means their threat comes first: the answer is the move that takes care of it.',
+      rule: 'Name their threat, then pick the move that answers it and check the reply.',
+    },
+    advanced: {
+      gloss: 'Meeting the threat is a defensive task: the opponent\'s threat decides which moves count.',
+      rule: 'List candidate moves that answer the threat, and calculate the reply to each.',
     },
   },
 }

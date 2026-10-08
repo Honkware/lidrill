@@ -8,7 +8,7 @@ import type { PuzzleKind } from './packet'
 // <trigger>, I <action>."), the form that turns advice into a cue the player
 // meets over the board. Change the texts only together with the version.
 
-export const HABIT_LIB_VERSION = 'habit/1.0'
+export const HABIT_LIB_VERSION = 'habit/1.1'
 
 export type Family = 'safety' | 'tactics' | 'conversion' | 'defense'
 
@@ -36,8 +36,11 @@ export interface Habit {
   // The motifs that make this habit relevant to a position (trigger-aware
   // selection,): a tagged habit is only offered for packets whose
   // certified concepts include one of them. Untagged habits are family
-  // advice, relevant to every puzzle of their family.
+  // advice, relevant to every puzzle of their family. A habit with
+  // `threat: true` is mechanism-keyed to a certified threat instead: it is
+  // only offered when the packet certified one.
   when?: MotifName[]
+  threat?: true
 }
 
 const ALL: Band[] = ['beginner', 'club', 'advanced']
@@ -71,6 +74,13 @@ export const HABITS: Habit[] = [
   // move" (Lasker)
   { id: 'habit:cct-scan', family: 'tactics', bands: ALL, text: 'When I move, I first look at checks, captures and threats.' },
   { id: 'habit:two-targets', family: 'tactics', bands: ALL, when: ['fork'], text: 'When two of their pieces are loose, I look to hit both.' },
+  {
+    id: 'habit:line-behind',
+    family: 'tactics',
+    bands: ALL,
+    when: ['discovered attack'],
+    text: 'When my pawn blocks a line piece, I check what moving unveils.',
+  },
   { id: 'habit:better-move', family: 'tactics', bands: ALL, text: 'When I find a good move, I look for a better one.' },
   { id: 'habit:king-boxed', family: 'tactics', bands: ALL, when: ['back-rank mate', 'smothered mate'], text: 'When their king has no free squares, I look for checks.' },
   {
@@ -106,9 +116,24 @@ export const HABITS: Habit[] = [
     text: 'When I am winning, I ask what my opponent wants before I make my plan.',
   },
 
-  // Defense: "when worse, list their forcing moves"
+  // Defense: "when worse, list their forcing moves"; meeting the threat and
+  // guarding the defender
   { id: 'habit:list-forcing', family: 'defense', bands: ALL, text: 'When I am worse, I list their checks, captures and threats.' },
   { id: 'habit:stop-threat', family: 'defense', bands: ALL, text: 'When they make a threat, I list ways to stop it.' },
+  {
+    id: 'habit:meet-threat',
+    family: 'defense',
+    bands: ALL,
+    threat: true,
+    text: 'When they make a threat, I meet it with my move.',
+  },
+  {
+    id: 'habit:defender-count',
+    family: 'defense',
+    bands: UPPER,
+    when: ['removing the defender'],
+    text: 'When one piece guards two of mine, I count its guards first.',
+  },
   { id: 'habit:king-room', family: 'defense', bands: ALL, text: 'When my king is short of squares, I make room for it.' },
   { id: 'habit:keep-fighting', family: 'defense', bands: ALL, text: 'When I am lost, I set traps and make them work.' },
   {
@@ -130,6 +155,7 @@ export interface HabitQuery {
   band: Band
   weeklyFocusHabitId?: string
   recent: string[] // habit ids of past explanations, oldest first
+  threatCertified?: boolean
 }
 
 // How many past explanations a habit sits out after it is used
@@ -138,15 +164,22 @@ const RECENT_WINDOW = 3
 // Picked mechanically when the packet is built (family+band+
 // rotation, extended with trigger-awareness over the packet's certified
 // concepts). A habit tagged with `when` is only eligible when one of those
-// motifs is certified for this position; untagged habits are family advice,
-// eligible for every puzzle of the family. Eligible order: concept-matched
-// habits first, then family advice. The weekly focus wins only inside the
-// eligible set - a focus about pins never overrides a fork puzzle. Fail
-// closed: no eligible habit at all means no habit slot (a shorter
-// explanation beats an irrelevant tip).
-export function pickHabit(pool: Habit[], concepts: readonly MotifName[], weeklyFocusHabitId?: string, recent: string[] = []): Habit | undefined {
-  const matched = pool.filter(h => h.when?.some(c => concepts.includes(c)))
-  const familyAdvice = pool.filter(h => !h.when)
+// motifs is certified for this position; a habit tagged with `threat` is
+// only eligible when the packet certified a threat; untagged habits are
+// family advice, eligible for every puzzle of the family. Eligible order:
+// concept-matched habits first, then threat-mechanism habits, then family
+// advice. The weekly focus wins only inside the eligible set - a focus about
+// pins never overrides a fork puzzle. Fail closed: no eligible habit at all
+// means no habit slot (a shorter explanation beats an irrelevant tip).
+export function pickHabit(
+  pool: Habit[],
+  concepts: readonly MotifName[],
+  weeklyFocusHabitId?: string,
+  recent: string[] = [],
+  threatCertified = false,
+): Habit | undefined {
+  const matched = pool.filter(h => h.when?.some(c => concepts.includes(c)) || (h.threat !== undefined && threatCertified))
+  const familyAdvice = pool.filter(h => !h.when && !h.threat)
   const eligible = [...matched, ...familyAdvice]
   const focus = weeklyFocusHabitId && eligible.find(h => h.id === weeklyFocusHabitId)
   if (focus) return focus
@@ -157,6 +190,6 @@ export function pickHabit(pool: Habit[], concepts: readonly MotifName[], weeklyF
 }
 
 export function selectHabit(q: HabitQuery, concepts: readonly MotifName[] = []): Habit | undefined {
-  const pool = HABITS.filter(h => h.family === family(q.kind) && h.bands.includes(q.band))
-  return pickHabit(pool, concepts, q.weeklyFocusHabitId, q.recent)
+  const pool = HABITS.filter(h => h.family === family(q.kind) && h.bands.includes(q.band) && (!h.threat || q.threatCertified === true))
+  return pickHabit(pool, concepts, q.weeklyFocusHabitId, q.recent, q.threatCertified)
 }

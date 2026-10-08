@@ -14,7 +14,7 @@ import { sha256Hex, solve } from './server/sha256'
 // narrator word it, checks it, and sends back the four slots in ref form
 // with the packet that renders them. Stored per (puzzle, first wrong try).
 
-export const EXPLAIN_VERSION = 12
+export const EXPLAIN_VERSION = 13
 
 export interface ExplainContext {
   band: Band

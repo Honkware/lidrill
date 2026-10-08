@@ -7,7 +7,7 @@ import { failedPuzzles, fetchActivity, fetchDashboard, fetchThemePuzzles, snapsh
 import { journalFor, worst5Cutoff } from './metrics'
 import { BAND_DEFAULTS, computeBand } from './profile'
 import { findPractice } from './practice'
-import { GENERATOR_VERSION, generatePuzzles } from './puzzles/generate'
+import { GENERATOR_VERSION, generatePuzzles, SOLUTION_PLIES_CAP } from './puzzles/generate'
 import { calibrate } from './report'
 import { SignInExpired } from './sync/lichess'
 import { sync } from './sync/sync'
@@ -184,7 +184,11 @@ export async function syncAndAnalyze(
   // games come in and the journal is redone at the end
   let cutoff = worst5Cutoff(await db.games.filter(g => g.analyzedAt !== undefined).toArray())
   let sinceCutoff = 0
-  const genOpts = { swingThresholdCp: profile.swingThresholdCp, marginCp: profile.marginCp, depth: 16, maxSolutionMoves: 3 }
+  // Over the band cap a line is replay material, not a puzzle - drop
+  // stored own-game puzzles the current band would never have generated
+  const plyCap = SOLUTION_PLIES_CAP[profile.band]
+  await db.puzzles.filter(p => p.source === 'own' && p.solution.length > plyCap).delete()
+  const genOpts = { swingThresholdCp: profile.swingThresholdCp, marginCp: profile.marginCp, depth: 16, maxSolutionMoves: 3, band: profile.band }
   await runQueue(getPool(), { depth: 14, bookPlies: bookFor(accounts.lichessToken) }, onProgress, signal, async (game, eng) => {
     await db.puzzles.bulkPut(await generatePuzzles(game, eng, genOpts))
     await db.games.update(game.id, { puzzlesVersion: GENERATOR_VERSION })

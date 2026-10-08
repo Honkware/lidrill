@@ -6,7 +6,7 @@ import { Engine, type SearchResult, type UciEngine } from '../analysis/engine'
 import type { Game, Move } from '../db'
 import { bandFromRatings, computeBand } from '../profile'
 import { pgnMoves } from '../sync/pgn'
-import { findCandidates, generatePuzzles, isUnique, povCp } from './generate'
+import { findCandidates, generatePuzzles, isUnique, povCp, SOLUTION_PLIES_CAP } from './generate'
 
 const require = createRequire(import.meta.url)
 
@@ -92,8 +92,7 @@ describe('generatePuzzles with Stockfish', () => {
   }, 120_000)
 })
 
-describe('hold puzzles', () => {
-  // 6. Ng5 with a made-up 3.5-pawn drop; the engine below is scripted
+describe('hold puzzles', () => {  // 6. Ng5 with a made-up 3.5-pawn drop; the engine below is scripted
   const moves = pgnMoves('1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. d3 d6 5. O-O Nf6 6. Ng5 O-O')!.map((m, i) => ({
     ...m,
     eval: { cp: i < 10 ? 30 : -320 },
@@ -115,5 +114,54 @@ describe('hold puzzles', () => {
     expect(await generatePuzzles(game(moves, 'white'), scripted(many), opts)).toEqual([])
     const playedHolds = [line('c2c3', 40), line('f3g5', 20), line('f1e1', -300)]
     expect(await generatePuzzles(game(moves, 'white'), scripted(playedHolds), opts)).toEqual([])
+  })
+})
+
+describe('selection length cap', () => {
+  const opts = { swingThresholdCp: 300, marginCp: 150, depth: 16, maxSolutionMoves: 3 }
+  // 6. Ng5 blunders (ply 11); the real continuation 6. d4 exd4 7. e5 d5
+  // 8. exd6 cxd6 9. c3 is the certified answer line - every scripted search
+  // returns its remaining suffix, so extendSolution walks it legally
+  const moves = pgnMoves('1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. d3 d6 5. O-O Nf6 6. Ng5 O-O')!.map((m, i) => ({
+    ...m,
+    eval: { cp: i < 10 ? 30 : -320 },
+  }))
+  const LINE = ['d2d4', 'e5d4', 'e4e5', 'd7d5', 'e5d6', 'c7d6', 'c2c3']
+  const scripted = () => {
+    let calls = 0
+    return {
+      searchLines: async (_fen: string, _depth: number, count: number) => {
+        void count
+        if (calls++ === 0)
+          // the candidate search: the answer, and a much worse second line
+          return [
+            { eval: { cp: 700 }, pv: LINE, depth: 16, multipv: 1 },
+            { eval: { cp: -400 }, pv: ['g1g5'], depth: 16, multipv: 2 },
+          ]
+        // extension searches run at 2, 4 line-moves played: the legal suffix
+        const at = [2, 4][Math.min(calls - 2, 1)]!
+        return [{ eval: { cp: 700 }, pv: LINE.slice(at), depth: 16, multipv: 1 }]
+      },
+    } as unknown as Engine
+  }
+
+  it('caps solutions at the band ply cap: deep lines never become puzzles', async () => {
+    expect(SOLUTION_PLIES_CAP).toEqual({ beginner: 2, club: 3, advanced: 5 })
+    // 5 plies of forced solution: fine for advanced, over cap for club and beginner
+    expect(await generatePuzzles(game(moves, 'white'), scripted(), { ...opts, band: 'advanced' })).toHaveLength(1)
+    expect(await generatePuzzles(game(moves, 'white'), scripted(), { ...opts, band: 'club' })).toEqual([])
+    expect(await generatePuzzles(game(moves, 'white'), scripted(), { ...opts, band: 'beginner' })).toEqual([])
+  })
+
+  it('a solution inside the cap still becomes a puzzle', async () => {
+    // The same position at club with a two-ply bound: 3 plies ≤ cap 3
+    const puzzles = await generatePuzzles(game(moves, 'white'), scripted(), { ...opts, band: 'club', maxSolutionMoves: 2 })
+    expect(puzzles).toHaveLength(1)
+    expect(puzzles[0]!.solution).toHaveLength(3)
+  })
+
+  it('without a band the corpus range is uncapped (certification testing)', async () => {
+    const [p] = await generatePuzzles(game(moves, 'white'), scripted(), opts)
+    expect(p.solution).toEqual(LINE.slice(0, 5))
   })
 })

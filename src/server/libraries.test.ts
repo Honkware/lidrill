@@ -14,8 +14,8 @@ const problems = (text: string, band: Band) => [...checkCeilings(text, band), ..
 describe('versions', () => {
   it('are pinned', () => {
     expect(READABILITY_VERSION).toBe('fk-smog/1.0')
-    expect(HABIT_LIB_VERSION).toBe('habit/1.0')
-    expect(MOTIF_LIB_VERSION).toBe('motifLib/1.0')
+    expect(HABIT_LIB_VERSION).toBe('habit/1.1')
+    expect(MOTIF_LIB_VERSION).toBe('motifLib/1.1')
     expect(TONE_VERSION).toBe('tone/1.0')
   })
 })
@@ -225,7 +225,7 @@ describe('habit selection', () => {
       seen.push(id!)
       recent.push(id!)
     }
-    const pool = HABITS.filter(h => h.family === 'defense' && h.bands.includes('beginner') && !h.when).map(h => h.id)
+    const pool = HABITS.filter(h => h.family === 'defense' && h.bands.includes('beginner') && !h.when && !h.threat).map(h => h.id)
     expect(seen).toEqual([...pool, ...pool].slice(0, 8))
   })
 
@@ -250,11 +250,13 @@ describe('habit selection', () => {
 })
 
 describe('motif library', () => {
-  it('has an entry for every motif and "none" at every band', () => {
-    expect(MOTIF_KEYS).toHaveLength(12)
+  it('has an entry for every motif, the defensive gloss and "none" at every band', () => {
+    expect(MOTIF_KEYS).toHaveLength(13)
     expect(MOTIF_KEYS).toContain('none')
+    expect(MOTIF_KEYS).toContain('meeting the threat')
     expect(motifEntry('back-rank mate', 'club').id).toBe('gloss:back-rank-mate')
     expect(motifEntry('removing the defender', 'beginner').id).toBe('gloss:removing-the-defender')
+    expect(motifEntry('meeting the threat', 'club').id).toBe('gloss:meeting-the-threat')
     expect(motifEntry('none', 'advanced').id).toBe('gloss:none')
   })
 
@@ -268,5 +270,45 @@ describe('motif library', () => {
         }
         expect(problems(`${e.gloss} ${e.rule}`, b), `${m} at ${b}`).toEqual([])
       }
+  })
+
+  it('the meeting-the-threat gloss names the threat as the task, never "no named pattern"', () => {
+    for (const b of BANDS) {
+      const e = motifEntry('meeting the threat', b)
+      expect(e.gloss).toMatch(/threat/i)
+      expect(e.gloss).not.toMatch(/no (one|named) (trick|pattern)/i)
+      expect(e.rule.length).toBeGreaterThan(0)
+    }
+  })
+})
+
+// Every new library entry is definition-tested before it can be
+// certified - the measurable conditions that make it fire are pinned here
+describe('library entries', () => {
+  const q = (kind: PuzzleKind, band: Band, extra: Partial<Parameters<typeof selectHabit>[0]> = {}) => ({ kind, band, recent: [], ...extra })
+
+  it('the discovered-attack habit is mechanism-keyed to the certified motif', () => {
+    expect(selectHabit(q('missed-win', 'beginner'), ['discovered attack'])?.id).toBe('habit:line-behind')
+    expect(selectHabit(q('missed-win', 'advanced'), ['discovered attack'])?.id).toBe('habit:line-behind')
+    // No certified concept: family advice, never the tagged habit
+    expect(selectHabit(q('missed-win', 'beginner'), [])?.id).toBe('habit:cct-scan')
+    expect(selectHabit(q('missed-win', 'beginner'), ['fork'])?.id).toBe('habit:two-targets')
+  })
+
+  it('the meeting-the-threat habit needs a certified threat', () => {
+    expect(selectHabit(q('defensive', 'beginner', { threatCertified: true }), [])?.id).toBe('habit:meet-threat')
+    expect(selectHabit(q('defensive', 'advanced', { threatCertified: true }), [])?.id).toBe('habit:meet-threat')
+    // No certified threat: the threat-keyed habit is never served, focus included
+    expect(selectHabit(q('defensive', 'beginner'), [])?.id).toBe('habit:list-forcing')
+    expect(selectHabit(q('defensive', 'beginner', { weeklyFocusHabitId: 'habit:meet-threat' }), [])?.id).toBe('habit:list-forcing')
+  })
+
+  it('the removing-the-defender defensive habit is concept-keyed and band-gated', () => {
+    expect(selectHabit(q('defensive', 'club'), ['removing the defender'])?.id).toBe('habit:defender-count')
+    expect(selectHabit(q('defensive', 'advanced'), ['removing the defender'])?.id).toBe('habit:defender-count')
+    // Beginner band: the UPPER-tagged habit is not offered
+    expect(selectHabit(q('defensive', 'beginner'), ['removing the defender'])?.id).toBe('habit:list-forcing')
+    // No certified concept: family advice
+    expect(selectHabit(q('defensive', 'club'), [])?.id).toBe('habit:list-forcing')
   })
 })

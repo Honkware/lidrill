@@ -64,7 +64,8 @@ export const SYSTEM_V2 = [
   'Trigger-anchor rule: a claim about an abstract idea (pressure, space, the initiative) must carry the fact id that makes it true in the same sentence; if no fact proves it, leave it out.',
   'Stay under the word budget the packet gives for the whole rendered explanation. Short sentences, subject-verb-object first, no stacked subordinate clauses.',
   'whatHappened: the move made here and what it cost - the player\'s try in this puzzle when one is recorded, otherwise the original game move, marked as game context. why: the mechanism, using the required ids and enough line steps. pattern: the certified pattern and its library text. nextTime: the habit id, nothing else of substance.',
-  'Ownership: say "you"/"your" for the player\'s moves and patterns and "they"/"their" for the opponent\'s, right before the id, in the same sentence. Amounts like {ref:swing} take no "your".',
+  'Ownership: say "you"/"your" for the player\'s moves and patterns and "they"/"their" for the opponent\'s, right before the id, in the same sentence. Amounts like {ref:swing} take no "your". V-POV: a possessive attaches only to the game move ({ref:played}); the answer and its line are not yours yet - no "your" on them.',
+  'V-LINE: line steps beyond the answer are evidence, and evidence ends at the certified consequence - the capture, mate or certified amount that decides the line. Never run the line past the answer mid-hunt; when the consequence is certified, stop there.',
   'Certificate ids (c-…) render as a whole clause, like "every other move is at least 0.8 pawns worse": put them after a colon or after "because", never inside a phrase.',
   'Only say the answer stops, prevents or meets the threat if c-stops is in the list; only say a move was forced, needed or the only move if c-forced is.',
   'Plain, short sentences. No praise, no labels like brilliant, no rhetorical questions, no exclamation marks. Do not open a sentence with This, That, It or Such used as a pronoun.',
@@ -169,10 +170,12 @@ export async function narrate(p: Packet, call: Caller): Promise<Narration> {
   const models: string[] = []
   const floor = (reason: string): Narration => ({ slots: templateFloor(p), source: 'floor', reason, calls, cost, models })
   if (p.meta.certification.status !== 'certified') return floor(`not certified: ${p.meta.certification.refusals.join('; ')}`)
-  // The pattern slot must name a certified term. A quiet position
-  // has no honest one, so it floors by design until the motif library grows
+  // The pattern slot must name a certified term. A quiet
+  // position with a certified threat names the meeting-the-threat gloss; one
+  // with nothing certified floors by design until the library grows
   // strategic entries (outpost, weak square…)
-  if (!p.didactic.motifCert && !p.certificates.some(c => c.type === 'mate')) return floor('no certified term for the pattern slot')
+  if (!p.didactic.motifCert && !p.certificates.some(c => c.type === 'mate') && p.threatStatus !== 'certified')
+    return floor('no certified term for the pattern slot')
   // A direct mate ends the game at the move: an uncertified threat can't
   // matter, so it is no longer a floor reason
   if (p.threatStatus === 'uncertified' && !p.position.check.before && p.best.mateIn !== 1) return floor('threat not certified')
@@ -246,8 +249,8 @@ interface Claim {
 }
 
 // Claims with no fact id, an id outside the packet, a mate or threat claim on
-// an id that isn't one, or a present-tense claim the position no longer
-// supports, are cut from the text
+// an id that isn't one, an orphaned magnitude, or a
+// present-tense claim the position no longer supports, are cut from the text
 export function prune(slots: Slot[], raw: unknown, p: Packet): { slots: Slot[]; removed: number; total: number } | undefined {
   const claims = (raw as { claims?: Claim[] })?.claims
   if (!Array.isArray(claims)) return undefined
@@ -262,7 +265,8 @@ export function prune(slots: Slot[], raw: unknown, p: Packet): { slots: Slot[]; 
     if (c.tense === 'none' && !/\{ref:|NO_THREAT/.test(c.text)) continue // connective words, not a claim
     total++
     const inText = [...c.text.matchAll(REF)].map(m => m[1] ?? NO_THREAT_ID)
-    const ok = inText.length > 0 && inText.every(r => anchors.has(r)) && bound(c.text, inText, p) && tenseOk(c, inText, p)
+    const ok =
+      inText.length > 0 && inText.every(r => anchors.has(r)) && bound(c.text, inText, p) && tenseOk(c, inText, p) && magnitudeOk(c.text, inText, p)
     if (ok) continue
     removed++
     s.text = s.text.replace(c.text, ' ').replace(/\s+([.,;:])/g, '$1').replace(/\s{2,}/g, ' ').trim()
@@ -280,6 +284,21 @@ function bound(text: string, ids: string[], p: Packet): boolean {
   }
   if (/\bthreat\w*/i.test(text) && !ids.some(id => id === 'threat' || /^t\d+$/.test(id) || id === NO_THREAT_ID)) return false
   return true
+}
+
+// V-SWING: a magnitude ("lost 3.7 pawns", "won material") must bind
+// to the capture, swing, threat or line certificate that produces it - an
+// orphaned magnitude is pruned, never served. Written-out numbers are
+// already impossible (notation lint), so this catches the shape "that won
+// material." resting on a move ref that certifies no amount.
+const MAGNITUDE = /\b(pawns?|material|worth|extra)\b/i
+function magnitudeOk(text: string, ids: string[], p: Packet): boolean {
+  if (!MAGNITUDE.test(text)) return true
+  return ids.some(id => {
+    if (id === 'swing' || id === 'tryswing' || id === 'material' || id === 'threat' || /^t\d+$/.test(id)) return true
+    const cert = p.certificates.find(c => c.id === id)
+    return !!cert && (cert.type === 'tactical' || cert.type === 'stopsThreat' || cert.type === 'forced')
+  })
 }
 
 // "The rook is hanging" must still be true after the move in question

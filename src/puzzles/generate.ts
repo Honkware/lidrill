@@ -3,7 +3,7 @@ import { makeFen, parseFen } from 'chessops/fen'
 import { makeSan } from 'chessops/san'
 import { parseUci } from 'chessops/util'
 import { createEmptyCard } from 'ts-fsrs'
-import type { Eval, Game, Puzzle, PuzzleTag, PuzzleType } from '../db'
+import type { Band, Eval, Game, Puzzle, PuzzleTag, PuzzleType } from '../db'
 import type { Engine, SearchResult } from '../analysis/engine'
 
 export interface GenerateOptions {
@@ -11,11 +11,19 @@ export interface GenerateOptions {
   marginCp: number
   depth: number // verification depth, 18-22
   maxSolutionMoves: number
+  // The player's band: solutions longer than its ply cap never become
+  // puzzles - the position still surfaces in Replay,
+  // which stops at the same critical moments
+  band?: Band
 }
 
-// Bumped when the generator finds puzzles it didn't before (2: hold puzzles);
-// older games are then looked at again
-export const GENERATOR_VERSION = 2
+// A puzzle the player can't be shown within a few moves is not a
+// puzzle at that band - deep lines route to Replay instead
+export const SOLUTION_PLIES_CAP: Record<Band, number> = { beginner: 2, club: 3, advanced: 5 }
+
+// Bumped when the generator finds puzzles it didn't before (2: hold puzzles;
+// 3: band ply cap,); older games are then looked at again
+export const GENERATOR_VERSION = 3
 
 const MATE_CP = 1000
 
@@ -101,6 +109,8 @@ export async function generatePuzzles(game: Game, engine: Engine, opts: Generate
     if (prevMove && best.pv[0].slice(2, 4) === prevMove.uci.slice(2, 4) && prevMove.san.includes('x')) continue
 
     const solution = await extendSolution(c.fen, best, engine, opts)
+    // Over the band cap, this is replay material, not a puzzle
+    if (opts.band && solution.length > SOLUTION_PLIES_CAP[opts.band]) continue
     const prevJudged = !!game.moves[c.ply - 2]?.judg
     const { type, tag } = classify(c, prevJudged, best)
     puzzles.push({
