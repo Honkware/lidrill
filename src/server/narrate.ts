@@ -21,9 +21,10 @@ export interface LlmCall {
   system: string
   user: string
   schema: Record<string, unknown>
-  // Set for auto-router calls (smooth only): the per-million-token price cap
-  // the budget check reserved with, enforced on the wire as
-  // provider.max_price = { prompt, completion }
+  // Router fields are experiment-only: set solely
+  // when narrate runs with { autoRouter: true } - never on a production pass.
+  // The per-million-token price cap the budget check reserved with, enforced
+  // on the wire as provider.max_price = { prompt, completion }
   routing?: { usdPerMTokIn: number; usdPerMTokOut: number }
 }
 export interface LlmResult {
@@ -42,22 +43,26 @@ export const MODELS = {
   // content). 4000 leaves the prune untouched; it only gives the claim
   // check room to finish. Gate re-runs on this change.
   lint: { model: 'anthropic/claude-haiku-4.5', temperature: 0, maxTokens: 4000, usdPerMTokIn: 1, usdPerMTokOut: 5 },
+  // The smooth pass is pinned, sharing
+  // the draft slug - no floating auto-router in production, and the
+  // gate covers smooth under the draft slug's entry. The auto-router path
+  // survives only behind an explicit experiment opt-in (NarrateOptions.
+  // autoRouter), for offline/adversarial generation; it is off by default.
+  smooth: { model: 'google/gemini-3.8-flash', temperature: 0.3, maxTokens: 900, usdPerMTokIn: 0.75, usdPerMTokOut: 3.75 },
 } as const
 export const BUDGET_USD = 0.05
 export const MAX_CALLS = 5
 export const PRUNE_MAX = 0.3
 
-// Smooth rides the auto-router (openrouter/auto with
-// cost_tier 'low'): a rejoin/readability pass whose output is re-validated
-// mechanically and falls back to the floor, so the router may pick the
-// market's cheap models for it. Draft/decompose stay pinned - the
-// gate needs reproducible per-slug numbers and the budget reservation uses
-// per-model price constants. The reservation basis is the pinned draft
-// model's price: it caps what the router may select (provider.max_price), so
-// the budget check stays fail-closed. The served model comes back per
-// response and is recorded in models[] like any call.
-export const SMOOTH_MODEL = 'openrouter/auto'
-export const SMOOTH = { temperature: 0.3, maxTokens: 900, usdPerMTokIn: 0.75, usdPerMTokOut: 3.75 } as const
+// Experiment-only: the slug the auto-router experiment sends,
+// with MODELS.smooth's $/M rates as the wire cap. No production pass sets
+// routing - the tests assert router fields appear on no production call.
+export const AUTO_ROUTER_SLUG = 'openrouter/auto'
+
+// Explicit opt-in for the auto-router experiment, off by default
+export interface NarrateOptions {
+  autoRouter?: boolean
+}
 
 export const SYSTEM_V2 = [
   'You write the explanation of a chess puzzle for an improving player, in the slots the packet lists: whatHappened, why, pattern, and nextTime only when the packet has a habit.',
@@ -186,6 +191,13 @@ export interface Narration {
   models: string[]
   pruned?: number
   frame: FrameContext['membership']
+  // Diagnostic: the lint
+  // violations the accepted draft carried, the draft's own slots, and every
+  // claim the prune cut with the check that fired - which check floors a
+  // packet is telemetry, not a mystery
+  draftLints?: string[]
+  draft?: Slot[]
+  cuts?: { claim: string; check: string }[]
 }
 
 // How the puzzle was solved - the solving move and its set
@@ -202,7 +214,7 @@ export function decomposeAskFor(view: string, slots: Slot[]): string {
   return `Facts packet:\n${view}\n\nExplanation in ref form:\n${JSON.stringify({ slots })}\n\nSplit every slot into its atomic claims. For each claim give the slot, its exact text (a substring of the slot text), the fact ids it rests on (from its {ref:…} and NO_THREAT tokens), and its tense: past, present, or none if it states no fact. Cover all the text.`
 }
 
-export async function narrate(p: Packet, call: Caller, solve: SolveInput = { membership: 'miss' }): Promise<Narration> {
+export async function narrate(p: Packet, call: Caller, solve: SolveInput = { membership: 'miss' }, opts: NarrateOptions = {}): Promise<Narration> {
   let calls = 0
   let cost = 0
   const models: string[] = []
@@ -222,22 +234,24 @@ export async function narrate(p: Packet, call: Caller, solve: SolveInput = { mem
   const view = JSON.stringify(promptView(p, frame))
   const slotSchema = SLOT_SCHEMA(p.didactic.habitSlotId ? 4 : 3)
   // Reserve each call's worst case before making it (fail closed at the cap)
-  const ask = async (pass: LlmCall['pass'], user: string, which: keyof typeof MODELS | 'smooth', schema: Record<string, unknown>) => {
-    const pinned = which === 'smooth' ? undefined : MODELS[which]
-    const m = pinned ?? SMOOTH
+  const ask = async (pass: LlmCall['pass'], user: string, which: keyof typeof MODELS, schema: Record<string, unknown>) => {
+    const m = MODELS[which]
+    // Router fields only under the explicit experiment opt-in:
+    // production smooth is pinned to MODELS.smooth like every other pass
+    const routed = pass === 'smooth' && opts.autoRouter === true
     const worst = ((SYSTEM_V2.length + user.length) / 3) * (m.usdPerMTokIn / 1e6) + m.maxTokens * (m.usdPerMTokOut / 1e6)
     if (calls >= MAX_CALLS || cost + worst > BUDGET_USD) return undefined
     calls++
     try {
       const r = await call({
         pass,
-        model: pinned ? pinned.model : SMOOTH_MODEL,
+        model: routed ? AUTO_ROUTER_SLUG : m.model,
         temperature: m.temperature,
         maxTokens: m.maxTokens,
         system: SYSTEM_V2,
         user,
         schema,
-        ...(which === 'smooth' ? { routing: { usdPerMTokIn: m.usdPerMTokIn, usdPerMTokOut: m.usdPerMTokOut } } : {}),
+        ...(routed ? { routing: { usdPerMTokIn: m.usdPerMTokIn, usdPerMTokOut: m.usdPerMTokOut } } : {}),
       })
       cost += r.cost
       if (r.model) models.push(r.model)
@@ -251,32 +265,37 @@ export async function narrate(p: Packet, call: Caller, solve: SolveInput = { mem
   let verdict = validateSlots(draft, p, frame)
   if (!verdict.ok) {
     const again = await ask('repair', `Facts packet:\n${view}\n\nYour draft:\n${JSON.stringify(draft ?? null)}\n\nFix every problem and answer with the slots again:\n- ${verdict.violations.slice(0, 20).join('\n- ')}`, 'draft', slotSchema)
-    if (again === undefined) return floor(`draft failed: ${verdict.violations.slice(0, 3).join('; ')}`)
+    if (again === undefined) return { ...floor(`draft failed: ${verdict.violations.slice(0, 3).join('; ')}`), draftLints: verdict.violations }
     draft = again
     verdict = validateSlots(draft, p, frame)
-    if (!verdict.ok) return floor(`repair failed: ${verdict.violations.slice(0, 3).join('; ')}`)
+    if (!verdict.ok) return { ...floor(`repair failed: ${verdict.violations.slice(0, 3).join('; ')}`), draftLints: verdict.violations }
   }
+  // Telemetry: the lints the accepted draft carried (empty = clean draft -
+  // the failure, if any, is downstream in the claim check)
+  const draftLints = verdict.violations
+  const draftSlots = verdict.slots
   let slots = verdict.slots!
 
   // Decompose into claims; delete the unanchored ones
   // One more try if the claim check times out or fails: it's the check that
   // makes model text servable, so it gets a second chance before the floor
   const decomposed = (await ask('decompose', decomposeAskFor(view, slots), 'lint', CLAIM_SCHEMA)) ?? (await ask('decompose', decomposeAskFor(view, slots), 'lint', CLAIM_SCHEMA))
-  if (decomposed === undefined) return floor('claim check unavailable')
+  if (decomposed === undefined) return { ...floor('claim check unavailable'), draftLints, draft: draftSlots }
   const pruning = prune(slots, decomposed, p)
-  if (!pruning) return floor('claim check unreadable')
-  if (pruning.total && pruning.removed / pruning.total > PRUNE_MAX) return floor(`${pruning.removed} of ${pruning.total} claims had no fact behind them`)
+  if (!pruning) return { ...floor('claim check unreadable'), draftLints, draft: draftSlots }
+  const cuts = pruning.cuts
+  if (pruning.total && pruning.removed / pruning.total > PRUNE_MAX) return { ...floor(`${pruning.removed} of ${pruning.total} claims had no fact behind them`), draftLints, draft: draftSlots, cuts }
   if (pruning.removed) {
     slots = pruning.slots
     verdict = validateSlots({ slots }, p, frame)
     if (!verdict.ok) {
       const smooth = await ask('smooth', `Facts packet:\n${view}\n\nSome claims were removed from this explanation. Rejoin the text so it reads well. Keep every {ref:…} token and NO_THREAT exactly, add no facts, and fix these problems:\n- ${verdict.violations.slice(0, 12).join('\n- ')}\n\n${JSON.stringify({ slots })}`, 'smooth', slotSchema)
       verdict = validateSlots(smooth, p, frame)
-      if (!verdict.ok) return floor('could not rejoin after removing claims')
+      if (!verdict.ok) return { ...floor('could not rejoin after removing claims'), draftLints, draft: draftSlots, cuts }
       slots = verdict.slots!
     }
   }
-  return { slots, source: 'model', calls, cost, models, pruned: pruning.removed, frame: frame.membership }
+  return { slots, source: 'model', calls, cost, models, pruned: pruning.removed, frame: frame.membership, draftLints, draft: draftSlots, cuts }
 }
 
 interface Claim {
@@ -288,39 +307,73 @@ interface Claim {
 
 // Claims with no fact id, an id outside the packet, a mate or threat claim on
 // an id that isn't one, an orphaned magnitude, or a
-// present-tense claim the position no longer supports, are cut from the text
-export function prune(slots: Slot[], raw: unknown, p: Packet): { slots: Slot[]; removed: number; total: number } | undefined {
+// present-tense claim the position no longer supports, are cut from the text.
+// `cuts` names the check that fired on each removed claim (
+// refusal-reason telemetry: which check floors a packet is measured, not
+// guessed)
+export interface PruneCut { claim: string; check: string }
+export function prune(slots: Slot[], raw: unknown, p: Packet): { slots: Slot[]; removed: number; total: number; cuts: PruneCut[] } | undefined {
   const claims = (raw as { claims?: Claim[] })?.claims
   if (!Array.isArray(claims)) return undefined
   const anchors = new Set(p.claimAnchors)
   const out = slots.map(s => ({ ...s }))
   let removed = 0
   let total = 0
+  const cuts: PruneCut[] = []
   for (const c of claims) {
     if (!c || typeof c.text !== 'string' || !Array.isArray(c.refs)) continue
     const s = out.find(x => x.slot === c.slot)
     if (!s || !c.text.trim() || !s.text.includes(c.text)) continue
     if (c.tense === 'none' && !/\{ref:|NO_THREAT/.test(c.text)) continue // connective words, not a claim
+    // Chrome: the also-good opener carries no fact id by design -
+    // cutting it would unseat the frame lint it exists to satisfy
+    if (!/\{ref:|NO_THREAT/.test(c.text) && /^\s*Your move works\.?\s*$/.test(c.text)) continue
     total++
     const inText = [...c.text.matchAll(REF)].map(m => m[1] ?? NO_THREAT_ID)
-    const ok =
-      inText.length > 0 && inText.every(r => anchors.has(r)) && bound(c.text, inText, p) && tenseOk(c, inText, p) && magnitudeOk(c.text, inText, p)
-    if (ok) continue
+    const check =
+      inText.length === 0 ? 'no fact id in the claim text'
+      : inText.some(r => !anchors.has(r)) ? `unanchored ref: ${inText.find(r => !anchors.has(r))}`
+      : !bound(c.text, inText, p) ? 'mate/threat claim not bound to a mate or threat fact'
+      : !tenseOk(c, inText, p) ? 'present-tense claim the position no longer supports'
+      : !magnitudeOk(c.text, inText, p) ? 'orphaned magnitude'
+      : undefined
+    if (check === undefined) continue
     removed++
+    cuts.push({ claim: c.text, check })
     s.text = s.text.replace(c.text, ' ').replace(/\s+([.,;:])/g, '$1').replace(/\s{2,}/g, ' ').trim()
   }
   for (const s of out) s.refs = [...new Set([...s.text.matchAll(REF)].map(m => m[1] ?? NO_THREAT_ID))]
-  return { slots: out, removed, total }
+  return { slots: out, removed, total, cuts }
 }
 
-// A mate claim must rest on a mate fact, a threat claim on the threat
+// A mate claim must rest on a mate fact, a threat claim on the threat. The
+// regexes run on the words the model wrote, with ref tokens masked: a gloss
+// id like {ref:gloss:back-rank-mate} renders "back-rank mate" but is library
+// text, not the model claiming mate - unmasked it false-positived
+// every mate-pattern packet.
 function bound(text: string, ids: string[], p: Packet): boolean {
+  const own = text.replace(REF, ' ')
   const moves = movesById(p)
-  if (/\b(check)?mat(e|es|ed|ing)\b/i.test(text)) {
-    const mateIds = ids.filter(id => moves.get(id)?.mate || id === 'c-mate' || id === 'c-mate-net' || (id === 'threat' && p.threat?.consequence.type === 'mate'))
+  if (/\b(check)?mat(e|es|ed|ing)\b/i.test(own)) {
+    const mateIds = ids.filter(id =>
+      moves.get(id)?.mate ||
+      id === 'c-mate' || id === 'c-mate-net' ||
+      (id === 'threat' && p.threat?.consequence.type === 'mate') ||
+      // A holding move in a mate-in-1 packet is itself a certified
+      // mating move; an acceptance certificate over a mating alternative
+      // certifies the mate; and an alternative whose own eval is mate is a
+      // mate fact on its id - "Qd8# delivers mate" is anchored on any of them.
+      // A mate-pattern tactical certificate (back-rank mate, smothered mate)
+      // over a best move that mates is a mate fact too.
+      p.holding.some(h => h.id === id && h.san.endsWith('#')) ||
+      p.alternatives.some(a => a.id === id && a.eval.type === 'mate') ||
+      p.certificates.some(c => {
+        if (c.id === id) return c.type === 'acceptance' ? p.alternatives.find(a => a.id === c.subject)?.eval.type === 'mate' : c.type === 'tactical' && /\bmate\b/.test(c.motif ?? '') && p.best.mateIn !== null
+        return false
+      }))
     if (!mateIds.length) return false
   }
-  if (/\bthreat\w*/i.test(text) && !ids.some(id => id === 'threat' || /^t\d+$/.test(id) || id === NO_THREAT_ID)) return false
+  if (/\bthreat\w*/i.test(own) && !ids.some(id => id === 'threat' || /^t\d+$/.test(id) || id === NO_THREAT_ID)) return false
   return true
 }
 

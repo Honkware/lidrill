@@ -110,6 +110,33 @@ describe('acceptance set', () => {
     expect(setFloor.whatHappened).toBe('Your move works. Ke2 holds up - the engine\'s first choice is Nc7+, worth only about 0.2 pawns more.')
   })
 
+  it('mate-in-1 didactic row: the why is the escape net, one mechanism fact', () => {
+    // The Part B position: Ra8# and Qd8# both mate in 1
+    const mate1 = packetOf({
+      ...setReport(),
+      fen: '6k1/5ppp/8/8/8/8/8/R2Q2K1 w - - 0 1',
+      solution: ['a1a8'],
+      kind: 'hold',
+      holding: ['a1a8', 'd1d8'],
+      best: [run([{ pv: ['a1a8'], eval: mate(1) }, { pv: ['d1d8'], eval: mate(1) }]), run([{ pv: ['a1a8'], eval: mate(1) }, { pv: ['d1d8'], eval: mate(1) }])],
+      played: undefined,
+      threat: undefined,
+    })
+    expect(mate1.meta.certification.status).toBe('certified')
+    expect(mate1.best.mateIn).toBe(1)
+    expect(mate1.certificates.some(c => c.id === 'c-mate-net')).toBe(true)
+    // The certified line is one ply: one mechanism fact is the whole truth,
+    // and it is the net (or the bounded mate the floor keeps) - never the
+    // multi-ply pushes (holding line, pv steps, material)
+    expect(mate1.didactic.mechanismMin).toBe(1)
+    expect(mate1.didactic.requiredRefs.why).toEqual(['c-mate-net|c-mate'])
+    for (const frame of [{ membership: 'miss' as const }, { membership: 'best' as const }, { membership: 'set' as const, solvingRef: 'alt1' }]) {
+      const floor = templateFloor(mate1, frame)
+      const violations = validateSlots({ slots: floor }, mate1, frame).violations.filter(v => !/^readability/.test(v))
+      expect(violations, frame.membership).toEqual([])
+    }
+  })
+
   it('the corpus packets all carry a valid set containing the best move', () => {
     const reports = JSON.parse(readFileSync('src/server/fixtures/gate-reports.json', 'utf8')) as unknown[]
     for (const raw of reports) {

@@ -781,9 +781,18 @@ export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION
     nextTime: habit ? [habit.id] : [],
   }
   // Per-type additions
-  if (kind === 'hang' || kind === 'hold' || kind === 'defensive') required.why.push(holding.length > 1 ? holding.map(h => h.id).join('|') : 'best')
-  if ((kind === 'missed-win' || kind === 'lichess') && pv.length > 1 && threatStatus !== 'certified') required.why.push(pv.slice(1, 4).map(m => m.id).join('|'))
-  if (kind === 'conversion') required.why.push('material')
+  if (mateIn === 1) {
+    // Exemplar row: a mate-in-1's why IS the escape net - the
+    // certified line is one ply, so the mechanism facts to cite are the net
+    // or the bounded mate (the floor keeps c-mate even when the style
+    // budget drops the net clause, so the alternation keeps floors valid).
+    // The pushes below assume a line of two plies or more and don't apply.
+    required.why = ['c-mate-net|c-mate']
+  } else {
+    if (kind === 'hang' || kind === 'hold' || kind === 'defensive') required.why.push(holding.length > 1 ? holding.map(h => h.id).join('|') : 'best')
+    if ((kind === 'missed-win' || kind === 'lichess') && pv.length > 1 && threatStatus !== 'certified') required.why.push(pv.slice(1, 4).map(m => m.id).join('|'))
+    if (kind === 'conversion') required.why.push('material')
+  }
 
   const packet: Packet = {
     schema: PACKET_SCHEMA,

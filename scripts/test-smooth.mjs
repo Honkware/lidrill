@@ -1,5 +1,8 @@
-// Smooth-pass live check: prove openrouter/auto serves with the documented
-// provider.max_price {prompt, completion} object shape (a bare number 400s).
+// Smooth-pass live check for the EXPERIMENT path only
+// (production smooth is pinned to google/gemini-3.8-flash; openrouter/auto
+// exists solely behind narrate's { autoRouter: true } opt-in): prove
+// openrouter/auto serves with the documented provider.max_price
+// {prompt, completion} object shape (a bare number 400s).
 const key = process.env.OPENROUTER_API_KEY
 if (!key) { console.error('OPENROUTER_API_KEY is not set'); process.exit(1) }
 

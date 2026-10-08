@@ -55,12 +55,18 @@ const show = (label: string, p: Packet, slots: Slot[], n: Narration, frame: Fram
   console.log(`\n=== ${label} ===`)
   console.log(`band: ${BAND} · frame: ${n.frame} · source: ${n.source}${n.reason ? ` (${n.reason})` : ''} · models: [${n.models.join(', ')}] · calls: ${n.calls} · cost: $${n.cost.toFixed(5)}`)
   if (lints.length) console.log(`lints fired: ${lints.join(' | ')}`)
+  // Diagnostic: the lints the
+  // accepted draft carried, and every claim the prune cut with the check
+  // that fired - a floored packet names its firing check, with the claim
+  if (n.draftLints !== undefined) console.log(`draft lints: ${n.draftLints.length ? n.draftLints.join(' | ') : '(none - draft validated clean)'}`)
+  if (n.draft) for (const s of n.draft) console.log(`draft ${s.slot}: ${s.text}`)
+  if (n.cuts?.length) console.log(`claims cut:\n${n.cuts.map(c => `  [${c.check}] "${c.claim}"`).join('\n')}`)
   for (const name of SLOTS) {
     const t = text[name]
     if (t === undefined) continue
     console.log(`${name} (${words(t).length} words): ${t}`)
   }
-  return { label, frame: n.frame, source: n.source, reason: n.reason, cost: n.cost, models: n.models, calls: n.calls, lints, text, words: Object.fromEntries(SLOTS.map(s => [s, words(text[s] ?? '')])) }
+  return { label, frame: n.frame, source: n.source, reason: n.reason, cost: n.cost, models: n.models, calls: n.calls, lints, draftLints: n.draftLints, cuts: n.cuts, text, words: Object.fromEntries(SLOTS.map(s => [s, words(text[s] ?? '')])) }
 }
 
 it.runIf(process.env.GATE7)('gate: one corpus mate position, three frames', async () => {

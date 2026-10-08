@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { templateFloor } from './floor'
-import { MODELS, narrate, promptView, prune, SMOOTH, SMOOTH_MODEL, type Caller, type LlmCall } from './narrate'
+import { AUTO_ROUTER_SLUG, MODELS, narrate, promptView, prune, type Caller, type LlmCall } from './narrate'
 import { buildPacket, dedupeKey, nullMoveFen, packetHash, packetProblems, stampTier, validPacket, validReport, type Certificate, type EngineReport, type EngineRun, type Packet } from './packet'
 import { renderSlot, renderText, type Slot } from './render'
 import { validateSlots } from './slots'
@@ -518,6 +518,37 @@ describe('narrator pipeline', () => {
     expect(prune(slots, claimsFor(slots), p)!.removed).toBe(1)
   })
 
+  it('the mate check ignores library gloss text and honors mating holds', () => {
+    // A mate-pattern gloss id renders "back-rank mate" but is library text,
+    // not the model claiming mate - it must not trip the mate binding
+    p.claimAnchors.push('gloss:back-rank-mate')
+    const glossed = good().map(s => (s.slot === 'why' ? { ...s, text: `${s.text} This is the {ref:gloss:back-rank-mate} pattern.` } : s))
+    expect(prune(glossed, claimsFor(glossed), p)!.removed).toBe(0)
+    // A holding move whose SAN is mate certifies the mate: "also mates" on
+    // it is anchored, never cut
+    p.holding.push({ id: 'hold2', san: 'Qd8#', uci: 'd1d8' })
+    p.claimAnchors.push('hold2')
+    const held = good().map(s => (s.slot === 'why' ? { ...s, text: `${s.text} Playing {ref:hold2} also mates.` } : s))
+    const r = prune(held, claimsFor(held), p)!
+    expect(r.removed).toBe(0)
+    // ...and a non-mating hold still fails the binding
+    p.holding[0]!.san = 'Qd8'
+    expect(prune(held, claimsFor(held), p)!.removed).toBe(1)
+  })
+
+  it('the also-good opener is chrome, not a claim', () => {
+    const claims = {
+      claims: [
+        { slot: 'whatHappened', text: 'Your move works.', refs: [], tense: 'present' },
+        { slot: 'whatHappened', text: 'In the game, {ref:played} cost you {ref:swing}.', refs: ['played', 'swing'], tense: 'past' },
+      ],
+    }
+    const r = prune(good(), claims, p)!
+    expect(r.removed).toBe(0)
+    expect(r.total).toBe(1)
+    expect(r.cuts).toEqual([])
+  })
+
   it('stops at the budget and serves the floor', async () => {
     const pricey: Caller = async c => ({ json: c.pass === 'decompose' ? claimsFor(good()) : { slots: [] }, cost: 0.03, model: c.model })
     const n = await narrate(p, pricey)
@@ -534,7 +565,7 @@ describe('narrator pipeline', () => {
     expect((await narrate(p, call)).reason).toBe('claim check unavailable')
   })
 
-  it('smooth rides the auto-router at cost_tier low, capped at the reservation; draft and decompose stay pinned', async () => {
+  it('smooth is pinned to the draft slug; no router fields on any production pass', async () => {
     // A present-tense claim about a hanging piece on b8 - empty after the
     // game move - is pruned; it carried the no-threat ref, so the why slot
     // then fails validation and the rejoin pass runs
@@ -556,14 +587,43 @@ describe('narrator pipeline', () => {
     expect(n.source).toBe('model')
     expect(n.pruned).toBe(1)
     expect(calls.map(c => c.pass)).toEqual(['draft', 'decompose', 'smooth'])
-    expect(calls[0].model).toBe(MODELS.draft.model) // pinned
-    expect(calls[1].model).toBe(MODELS.lint.model) // pinned
+    // Every production pass pinned - smooth shares
+    // the draft slug and no production call carries router fields
+    expect(calls[0].model).toBe(MODELS.draft.model)
+    expect(calls[1].model).toBe(MODELS.lint.model)
+    expect(calls[2].model).toBe(MODELS.smooth.model)
+    expect(MODELS.smooth.model).toBe(MODELS.draft.model)
+    for (const c of calls) expect(c.routing).toBeUndefined()
+    expect(n.models).toEqual([MODELS.draft.model, MODELS.lint.model, MODELS.smooth.model])
+  })
+
+  it('the auto-router exists only behind the explicit experiment opt-in', async () => {
+    const hang: Certificate = { id: 'c-hang', type: 'tactical', subject: 'best', side: 'b', targetSide: 'w', motif: 'hanging piece', payload: { square: 'b8', piece: 'rook' }, text: 'the rook on b8 was loose' }
+    p.certificates.push(hang)
+    p.claimAnchors.push('c-hang')
+    const why = 'They had {ref:c-nothreat} and {ref:c-hang}, so you were free to play {ref:best}. After {ref:pv1}, {ref:pv2} takes the rook.'
+    const draft = good().map(s => (s.slot === 'why' ? { ...s, text: why, refs: ['c-nothreat', 'c-hang', 'best', 'pv1', 'pv2'] } : s))
+    const claims = {
+      claims: [
+        { slot: 'whatHappened', text: 'In the game, {ref:played} cost you {ref:swing}. This position has {ref:best}.', refs: ['played', 'swing', 'best'], tense: 'past' },
+        { slot: 'why', text: 'They had {ref:c-nothreat} and {ref:c-hang}', refs: ['c-nothreat', 'c-hang'], tense: 'present' },
+        { slot: 'why', text: 'so you were free to play {ref:best}', refs: ['best'], tense: 'past' },
+        { slot: 'why', text: 'After {ref:pv1}, {ref:pv2} takes the rook.', refs: ['pv1', 'pv2'], tense: 'past' },
+      ],
+    }
+    const { call, calls } = caller([{ slots: draft }, { slots: good() }], claims)
+    const n = await narrate(p, call, { membership: 'miss' }, { autoRouter: true })
+    expect(n.source).toBe('model')
     const smooth = calls[2]
-    expect(smooth.model).toBe(SMOOTH_MODEL)
-    // the wire cap is the reservation basis: the pinned draft model's $/M rates
-    expect(smooth.routing).toEqual({ usdPerMTokIn: SMOOTH.usdPerMTokIn, usdPerMTokOut: SMOOTH.usdPerMTokOut })
-    // the served model is recorded per response, the router's pick included
-    expect(n.models).toEqual([MODELS.draft.model, MODELS.lint.model, SMOOTH_MODEL])
+    expect(smooth.pass).toBe('smooth')
+    expect(smooth.model).toBe(AUTO_ROUTER_SLUG)
+    // the wire cap is the pinned smooth model's $/M rates
+    expect(smooth.routing).toEqual({ usdPerMTokIn: MODELS.smooth.usdPerMTokIn, usdPerMTokOut: MODELS.smooth.usdPerMTokOut })
+    // draft and decompose stay pinned even under the flag
+    expect(calls[0].model).toBe(MODELS.draft.model)
+    expect(calls[1].model).toBe(MODELS.lint.model)
+    expect(calls[0].routing).toBeUndefined()
+    expect(calls[1].routing).toBeUndefined()
   })
 })
 

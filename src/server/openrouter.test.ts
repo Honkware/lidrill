@@ -2,11 +2,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { LlmCall } from './narrate'
 import { openRouter } from './openrouter'
 
-// The auto-router contract (docs/21k-design.md (e), openrouter.ai/docs/guides/
-// routing/routers/auto-router): model openrouter/auto, the auto-router plugin
-// with cost_tier 'low', and provider.max_price as the documented object
-// { prompt, completion } in $/M tokens capping what the router may pick.
-// Draft and decompose stay pinned and send no router fields.
+// The wire contract for router fields (see
+// openrouter.ai/docs/guides/routing/routers/auto-router): when a call
+// carries `routing` - which only narrate's explicit autoRouter experiment
+// opt-in sets (every production pass pinned,
+// smooth included) - the body sends model openrouter/auto, the auto-router
+// plugin with cost_tier 'low', and provider.max_price as the documented
+// object { prompt, completion } in $/M tokens capping what the router may
+// pick. Pinned calls send none of it.
 
 const routed: LlmCall = { pass: 'smooth', model: 'openrouter/auto', temperature: 0.3, maxTokens: 900, system: 's', user: 'u', schema: { type: 'object' }, routing: { usdPerMTokIn: 0.75, usdPerMTokOut: 3.75 } }
 const pinned: LlmCall = { pass: 'draft', model: 'google/gemini-3.8-flash', temperature: 0.3, maxTokens: 900, system: 's', user: 'u', schema: { type: 'object' } }
@@ -32,7 +35,7 @@ describe('openRouter caller', () => {
     expect(r).toEqual({ json: { ok: true }, cost: 0.0012, model: 'openai/gpt-5.1' })
   })
 
-  it('pins draft and decompose: the pinned slug, no router fields', async () => {
+  it('a pinned call sends the pinned slug and no router fields', async () => {
     let sent: Record<string, unknown> | undefined
     vi.stubGlobal('fetch', async (_url: string, init?: { body?: string }) => {
       sent = JSON.parse(init!.body!)

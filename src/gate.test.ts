@@ -6,7 +6,10 @@
 // Builds puzzles from the reference account's games, takes the hardest
 // ones, certifies them with Stockfish exactly as the browser does (depth 24,
 // 2M nodes, two runs with a cleared hash), builds packets at all three bands
-// and runs the narrator against the pinned models. Writes every packet,
+// and runs the narrator against the pinned models. The selection cap
+// is applied per band: solutions over the band's ply cap
+// (B1 ≤ 2, B2 ≤ 3, Club ≤ 5) are retired from that band's run and counted,
+// so the gate measures the post-retirement corpus. Writes every packet,
 // draft verdict and rendered explanation to out.json for reading, plus the
 // engine reports to src/server/fixtures/gate-reports.json for CI. Without a
 // key it stops after the reports (engine-only gate).
@@ -81,8 +84,18 @@ it.runIf(process.env.GATE)('explanation gate', async () => {
   const key = process.env.OPENROUTER_API_KEY
   const results = []
   let cost = 0
+  // Selection cap, applied to the gate candidate set: a
+  // solution over the band's ply cap is retired from that band's run - the
+  // corpus is counted post-retirement, per band
+  const CAP: Record<Band, number> = { beginner: 2, club: 3, advanced: 5 }
+  const retired: Record<string, number> = {}
   for (const report of reports)
     for (const band of ['beginner', 'club', 'advanced'] as Band[]) {
+      if (report.solution.length > CAP[band]) {
+        retired[band] = (retired[band] ?? 0) + 1
+        results.push({ fen: report.fen, band, retired: `solution ${report.solution.length} plies over the ${band} cap (${CAP[band]})` })
+        continue
+      }
       const built = buildPacket({ ...report, band })
       if (!built.ok) {
         results.push({ fen: report.fen, band, error: built.error })
@@ -106,6 +119,8 @@ it.runIf(process.env.GATE)('explanation gate', async () => {
         source: n?.source,
         reason: n?.reason,
         pruned: n?.pruned,
+        draftLints: n?.draftLints,
+        cuts: n?.cuts,
         calls: n?.calls,
         cost: n?.cost,
         models: n?.models,
@@ -114,6 +129,6 @@ it.runIf(process.env.GATE)('explanation gate', async () => {
       })
       console.error(`${band} ${report.fen}: ${n?.source ?? 'floor'} ${n?.reason ?? ''}`)
     }
-  writeFileSync(out, JSON.stringify({ cost, results }, null, 2))
+  writeFileSync(out, JSON.stringify({ cost, retired, results }, null, 2))
   console.error(`total narrator cost $${cost.toFixed(4)}`)
 }, 6 * 3600_000)

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Band } from '../db'
 import { templateFloor } from './floor'
 import { MODELS, narrate, type Caller } from './narrate'
-import { buildPacket, packetProblems, type Certificate, type EngineReport, type EngineRun, type Packet } from './packet'
+import { buildPacket, packetProblems, type EngineReport, type EngineRun, type Packet } from './packet'
 import { renderText, type Slot } from './render'
 import { STYLE_WORDS, styleBudget, words } from './readability'
 import { validateSlots } from './slots'
@@ -33,24 +33,9 @@ const packetOf = (r: EngineReport): Packet => {
   return b.packet
 }
 
-// The mating net, certified: what the queen hits, what the knight covers,
-// what nobody guards. (A real packet gets this from a detector; the style
-// contract only cares that the claim is anchored to a fact.)
-const exemplarPacket = (band: Band = 'beginner'): Packet => {
-  const p = packetOf(exemplarReport(band))
-  const net: Certificate = {
-    id: 'c-net',
-    type: 'mate',
-    subject: 'best',
-    side: 'w',
-    targetSide: 'b',
-    payload: { lineIds: ['pv0'] },
-    text: 'The queen attacks h7. The knight on g5 covers the escape square. No black piece guards h7.',
-  }
-  p.certificates.push(net)
-  p.claimAnchors.push('c-net')
-  return p
-}
+// The builder certifies the real mate net for this position (c-mate-net),
+// so the exemplar drafts cite it like any production packet would.
+const exemplarPacket = (band: Band = 'beginner'): Packet => packetOf(exemplarReport(band))
 
 // The good half of the exemplar, in ref form: every move and square the
 // exemplar's prose shows is a {ref:…} here - the narrator can write no other.
@@ -60,7 +45,7 @@ const goodExemplar = (): Slot[] => [
     text: 'In the game, {ref:played} cost you {ref:swing}. This position has a direct win. {ref:best} gives {ref:c-mate}.',
     refs: ['played', 'swing', 'best', 'c-mate'],
   },
-  { slot: 'why', text: '{ref:c-net}.', refs: ['c-net'] },
+  { slot: 'why', text: '{ref:c-mate-net}.', refs: ['c-mate-net'] },
   { slot: 'pattern', text: 'Your knight guards the flight square: {ref:c-mate}.', refs: ['c-mate'] },
   { slot: 'nextTime', text: '{ref:habit:cct-scan}', refs: ['habit:cct-scan'] },
 ]
@@ -86,7 +71,7 @@ describe('exemplar pair', () => {
     expect(p.best.mateIn).toBe(1)
     expect(p.threatStatus).toBe('uncertified') // no threat runs: mate in 1 makes them moot
     expect(p.didactic.requiredRefs.whatHappened).toEqual(['played', 'best', 'swing|c-punish'])
-    expect(p.didactic.requiredRefs.why).toEqual([]) // mate in 1: no threat requirement
+    expect(p.didactic.requiredRefs.why).toEqual(['c-mate-net|c-mate']) // mate in 1: the why is the escape net or the bounded mate
     expect(p.didactic.requiredRefs.pattern).toEqual(['c-mate'])
     expect(p.didactic.habitSlotId).toBe('habit:cct-scan')
     expect(packetProblems(p)).toEqual([])
@@ -105,7 +90,7 @@ describe('exemplar pair', () => {
     expect(words(whole).length).toBeLessThanOrEqual(STYLE_WORDS.beginner)
     expect(styleBudget(whole, 'beginner')).toBeUndefined()
     expect(text.whatHappened).toBe('In the game, Nb3 cost you a mate in 1. This position has a direct win. Qxh7# gives mate in at most 1.')
-    expect(text.why).toBe('The queen attacks h7. The knight on g5 covers the escape square. No black piece guards h7.')
+    expect(text.why).toBe('The king cannot run: g7 is blocked by its own pawn; g8 is covered by the queen on h7; h7 is covered by the knight on g5.')
     expect(text.pattern).toBe('Your knight guards the flight square: mate in at most 1.')
     expect(text.nextTime).toBe('When I move, I first look at checks, captures and threats.')
   })
@@ -146,7 +131,7 @@ describe('exemplar pair', () => {
         { slot: 'whatHappened', text: 'In the game, {ref:played} cost you {ref:swing}.', refs: ['played', 'swing'], tense: 'past' },
         { slot: 'whatHappened', text: 'This position has a direct win.', refs: [], tense: 'none' },
         { slot: 'whatHappened', text: '{ref:best} gives {ref:c-mate}.', refs: ['best', 'c-mate'], tense: 'past' },
-        { slot: 'why', text: '{ref:c-net}.', refs: ['c-net'], tense: 'past' },
+        { slot: 'why', text: '{ref:c-mate-net}.', refs: ['c-mate-net'], tense: 'past' },
         { slot: 'pattern', text: 'Your knight guards the flight square: {ref:c-mate}.', refs: ['c-mate'], tense: 'present' },
         { slot: 'nextTime', text: '{ref:habit:cct-scan}', refs: ['habit:cct-scan'], tense: 'none' },
       ],

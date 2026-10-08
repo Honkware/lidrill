@@ -1,12 +1,11 @@
 import type { Caller } from './narrate'
 
 // One OpenRouter call: pinned model, temperature, strict JSON schema, a
-// timeout, and the provider-reported cost for the budget. A call may instead
-// ride the auto-router: model openrouter/auto,
-// the auto-router plugin with cost_tier low, and provider.max_price as the
-// documented { prompt, completion } per-million-dollar cap holding the
-// reservation the budget check made. The served model comes back in `model`
-// either way.
+// timeout, and the provider-reported cost for the budget. Router fields
+// (plugins auto-router + provider.max_price) are sent only when the call
+// carries `routing` - which narrate sets solely under its explicit
+// autoRouter experiment opt-in (every production
+// pass pinned, smooth included). The served model comes back in `model`.
 // Captured at module load: the Stockfish WASM loader nulls globalThis.fetch
 // on the node main thread, and the gate runs the engine and the narrator in
 // the same process - a call-time lookup would find null and every pass would

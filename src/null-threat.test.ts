@@ -111,8 +111,9 @@ describe('null-threat tests', () => {
     expect(p.threat!.side).not.toBe(p.position.playerColor === 'white' ? 'w' : 'b')
     // The why slot must carry the threat - except when the answer is a
     // direct mate: ends the explanation at the move there, so the
-    // threat requirement is dropped (the threat itself stays certified)
-    if (p.best.mateIn === 1) expect(p.didactic.requiredRefs.why).toEqual([])
+    // threat requirement is replaced by the mate-in-1 exemplar row (the
+    // escape net or the bounded mate - the threat itself stays certified)
+    if (p.best.mateIn === 1) expect(p.didactic.requiredRefs.why).toEqual(['c-mate-net|c-mate'])
     else expect(p.didactic.requiredRefs.why.join('|')).toContain('threat')
     // The floor must not null the threat away either
     const text = renderText(templateFloor(p), p)
