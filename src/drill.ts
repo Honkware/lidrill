@@ -33,6 +33,47 @@ export type DrillState = 'playing' | 'view'
 export type Feedback = 'start' | 'good' | 'fail' | 'win'
 export type Outcome = 'clean' | 'hinted' | 'missed' | 'shown'
 
+// Back/forward review within a drill session: one step at a time through the
+// completed puzzles, capped at the first one; stepping forward past the last
+// completed returns to the live puzzle. Pure navigation - it never touches
+// grades or the queue (the stored Drill instances re-render read-only in
+// their finished state).
+export class SessionReview {
+  private completed = 0
+  viewing?: number
+
+  reset() {
+    this.completed = 0
+    this.viewing = undefined
+  }
+
+  onComplete() {
+    this.completed++
+  }
+
+  get canBack() {
+    return this.viewing === undefined ? this.completed > 0 : this.viewing > 0
+  }
+
+  get canForward() {
+    return this.viewing !== undefined
+  }
+
+  // Returns the puzzle index to show, or undefined for the live puzzle
+  back(): number | undefined {
+    if (!this.canBack) return this.viewing
+    this.viewing = this.viewing === undefined ? this.completed - 1 : this.viewing - 1
+    return this.viewing
+  }
+
+  forward(): number | undefined {
+    if (this.viewing === undefined) return undefined
+    this.viewing++
+    if (this.viewing >= this.completed) this.viewing = undefined
+    return this.viewing
+  }
+}
+
 export interface DrillOptions {
   // Daily queue puzzles feed FSRS; Turning Points stops don't
   record: boolean

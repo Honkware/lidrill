@@ -1,7 +1,7 @@
 import { createEmptyCard } from 'ts-fsrs'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db, type Puzzle, type PuzzleTag, type PuzzleType } from './db'
-import { buildQueue, DAILY_CAP, dueQueue, interleave, RECOVERY_CAP, recordAttempt } from './train'
+import { buildQueue, DAILY_CAP, dueQueue, dueToday, interleave, RECOVERY_CAP, recordAttempt } from './train'
 
 let n = 0
 const puzzle = (type: PuzzleType, tag: PuzzleTag = 'hang', solutionLen = 1, source: Puzzle['source'] = 'own'): Puzzle => ({
@@ -92,5 +92,62 @@ describe('due count', () => {
     await recordAttempt(p, false, now)
     expect((await dueQueue(now)).puzzles.length).toBe(0)
     expect((await dueQueue(new Date(+now + 2 * 86400e3))).puzzles.length).toBe(1)
+  })
+})
+
+describe('dueToday (home count)', () => {
+  beforeEach(async () => {
+    await db.puzzles.clear()
+    await db.reviews.clear()
+  })
+
+  // Regression: fresh cards are due the moment they're created, so the due
+  // pool behind the daily queue is bottomless for anyone syncing new games.
+  // The old count (the queue length) backfilled to the cap as graded puzzles
+  // left - do 6 of 12, leave, come back, and it said 12 again, ignoring the
+  // work. The count must be the day's scheduled work minus done-today.
+  it('counts remaining-after-done instead of backfilling to the cap', async () => {
+    // 12 scheduled plus a bottomless supply of brand-new cards, all due now
+    const ps = Array.from({ length: DAILY_CAP + 20 }, () => puzzle('hang'))
+    await db.puzzles.bulkPut(ps)
+    expect((await dueToday(now)).remaining).toBe(DAILY_CAP)
+
+    // Grade 6 and leave mid-session; coming back home the count must drop
+    for (const p of ps.slice(0, 6)) await recordAttempt(p, true, now)
+    const after = await dueToday(now)
+    expect(after.doneToday).toBe(6)
+    expect(after.remaining).toBe(DAILY_CAP - 6)
+
+    // There is no session-end step: re-reading the count later drops nothing
+    expect((await dueToday(new Date(+now + 6 * 3600e3))).remaining).toBe(DAILY_CAP - 6)
+  })
+
+  it('does not double-count when the pool has no backfill supply', async () => {
+    const ps = Array.from({ length: DAILY_CAP }, () => puzzle('hang'))
+    await db.puzzles.bulkPut(ps)
+    for (const p of ps.slice(0, 5)) await recordAttempt(p, true, now)
+    // 5 graded, 7 still sitting due; the graded ones must not subtract twice
+    expect((await dueToday(now)).remaining).toBe(DAILY_CAP - 5)
+  })
+
+  it('floors at zero and reports the day done', async () => {
+    const ps = Array.from({ length: DAILY_CAP }, () => puzzle('hang'))
+    await db.puzzles.bulkPut(ps)
+    for (const p of ps) await recordAttempt(p, true, now)
+    const late = await dueToday(new Date(+now + 6 * 3600e3))
+    expect(late.remaining).toBe(0)
+    expect(late.doneToday).toBe(DAILY_CAP)
+  })
+
+  it('next day, yesterday’s work no longer subtracts', async () => {
+    const ps = Array.from({ length: DAILY_CAP + 10 }, () => puzzle('hang'))
+    await db.puzzles.bulkPut(ps)
+    for (const p of ps.slice(0, 4)) await recordAttempt(p, true, now)
+    const tomorrow = new Date(+now + 86400e3)
+    const { remaining, doneToday } = await dueToday(tomorrow)
+    expect(doneToday).toBe(0)
+    // Yesterday’s 4 are not subtracted today; the fresh supply means the
+    // count resets to the full daily target either way
+    expect(remaining).toBe(DAILY_CAP)
   })
 })

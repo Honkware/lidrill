@@ -67,6 +67,23 @@ export async function dueQueue(now = new Date()): Promise<DayQueue> {
   return buildQueue(due, all, last?.at, now)
 }
 
+// The home "Due today" count: today's scheduled work minus what's already
+// done today. Graded puzzles leave the due index (their next due is
+// tomorrow), but the queue backfills to the daily cap from everything still
+// due - a freshly generated card is due the moment it exists - so a raw
+// queue length stays pinned at the cap no matter how many were done. Adding
+// today's reviews back restores the day as it was scheduled, so the number
+// reads "of the N scheduled today, this many remain"; completed puzzles
+// never re-count the same day.
+export async function dueToday(now = new Date()): Promise<{ remaining: number; doneToday: number }> {
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const dueNow = await db.puzzles.where('card.due').belowOrEqual(now).count()
+  const doneToday = await db.reviews.where('at').aboveOrEqual(startOfDay).count()
+  const last = await db.reviews.orderBy('at').last()
+  const cap = last !== undefined && +now - last.at > 2 * 24 * 3600 * 1000 ? RECOVERY_CAP : DAILY_CAP
+  return { remaining: Math.max(0, Math.min(cap, dueNow + doneToday) - doneToday), doneToday }
+}
+
 // First-try solve is Good, a solve after the hint is Hard, a miss is Again.
 // A hinted solve doesn't count as solved in the stats or for calibration,
 // the way a hint makes a Lichess puzzle unrated.

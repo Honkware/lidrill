@@ -70,23 +70,25 @@ function streakCard(ctrl: Ctrl): VNode {
 
 function dueCard(ctrl: Ctrl): VNode {
   const { queue } = ctrl.today!
-  const due = queue.puzzles.length
+  const { remaining, doneToday } = ctrl.today!.due
   const external = queue.puzzles.filter(x => x.source === 'lichess').length
   return card([
     label('Due today'),
-    el('p', 'mt-1 font-display text-3xl', plural(due, 'puzzle')),
+    el('p', 'mt-1 font-display text-3xl', plural(remaining, 'puzzle')),
     queue.recovery ? el('p', 'mt-1 text-sm text-dim', 'Welcome back. A short set to get going again.') : null,
     external ? el('p', 'mt-1 text-sm text-dim', `${external} of them from Lichess: your weak themes and puzzles you missed there.`) : null,
-    due
+    remaining
       ? el('div', 'mt-4 grid', [button('Start', () => ctrl.startDrill())])
       : el(
           'p',
           'mt-2 text-sm text-dim',
-          ctrl.counts.puzzles
-            ? 'Nothing due. Come back tomorrow.'
-            : ctrl.syncing
-              ? 'Going through your games now. The first puzzles show up here within a few minutes.'
-              : 'No puzzles yet. Sync your games first.',
+          doneToday
+            ? 'All done for today. Come back tomorrow.'
+            : ctrl.counts.puzzles
+              ? 'Nothing due. Come back tomorrow.'
+              : ctrl.syncing
+                ? 'Going through your games now. The first puzzles show up here within a few minutes.'
+                : 'No puzzles yet. Sync your games first.',
         ),
   ])
 }

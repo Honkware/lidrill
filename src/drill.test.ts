@@ -1,7 +1,7 @@
 import { createEmptyCard } from 'ts-fsrs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db, type Puzzle } from './db'
-import { Drill, type Outcome } from './drill'
+import { Drill, SessionReview, type Outcome } from './drill'
 
 // Legal's mate: 6. Bxf7+ Ke7 7. Nd5#
 const legal: Puzzle = {
@@ -127,5 +127,63 @@ describe('check highlight', () => {
     await vi.advanceTimersByTimeAsync(200)
     expect(state.check).toBe('black')
     expect(state.turnColor).toBe('black')
+  })
+})
+
+describe('SessionReview', () => {
+  it('stays put with nothing completed and while live', () => {
+    const r = new SessionReview()
+    expect(r.back()).toBeUndefined()
+    expect(r.canBack).toBe(false)
+    expect(r.canForward).toBe(false)
+    r.onComplete()
+    expect(r.canBack).toBe(true)
+    expect(r.canForward).toBe(false)
+    expect(r.forward()).toBeUndefined() // live already: forward is a no-op
+    expect(r.viewing).toBeUndefined()
+  })
+
+  it('steps back one at a time through the completed puzzles, capped at the first', () => {
+    const r = new SessionReview()
+    for (let i = 0; i < 3; i++) r.onComplete()
+    expect(r.back()).toBe(2)
+    expect(r.viewing).toBe(2)
+    expect(r.back()).toBe(1)
+    expect(r.back()).toBe(0)
+    expect(r.back()).toBe(0) // capped: never before the first puzzle
+    expect(r.viewing).toBe(0)
+  })
+
+  it('returns to the live puzzle stepping forward past the last completed', () => {
+    const r = new SessionReview()
+    for (let i = 0; i < 2; i++) r.onComplete()
+    r.back()
+    r.back()
+    expect(r.forward()).toBe(1)
+    expect(r.forward()).toBeUndefined() // past the last: back to the live puzzle
+    expect(r.viewing).toBeUndefined()
+    expect(r.canForward).toBe(false)
+  })
+
+  it('keeps indexes stable as new puzzles complete mid-review', () => {
+    const r = new SessionReview()
+    r.onComplete()
+    r.onComplete()
+    expect(r.back()).toBe(1)
+    r.onComplete() // the live one finished while a review is on screen
+    expect(r.viewing).toBe(1)
+    expect(r.back()).toBe(0)
+    expect(r.forward()).toBe(1)
+    expect(r.forward()).toBe(2)
+    expect(r.forward()).toBeUndefined()
+  })
+
+  it('reset clears the history for a new session', () => {
+    const r = new SessionReview()
+    r.onComplete()
+    r.back()
+    r.reset()
+    expect(r.viewing).toBeUndefined()
+    expect(r.canBack).toBe(false)
   })
 })

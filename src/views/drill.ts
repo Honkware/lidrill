@@ -7,7 +7,7 @@ import { board, button, icon, moveInput, topBar } from './ui'
 import { drillGameLine } from '../server/surface'
 
 export function drillView(ctrl: Ctrl): VNode {
-  const d = ctrl.drill
+  const d = ctrl.displayDrill
   if (!d) return el('p', 'p-4 text-dim', 'Loading…')
   const top = topBar("Today's puzzles", () => ctrl.go('today'))
   return el('div', 'md:grid md:grid-cols-[auto_minmax(0,1fr)] md:gap-6 md:pt-4', [
@@ -17,28 +17,41 @@ export function drillView(ctrl: Ctrl): VNode {
 }
 
 // One square per puzzle in today's run: green solved, amber with the hint,
-// red missed, outlined for the current one (as Lichess's session row)
+// red missed, outlined for the one on screen - the live puzzle or the
+// completed one being reviewed (chevrons step back through them read-only)
 function sessionRow(ctrl: Ctrl): VNode {
   const done = ctrl.session
   const total = done.length + 1 + ctrl.queueLeft
-  return el(
-    'div',
-    'flex flex-wrap gap-1',
-    { attrs: { 'aria-label': `${done.length} of ${total} done` } },
-    Array.from({ length: total }, (_, i) => {
-      const r = done[i]
-      return el('span', 'size-3 rounded-sm', {
-        class: {
-          'bg-accent': r === 'clean',
-          'bg-warn': r === 'hinted',
-          'bg-bad': r === 'missed' || r === 'shown',
-          'bg-raised': !r,
-          'ring-2': i === done.length,
-          'ring-fg': i === done.length,
-        },
-      })
-    }),
-  )
+  const current = ctrl.review.viewing === undefined ? done.length : ctrl.review.viewing
+  const step = (name: string, aria: string, onClick: () => void, enabled: boolean) =>
+    el(
+      'button',
+      'grid size-6 place-items-center rounded-md text-dim active:bg-raised',
+      { attrs: { type: 'button', 'aria-label': aria, disabled: !enabled }, class: { 'opacity-30': !enabled }, on: { click: onClick } },
+      [icon(name, 16)],
+    )
+  return el('div', 'flex items-center gap-1', [
+    step('prev', 'Review previous puzzle', () => ctrl.sessionBack(), ctrl.review.canBack),
+    el(
+      'div',
+      'flex flex-wrap gap-1',
+      { attrs: { 'aria-label': `${done.length} of ${total} done` } },
+      Array.from({ length: total }, (_, i) => {
+        const r = done[i]
+        return el('span', 'size-3 rounded-sm', {
+          class: {
+            'bg-accent': r === 'clean',
+            'bg-warn': r === 'hinted',
+            'bg-bad': r === 'missed' || r === 'shown',
+            'bg-raised': !r,
+            'ring-2': i === current,
+            'ring-fg': i === current,
+          },
+        })
+      }),
+    ),
+    step('next', 'Forward to the next puzzle', () => ctrl.sessionForward(), ctrl.review.canForward),
+  ])
 }
 
 // Mouse wheel over the board steps through the moves once the puzzle is over
@@ -259,14 +272,17 @@ export function puzzleSide(d: Drill, after: (VNode | null)[]): VNode {
 
 function side(ctrl: Ctrl, d: Drill): VNode {
   if (d.state === 'playing') return puzzleSide(d, [])
+  const reviewing = ctrl.review.viewing !== undefined
   return puzzleSide(d, [
-    el('div', 'grid', [button(ctrl.queueLeft ? 'Continue' : 'Done', () => ctrl.next())]),
+    el('div', 'grid', [button(reviewing ? 'Next' : ctrl.queueLeft ? 'Continue' : 'Done', reviewing ? () => ctrl.sessionForward() : () => ctrl.next())]),
     el('div', 'flex flex-wrap items-center justify-between gap-2', [
-      el('label', 'flex items-center gap-2 text-sm text-dim', [
-        el('input', 'size-4 accent-accent', { attrs: { type: 'checkbox' }, props: { checked: ctrl.autoNext }, on: { change: e => ctrl.setAutoNext((e.target as HTMLInputElement).checked) } }),
-        'Auto-continue after a solve',
-      ]),
-      d.failed && d.puzzle.source !== 'lichess' ? noteToggle(ctrl) : null,
+      reviewing
+        ? el('p', 'text-sm text-dim', 'Reviewing an earlier puzzle. Grades are set; stepping back changes nothing.')
+        : el('label', 'flex items-center gap-2 text-sm text-dim', [
+            el('input', 'size-4 accent-accent', { attrs: { type: 'checkbox' }, props: { checked: ctrl.autoNext }, on: { change: e => ctrl.setAutoNext((e.target as HTMLInputElement).checked) } }),
+            'Auto-continue after a solve',
+          ]),
+      d.failed && d.puzzle.source !== 'lichess' && !reviewing ? noteToggle(ctrl) : null,
     ]),
   ])
 }

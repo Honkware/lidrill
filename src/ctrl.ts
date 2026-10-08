@@ -3,7 +3,7 @@ import { finishSignIn, signOut, startSignIn } from './auth'
 import { backfillPackets } from './backfill'
 import { deleteAllData, exportData, importData, sameUser } from './backup'
 import { db, type Auth, type Game, type JournalEntry, type Practice, type Profile } from './db'
-import { Drill, type Outcome } from './drill'
+import { Drill, SessionReview, type Outcome } from './drill'
 import { GameView } from './gameview'
 import { fetchLook, PREFERENCE_SCOPE } from './lichess/api'
 import { fetchStudyLines, listStudies, STUDY_READ_SCOPE, studyCompliance, type StudyInfo } from './lichess/repertoire'
@@ -18,7 +18,7 @@ import { corpus, exportMarks, loadMarks, saveMarks, type Mark } from './precisio
 import { sound } from './sound'
 import { SignInExpired } from './sync/lichess'
 import { serverSync as syncWithServer } from './sync/server'
-import { dueQueue, saveWhyMissed, type DayQueue } from './train'
+import { dueQueue, dueToday, saveWhyMissed, type DayQueue } from './train'
 
 export type Screen = 'welcome' | 'today' | 'drill' | 'replay' | 'review' | 'game' | 'games' | 'drills' | 'practice' | 'settings' | 'precision'
 
@@ -30,6 +30,7 @@ export interface Counts {
 
 export interface TodayData {
   queue: DayQueue
+  due: { remaining: number; doneToday: number }
   streak: Streak
   report: WeekReport
   weeks: { games: number; clean: number }[]
@@ -68,6 +69,8 @@ export class Ctrl {
   reviewList?: ReviewRow[]
   practiceList?: Practice[]
   drill?: Drill
+  drills: Drill[] = [] // this session's completed puzzles, kept for review
+  review = new SessionReview()
   session: Outcome[] = [] // today's run so far
   autoNext = readFlag('lidrill.autoNext')
   queueLeft = 0
@@ -225,6 +228,7 @@ export class Ctrl {
     const open = (kind: string) => practice.filter(p => p.kind === kind && !p.cleared).length
     this.today = {
       queue: await dueQueue(now),
+      due: await dueToday(now),
       streak: streak(journal),
       report: weekReport(games, journal, reviews, profile, now),
       weeks: weeklyZeroHang(journal, now),
@@ -364,6 +368,8 @@ export class Ctrl {
   async startDrill() {
     this.queue = (await dueQueue()).puzzles.map(p => p.id)
     this.session = []
+    this.drills = []
+    this.review.reset()
     this.go('drill')
   }
 
@@ -395,10 +401,30 @@ export class Ctrl {
       onFinish: outcome => {
         this.session.push(outcome)
         const drill = this.drill
+        if (drill) {
+          this.drills.push(drill)
+          this.review.onComplete()
+        }
         if (this.autoNext && (outcome === 'clean' || outcome === 'hinted'))
           setTimeout(() => this.drill === drill && this.next(), 700)
       },
     })
+  }
+
+  // The puzzle on screen: the live one, or the completed one being reviewed
+  get displayDrill(): Drill | undefined {
+    return this.review.viewing === undefined ? this.drill : this.drills[this.review.viewing]
+  }
+
+  // Read-only step back through the session's completed puzzles
+  sessionBack() {
+    this.review.back()
+    this.redraw()
+  }
+
+  sessionForward() {
+    this.review.forward()
+    this.redraw()
   }
 
   setAutoNext(on: boolean) {
@@ -410,7 +436,7 @@ export class Ctrl {
   // move on
   private onKey(e: KeyboardEvent) {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.ctrlKey || e.metaKey || e.altKey) return
-    const d = this.screen === 'drill' ? this.drill : this.screen === 'replay' ? this.replay?.drill : undefined
+    const d = this.screen === 'drill' ? this.displayDrill : this.screen === 'replay' ? this.replay?.drill : undefined
     if (!d) return
     const key = e.key
     if (d.state === 'view' && (key === 'ArrowLeft' || key === 'k')) d.go(d.cursor - 1)
@@ -418,7 +444,10 @@ export class Ctrl {
     else if (d.state === 'view' && key === 'Home') d.go(d.start)
     else if (d.state === 'view' && key === 'End') d.go(d.nodes.length - 1)
     else if (key === 'f') d.flip()
-    else if (this.screen === 'drill' && d.state === 'view' && key === 'n') this.next()
+    else if (this.screen === 'drill' && d.state === 'view' && key === 'n') {
+      if (this.review.viewing !== undefined) this.sessionForward()
+      else this.next()
+    }
     else return
     e.preventDefault()
   }
