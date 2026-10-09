@@ -1,357 +1,357 @@
 {
  "schema": "lidrill-precision-corpus/1",
  "source": "model",
- "generatedAt": "2026-10-07T01:50:54.377Z",
+ "generatedAt": "2026-10-09T01:23:54.898Z",
  "claims": [
   {
    "id": "g0-beginner-whatHappened-0",
-   "fen": "4k1n1/p3n2Q/2p3p1/1p1q1p2/1B3K2/3b4/1P1N1PPP/3B3R b - - 3 26",
+   "fen": "r1bk1b1r/pppp1Q1p/n6p/4p1q1/2B1P3/3P2P1/PPP2P1P/RN2K1NR b KQ - 0 7",
    "band": "beginner",
    "slot": "whatHappened",
-   "text": "You played {ref:played} and it cost {ref:swing}."
+   "text": "In the game, d5 cost you a rook's worth."
   },
   {
-   "id": "g0-club-why-1",
-   "fen": "4k1n1/p3n2Q/2p3p1/1p1q1p2/1B3K2/3b4/1P1N1PPP/3B3R b - - 3 26",
+   "id": "g0-advanced-whatHappened-0",
+   "fen": "r1bk1b1r/pppp1Q1p/n6p/4p1q1/2B1P3/3P2P1/PPP2P1P/RN2K1NR b KQ - 0 7",
+   "band": "advanced",
+   "slot": "whatHappened",
+   "text": "In the game, {ref:played} cost you {ref:swing}."
+  },
+  {
+   "id": "g1-club-whatHappened-0",
+   "fen": "rnbq1rk1/pp3ppp/3bpn2/2pp4/B2PP3/2N2N2/PPP2PPP/R1BQ1RK1 w - - 0 8",
    "band": "club",
-   "slot": "why",
-   "text": "{ref:best} is met by {ref:pv1}, then {ref:pv2}."
+   "slot": "whatHappened",
+   "text": "In the game, Be3 cost you 4.7 pawns."
   },
   {
-   "id": "g0-advanced-pattern-1",
+   "id": "g2-beginner-why-1",
+   "fen": "4k1n1/p3n2Q/2p3p1/1p1q1p2/1B3K2/3b4/1P1N1PPP/3B3R b - - 3 26",
+   "band": "beginner",
+   "slot": "why",
+   "text": "After g5+, Kg3, Bxh7 follow."
+  },
+  {
+   "id": "g2-advanced-why-1",
    "fen": "4k1n1/p3n2Q/2p3p1/1p1q1p2/1B3K2/3b4/1P1N1PPP/3B3R b - - 3 26",
    "band": "advanced",
-   "slot": "pattern",
-   "text": "{ref:gloss:discovered-attack}"
-  },
-  {
-   "id": "g1-beginner-nextTime-0",
-   "fen": "3r2k1/2q1n2p/4N1p1/p4p2/2Pp1pP1/8/P1R1PKBP/3R4 b - - 0 26",
-   "band": "beginner",
-   "slot": "nextTime",
-   "text": "{ref:habit:trade-down}"
-  },
-  {
-   "id": "g1-advanced-why-0",
-   "fen": "3r2k1/2q1n2p/4N1p1/p4p2/2Pp1pP1/8/P1R1PKBP/3R4 b - - 0 26",
-   "band": "advanced",
    "slot": "why",
-   "text": "Your move allowed their {ref:threat}."
-  },
-  {
-   "id": "g2-beginner-pattern-0",
-   "fen": "r1bqkb1r/1pp2ppp/p1n2n2/1B1p4/3NP3/2N5/PPP2PPP/R1BQK2R w KQkq - 0 7",
-   "band": "beginner",
-   "slot": "pattern",
-   "text": "Your {ref:c-motif}."
-  },
-  {
-   "id": "g2-club-nextTime-0",
-   "fen": "r1bqkb1r/1pp2ppp/p1n2n2/1B1p4/3NP3/2N5/PPP2PPP/R1BQK2R w KQkq - 0 7",
-   "band": "club",
-   "slot": "nextTime",
-   "text": "{ref:habit:cct-scan}"
-  },
-  {
-   "id": "g3-beginner-why-0",
-   "fen": "4k1n1/p3n2Q/2p3p1/1p3p2/6q1/1B1bK3/1P1N1PPP/7R b - - 3 29",
-   "band": "beginner",
-   "slot": "why",
-   "text": "{ref:best} is met by {ref:pv1}, then {ref:pv2}."
+   "text": "After {ref:pv1}, {ref:pv2} drives {ref:pv3} into {ref:pv4}."
   },
   {
    "id": "g3-club-why-2",
-   "fen": "4k1n1/p3n2Q/2p3p1/1p3p2/6q1/1B1bK3/1P1N1PPP/7R b - - 3 29",
+   "fen": "3r2k1/2q1n2p/4N1p1/p4p2/2Pp1pP1/8/P1R1PKBP/3R4 b - - 0 26",
    "band": "club",
    "slot": "why",
-   "text": "You had {ref:material}."
+   "text": "You had an extra pawn (+2)."
   },
   {
-   "id": "g3-advanced-pattern-0",
-   "fen": "4k1n1/p3n2Q/2p3p1/1p3p2/6q1/1B1bK3/1P1N1PPP/7R b - - 3 29",
+   "id": "g4-beginner-why-0",
+   "fen": "r1bqkb1r/1pp2ppp/p1n2n2/1B1p4/3NP3/2N5/PPP2PPP/R1BQK2R w KQkq - 0 7",
+   "band": "beginner",
+   "slot": "why",
+   "text": "They threatened axb5, which would win a pawn."
+  },
+  {
+   "id": "g4-advanced-why-1",
+   "fen": "r1bqkb1r/1pp2ppp/p1n2n2/1B1p4/3NP3/2N5/PPP2PPP/R1BQK2R w KQkq - 0 7",
    "band": "advanced",
+   "slot": "why",
+   "text": "{ref:pv0} was forced because: {ref:c-forced}."
+  },
+  {
+   "id": "g5-club-pattern-0",
+   "fen": "4k1n1/p3n2Q/2p3p1/1p3p2/6q1/1B1bK3/1P1N1PPP/7R b - - 3 29",
+   "band": "club",
    "slot": "pattern",
    "text": "Your idea: {ref:c-motif}."
   },
   {
-   "id": "g4-beginner-nextTime-0",
-   "fen": "6k1/8/2n5/p4B1p/2Pp1p1q/8/P2RP2P/3R2K1 b - - 2 32",
+   "id": "g6-beginner-pattern-2",
+   "fen": "8/8/p1q2k2/1p5R/6p1/4N3/5K2/8 w - - 2 48",
    "band": "beginner",
-   "slot": "nextTime",
-   "text": "{ref:habit:cct-scan}"
+   "slot": "pattern",
+   "text": "Look for their king or queen lined up with a piece behind."
   },
   {
-   "id": "g4-advanced-why-0",
-   "fen": "6k1/8/2n5/p4B1p/2Pp1p1q/8/P2RP2P/3R2K1 b - - 2 32",
+   "id": "g7-beginner-whatHappened-1",
+   "fen": "2n1k3/8/p7/6pp/3r4/1P6/P1P1bPPP/R4NK1 w - - 6 27",
+   "band": "beginner",
+   "slot": "whatHappened",
+   "text": "Best was: Re1."
+  },
+  {
+   "id": "g7-advanced-why-0",
+   "fen": "2n1k3/8/p7/6pp/3r4/1P6/P1P1bPPP/R4NK1 w - - 6 27",
    "band": "advanced",
    "slot": "why",
-   "text": "Your move allows their {ref:threat}."
+   "text": "The move was forced because {ref:c-forced}."
   },
   {
-   "id": "g5-beginner-why-2",
-   "fen": "8/1Rp1ppk1/3r4/8/4B1b1/1P2Q1Pr/6K1/8 w - - 4 28",
-   "band": "beginner",
-   "slot": "why",
-   "text": "After {ref:played}, they answer {ref:pl1}."
-  },
-  {
-   "id": "g5-club-pattern-1",
-   "fen": "8/1Rp1ppk1/3r4/8/4B1b1/1P2Q1Pr/6K1/8 w - - 4 28",
+   "id": "g8-club-pattern-0",
+   "fen": "6k1/8/2n5/p4B1p/2Pp1p1q/8/P2RP2P/3R2K1 b - - 2 32",
    "band": "club",
    "slot": "pattern",
-   "text": "{ref:gloss:discovered-attack}"
+   "text": "With {ref:best}, your {ref:c-motif}."
   },
   {
-   "id": "g5-advanced-nextTime-0",
-   "fen": "8/1Rp1ppk1/3r4/8/4B1b1/1P2Q1Pr/6K1/8 w - - 4 28",
+   "id": "g9-beginner-pattern-1",
+   "fen": "r2qkbnr/ppp2ppp/4p3/3pP3/6b1/2P5/PP2PPPP/RNBQKB1R w KQkq - 0 6",
+   "band": "beginner",
+   "slot": "pattern",
+   "text": "A fork is one piece that hits two things at once."
+  },
+  {
+   "id": "g9-advanced-nextTime-0",
+   "fen": "r2qkbnr/ppp2ppp/4p3/3pP3/6b1/2P5/PP2PPPP/RNBQKB1R w KQkq - 0 6",
    "band": "advanced",
    "slot": "nextTime",
-   "text": "{ref:habit:cct-scan}"
+   "text": "{ref:habit:two-targets}"
   },
   {
-   "id": "g6-club-pattern-0",
+   "id": "g10-advanced-whatHappened-0",
+   "fen": "8/1Rp1ppk1/3r4/8/4B1b1/1P2Q1Pr/6K1/8 w - - 4 28",
+   "band": "advanced",
+   "slot": "whatHappened",
+   "text": "In the game, {ref:played} cost you {ref:swing}."
+  },
+  {
+   "id": "g11-club-whatHappened-1",
+   "fen": "1r2kbnr/2pq1ppp/B2p4/1p2p3/3nP3/5P1P/PPPP1P2/RNBQ1RK1 w k - 1 12",
+   "band": "club",
+   "slot": "whatHappened",
+   "text": "Best was: {ref:best}."
+  },
+  {
+   "id": "g12-beginner-pattern-1",
    "fen": "3q3r/2pbn1k1/prn2pp1/1p2b2p/1P2P1P1/PQP4P/1B1NN1B1/K2R1R2 b - - 0 21",
-   "band": "club",
+   "band": "beginner",
    "slot": "pattern",
-   "text": "{ref:gloss:none}"
+   "text": "Meeting the threat: their threat sets the task here."
   },
   {
-   "id": "g7-beginner-why-0",
+   "id": "g13-beginner-whatHappened-1",
    "fen": "r4rk1/pppqpp2/4bn1b/6pp/R3P3/1P4PP/3N1PB1/2BQR1K1 w - - 4 15",
    "band": "beginner",
-   "slot": "why",
-   "text": "They threatened their {ref:threat}."
+   "slot": "whatHappened",
+   "text": "Best was: e5."
   },
   {
-   "id": "g7-club-pattern-0",
+   "id": "g13-advanced-why-1",
    "fen": "r4rk1/pppqpp2/4bn1b/6pp/R3P3/1P4PP/3N1PB1/2BQR1K1 w - - 4 15",
-   "band": "club",
-   "slot": "pattern",
-   "text": "{ref:gloss:none}"
-  },
-  {
-   "id": "g8-beginner-why-0",
-   "fen": "r1b1k1nb/p1q1n2p/2p1P1p1/1p3p2/8/7Q/PPPBBPPP/RN2K2R b KQq - 2 15",
-   "band": "beginner",
+   "band": "advanced",
    "slot": "why",
-   "text": "{ref:best} is met by {ref:pv1}, then {ref:pv2}."
+   "text": "They threatened {ref:threat}."
   },
   {
-   "id": "g8-club-pattern-1",
+   "id": "g14-club-pattern-1",
    "fen": "r1b1k1nb/p1q1n2p/2p1P1p1/1p3p2/8/7Q/PPPBBPPP/RN2K2R b KQq - 2 15",
    "band": "club",
    "slot": "pattern",
    "text": "{ref:gloss:trapped-piece}"
   },
   {
-   "id": "g9-beginner-whatHappened-0",
+   "id": "g15-club-why-0",
+   "fen": "r1bk2nr/p2n1Bp1/2pB4/1p6/8/2N5/PPP1R1pP/6K1 w - - 2 24",
+   "band": "club",
+   "slot": "why",
+   "text": "{ref:c-stops}."
+  },
+  {
+   "id": "g16-club-whatHappened-0",
+   "fen": "1r4k1/5pp1/5n1p/4N3/8/3R4/1B3PPP/6K1 w - - 1 26",
+   "band": "club",
+   "slot": "whatHappened",
+   "text": "In the game, your {ref:played} cost you {ref:swing}."
+  },
+  {
+   "id": "g17-beginner-whatHappened-1",
    "fen": "r1b1qrk1/2p1bppp/p1N5/2p5/8/2P5/P1P1QPPP/R1BR2K1 w - - 1 14",
    "band": "beginner",
    "slot": "whatHappened",
-   "text": "You played {ref:played}, losing {ref:swing}."
+   "text": "Best was: {ref:best}."
   },
   {
-   "id": "g9-club-nextTime-0",
+   "id": "g17-advanced-pattern-0",
    "fen": "r1b1qrk1/2p1bppp/p1N5/2p5/8/2P5/P1P1QPPP/R1BR2K1 w - - 1 14",
-   "band": "club",
-   "slot": "nextTime",
-   "text": "{ref:habit:list-forcing}"
+   "band": "advanced",
+   "slot": "pattern",
+   "text": "Here {ref:best} defends against their threat {ref:threat}."
   },
   {
-   "id": "g10-beginner-whatHappened-0",
-   "fen": "3rk1nQ/p3n3/2p3p1/1p3p2/2b5/2B2K2/PPP2PPP/RNqB3R b - - 6 21",
-   "band": "beginner",
-   "slot": "whatHappened",
-   "text": "You played {ref:played} and it cost {ref:swing}."
-  },
-  {
-   "id": "g10-club-why-1",
-   "fen": "3rk1nQ/p3n3/2p3p1/1p3p2/2b5/2B2K2/PPP2PPP/RNqB3R b - - 6 21",
-   "band": "club",
-   "slot": "why",
-   "text": "{ref:best} is met by {ref:pv1}, then {ref:pv2}."
-  },
-  {
-   "id": "g10-advanced-why-3",
-   "fen": "3rk1nQ/p3n3/2p3p1/1p3p2/2b5/2B2K2/PPP2PPP/RNqB3R b - - 6 21",
+   "id": "g18-advanced-why-0",
+   "fen": "rnbR2nr/p3kBp1/2p5/1p2B3/8/2N5/PPP2RpP/6K1 w - - 1 22",
    "band": "advanced",
    "slot": "why",
-   "text": "After {ref:played}, they answer {ref:pl1}."
+   "text": "White enters the position with {ref:material}."
   },
   {
-   "id": "g11-beginner-nextTime-0",
-   "fen": "2kr1bnr/1bpqp2p/Np3pp1/1N1p4/3P1P2/4P3/PPP1Q1PP/R1B2RK1 b - - 2 14",
-   "band": "beginner",
-   "slot": "nextTime",
-   "text": "{ref:habit:cct-scan}"
-  },
-  {
-   "id": "g11-advanced-why-0",
-   "fen": "2kr1bnr/1bpqp2p/Np3pp1/1N1p4/3P1P2/4P3/PPP1Q1PP/R1B2RK1 b - - 2 14",
-   "band": "advanced",
-   "slot": "why",
-   "text": "They were threatening {ref:threat}."
-  },
-  {
-   "id": "g12-beginner-why-2",
-   "fen": "r1bq1rk1/p4p2/4p3/3p2bp/Np1PP3/1P6/P1P5/R1BQ1RK1 w - - 0 20",
-   "band": "beginner",
-   "slot": "why",
-   "text": "Instead, their reply was crushing because {ref:c-punish}."
-  },
-  {
-   "id": "g12-club-nextTime-0",
-   "fen": "r1bq1rk1/p4p2/4p3/3p2bp/Np1PP3/1P6/P1P5/R1BQ1RK1 w - - 0 20",
+   "id": "g19-club-why-1",
+   "fen": "3rk1nQ/p3n3/2p3p1/1p3p2/2b5/2B2K2/PPP2PPP/RNqB3R b - - 6 21",
    "band": "club",
-   "slot": "nextTime",
-   "text": "{ref:habit:list-forcing}"
-  },
-  {
-   "id": "g13-beginner-why-1",
-   "fen": "r1bqk2r/p3bp2/2pp1n1p/1P3Qp1/4P3/3B4/PP1P1PPP/RNB1K1NR b KQkq - 1 13",
-   "band": "beginner",
    "slot": "why",
-   "text": "Your {ref:best} stops it because {ref:c-stops}."
+   "text": "After {ref:best}, {ref:pv1}, {ref:pv6} follow."
   },
   {
-   "id": "g13-club-nextTime-0",
-   "fen": "r1bqk2r/p3bp2/2pp1n1p/1P3Qp1/4P3/3B4/PP1P1PPP/RNB1K1NR b KQkq - 1 13",
-   "band": "club",
-   "slot": "nextTime",
-   "text": "{ref:habit:cct-scan}"
-  },
-  {
-   "id": "g14-beginner-why-0",
-   "fen": "r2q1rk1/p1p1pp1p/1p2b3/2n5/2PPPb2/Q7/P2N2BP/R1BR2K1 w - - 0 19",
+   "id": "g20-beginner-why-0",
+   "fen": "8/8/1q2k3/pp5R/1N4p1/6K1/8/8 w - - 0 51",
    "band": "beginner",
    "slot": "why",
    "text": "They threatened {ref:threat}."
-  },
-  {
-   "id": "g14-club-why-2",
-   "fen": "r2q1rk1/p1p1pp1p/1p2b3/2n5/2PPPb2/Q7/P2N2BP/R1BR2K1 w - - 0 19",
-   "band": "club",
-   "slot": "why",
-   "text": "After {ref:played}, they answer {ref:pl1}."
-  },
-  {
-   "id": "g14-advanced-pattern-0",
-   "fen": "r2q1rk1/p1p1pp1p/1p2b3/2n5/2PPPb2/Q7/P2N2BP/R1BR2K1 w - - 0 19",
-   "band": "advanced",
-   "slot": "pattern",
-   "text": "Your idea: {ref:c-motif}."
-  },
-  {
-   "id": "g15-beginner-nextTime-0",
-   "fen": "r1bqk2r/p2pbp1p/2p2np1/1P2Q3/1nB1P3/8/PP1P1PPP/RNB1K1NR b KQkq - 2 9",
-   "band": "beginner",
-   "slot": "nextTime",
-   "text": "{ref:habit:list-forcing}"
-  },
-  {
-   "id": "g15-advanced-why-0",
-   "fen": "r1bqk2r/p2pbp1p/2p2np1/1P2Q3/1nB1P3/8/PP1P1PPP/RNB1K1NR b KQkq - 2 9",
-   "band": "advanced",
-   "slot": "why",
-   "text": "{ref:best} is met by {ref:pv1}, then {ref:pv2}."
-  },
-  {
-   "id": "g16-beginner-why-1",
-   "fen": "r5k1/p1p2p1p/1p6/8/4B3/8/b6P/2R4K w - - 0 30",
-   "band": "beginner",
-   "slot": "why",
-   "text": "You hold with {ref:hold1}."
-  },
-  {
-   "id": "g16-club-nextTime-0",
-   "fen": "r5k1/p1p2p1p/1p6/8/4B3/8/b6P/2R4K w - - 0 30",
-   "band": "club",
-   "slot": "nextTime",
-   "text": "{ref:habit:list-forcing}"
-  },
-  {
-   "id": "g17-beginner-why-0",
-   "fen": "r3k1nb/p1q1n2Q/2p1b1p1/1p3p2/8/8/PPPBBPPP/RN2K2R b KQq - 0 16",
-   "band": "beginner",
-   "slot": "why",
-   "text": "{ref:best} is met by {ref:pv1}, then {ref:pv2}."
-  },
-  {
-   "id": "g17-advanced-whatHappened-0",
-   "fen": "r3k1nb/p1q1n2Q/2p1b1p1/1p3p2/8/8/PPPBBPPP/RN2K2R b KQq - 0 16",
-   "band": "advanced",
-   "slot": "whatHappened",
-   "text": "{ref:played} cost {ref:swing}."
-  },
-  {
-   "id": "g18-beginner-pattern-0",
-   "fen": "r2q1rk1/p1p1pp1p/1p1bb3/2n5/2PPP3/Q7/P2N2BP/R1B2RK1 w - - 2 20",
-   "band": "beginner",
-   "slot": "pattern",
-   "text": "{ref:gloss:none}"
-  },
-  {
-   "id": "g18-advanced-why-1",
-   "fen": "r2q1rk1/p1p1pp1p/1p1bb3/2n5/2PPP3/Q7/P2N2BP/R1B2RK1 w - - 2 20",
-   "band": "advanced",
-   "slot": "why",
-   "text": "{ref:best} is met by {ref:pv1}, then {ref:pv2}."
-  },
-  {
-   "id": "g19-beginner-pattern-0",
-   "fen": "r1bq1rk1/2p1bppp/p1p5/3n4/3N4/2N5/PPP1QPPP/R1B2RK1 w - - 4 11",
-   "band": "beginner",
-   "slot": "pattern",
-   "text": "{ref:gloss:none}"
-  },
-  {
-   "id": "g19-advanced-why-0",
-   "fen": "r1bq1rk1/2p1bppp/p1p5/3n4/3N4/2N5/PPP1QPPP/R1B2RK1 w - - 4 11",
-   "band": "advanced",
-   "slot": "why",
-   "text": "They threatened their {ref:threat}."
-  },
-  {
-   "id": "g20-beginner-nextTime-0",
-   "fen": "r1bq1rk1/p4p2/3bp3/3p2Np/Np1Pn2P/1P4P1/P1P2P2/R1BQR1K1 w - - 1 17",
-   "band": "beginner",
-   "slot": "nextTime",
-   "text": "{ref:habit:cct-scan}"
   },
   {
    "id": "g20-advanced-why-2",
-   "fen": "r1bq1rk1/p4p2/3bp3/3p2Np/Np1Pn2P/1P4P1/P1P2P2/R1BQR1K1 w - - 1 17",
+   "fen": "8/8/1q2k3/pp5R/1N4p1/6K1/8/8 w - - 0 51",
    "band": "advanced",
    "slot": "why",
    "text": "The next choice, {ref:alt1}, was worse."
   },
   {
-   "id": "g21-club-why-0",
-   "fen": "r2q1rk1/p1p1pp1p/1p5b/2n3p1/2PPP1b1/Q5P1/P2N1PBP/R1BR2K1 w - - 1 16",
+   "id": "g21-club-nextTime-0",
+   "fen": "rn2kb1r/ppp2ppp/8/3N4/3PpNnq/4P3/PPP4P/R1BQKB1R w KQkq - 1 10",
    "band": "club",
+   "slot": "nextTime",
+   "text": "{ref:habit:their-move}"
+  },
+  {
+   "id": "g22-club-whatHappened-1",
+   "fen": "2kr1bnr/1bpqp2p/Np3pp1/1N1p4/3P1P2/4P3/PPP1Q1PP/R1B2RK1 b - - 2 14",
+   "band": "club",
+   "slot": "whatHappened",
+   "text": "Best was: {ref:best}."
+  },
+  {
+   "id": "g23-beginner-why-1",
+   "fen": "r1bq1rk1/p4p2/4p3/3p2bp/Np1PP3/1P6/P1P5/R1BQ1RK1 w - - 0 20",
+   "band": "beginner",
+   "slot": "why",
+   "text": "Playing {ref:hold1} keeps your advantage."
+  },
+  {
+   "id": "g24-beginner-whatHappened-1",
+   "fen": "r1bqk2r/p3bp2/2pp1n1p/1P3Qp1/4P3/3B4/PP1P1PPP/RNB1K1NR b KQkq - 1 13",
+   "band": "beginner",
+   "slot": "whatHappened",
+   "text": "Best was: {ref:best}."
+  },
+  {
+   "id": "g25-beginner-whatHappened-0",
+   "fen": "r4rk1/pp4pp/1np2p1n/q1bpp2b/7P/P2PP3/1PPQNP1N/R1B1KBR1 b Q - 3 13",
+   "band": "beginner",
+   "slot": "whatHappened",
+   "text": "In the game, your {ref:played} cost {ref:swing}."
+  },
+  {
+   "id": "g26-beginner-whatHappened-0",
+   "fen": "r2q1rk1/p1p1pp1p/1p2b3/2n5/2PPPb2/Q7/P2N2BP/R1BR2K1 w - - 0 19",
+   "band": "beginner",
+   "slot": "whatHappened",
+   "text": "In the game, {ref:played} cost you {ref:swing}."
+  },
+  {
+   "id": "g26-advanced-why-0",
+   "fen": "r2q1rk1/p1p1pp1p/1p2b3/2n5/2PPPb2/Q7/P2N2BP/R1BR2K1 w - - 0 19",
+   "band": "advanced",
    "slot": "why",
    "text": "They threatened {ref:threat}."
   },
   {
-   "id": "g21-advanced-why-4",
-   "fen": "r2q1rk1/p1p1pp1p/1p5b/2n3p1/2PPP1b1/Q5P1/P2N1PBP/R1BR2K1 w - - 1 16",
-   "band": "advanced",
-   "slot": "why",
-   "text": "The next choice, {ref:alt1}, was worse."
-  },
-  {
-   "id": "g22-club-why-0",
-   "fen": "r2q1rk1/p1p1pp1p/1p2b2b/2n5/2PPPp2/Q5P1/P2N2BP/R1BR2K1 w - - 0 18",
+   "id": "g27-club-why-1",
+   "fen": "r1bqk2r/p2pbp1p/2p2np1/1P2Q3/1nB1P3/8/PP1P1PPP/RNB1K1NR b KQkq - 2 9",
    "band": "club",
    "slot": "why",
-   "text": "They threatened their {ref:threat}."
+   "text": "{ref:hold1} was one way to hold."
   },
   {
-   "id": "g22-advanced-nextTime-0",
+   "id": "g28-beginner-why-0",
+   "fen": "r5k1/p1p2p1p/1p6/8/4B3/8/b6P/2R4K w - - 0 30",
+   "band": "beginner",
+   "slot": "why",
+   "text": "They threatened {ref:threat}."
+  },
+  {
+   "id": "g28-advanced-why-2",
+   "fen": "r5k1/p1p2p1p/1p6/8/4B3/8/b6P/2R4K w - - 0 30",
+   "band": "advanced",
+   "slot": "why",
+   "text": "{ref:hold1} was one way to hold."
+  },
+  {
+   "id": "g29-advanced-whatHappened-0",
+   "fen": "r3k2r/pp1n1ppp/2pQP3/8/8/8/P3bPPP/b1B3KR b kq - 0 17",
+   "band": "advanced",
+   "slot": "whatHappened",
+   "text": "In the game, your {ref:played} cost {ref:swing}."
+  },
+  {
+   "id": "g30-club-pattern-1",
+   "fen": "r3k1nb/p1q1n2Q/2p1b1p1/1p3p2/8/8/PPPBBPPP/RN2K2R b KQq - 0 16",
+   "band": "club",
+   "slot": "pattern",
+   "text": "{ref:gloss:none}"
+  },
+  {
+   "id": "g31-club-whatHappened-1",
+   "fen": "r1bq1rk1/ppp4p/2n5/3pp3/8/P2BPN1P/1PPQ1PP1/R4RK1 b - - 0 13",
+   "band": "club",
+   "slot": "whatHappened",
+   "text": "Best was: {ref:best}."
+  },
+  {
+   "id": "g32-beginner-why-0",
+   "fen": "r2q1rk1/p1p1pp1p/1p1bb3/2n5/2PPP3/Q7/P2N2BP/R1B2RK1 w - - 2 20",
+   "band": "beginner",
+   "slot": "why",
+   "text": "They prepare {ref:threat}."
+  },
+  {
+   "id": "g33-beginner-whatHappened-1",
+   "fen": "r1bq1rk1/2p1bppp/p1p5/3n4/3N4/2N5/PPP1QPPP/R1B2RK1 w - - 4 11",
+   "band": "beginner",
+   "slot": "whatHappened",
+   "text": "Best was: {ref:best}."
+  },
+  {
+   "id": "g33-advanced-pattern-0",
+   "fen": "r1bq1rk1/2p1bppp/p1p5/3n4/3N4/2N5/PPP1QPPP/R1B2RK1 w - - 4 11",
+   "band": "advanced",
+   "slot": "pattern",
+   "text": "Playing {ref:best} handles the position because {ref:gloss:meeting-the-threat}"
+  },
+  {
+   "id": "g34-advanced-whatHappened-1",
+   "fen": "4rrk1/pp4pp/1np2p1n/q1bpp2b/7P/P2PP1N1/1PPQ1P1N/R1B1KBR1 b Q - 5 14",
+   "band": "advanced",
+   "slot": "whatHappened",
+   "text": "Best was: {ref:best}."
+  },
+  {
+   "id": "g35-club-pattern-0",
+   "fen": "r1bq1rk1/p4p2/3bp3/3p2Np/Np1Pn2P/1P4P1/P1P2P2/R1BQR1K1 w - - 1 17",
+   "band": "club",
+   "slot": "pattern",
+   "text": "The point here is {ref:best}."
+  },
+  {
+   "id": "g36-club-whatHappened-1",
+   "fen": "r2q1rk1/p1p1pp1p/1p5b/2n3p1/2PPP1b1/Q5P1/P2N1PBP/R1BR2K1 w - - 1 16",
+   "band": "club",
+   "slot": "whatHappened",
+   "text": "Best was: {ref:best}."
+  },
+  {
+   "id": "g37-beginner-whatHappened-1",
+   "fen": "r2q1rk1/p1p1pp1p/1p2b2b/2n5/2PPPp2/Q5P1/P2N2BP/R1BR2K1 w - - 0 18",
+   "band": "beginner",
+   "slot": "whatHappened",
+   "text": "Best was: {ref:best}."
+  },
+  {
+   "id": "g37-advanced-nextTime-0",
    "fen": "r2q1rk1/p1p1pp1p/1p2b2b/2n5/2PPPp2/Q5P1/P2N2BP/R1BR2K1 w - - 0 18",
    "band": "advanced",
    "slot": "nextTime",
-   "text": "{ref:habit:list-forcing}"
+   "text": "{ref:habit:meet-threat}"
   }
  ]
 }
