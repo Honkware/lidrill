@@ -45,10 +45,14 @@ async function certifyAll(): Promise<EngineReport[]> {
   const nodes = Number(process.env.GATE_NODES ?? 7_000_000)
   const engine = { certify: (fen: string, o: CertifyOptions) => sfEngine.certify(fen, { ...o, movetime: undefined, nodes }), search: sfEngine.search.bind(sfEngine), searchLines: sfEngine.searchLines.bind(sfEngine) } as unknown as Engine
 
-  const games = readFileSync('src/sync/fixtures/player_01.ndjson', 'utf8')
-    .trim()
-    .split('\n')
-    .map(l => fromLichess(JSON.parse(l), 'player_01')!)
+  // player_01's games plus Player_02's (games Lichess already analyzed
+  // plus chess.com games with script-synthesized evals - see
+  // scripts/build-chesscom-corpus.mjs)
+  const games = ['player_01', 'player_02'].flatMap(user =>
+    readFileSync(`src/sync/fixtures/${user}.ndjson`, 'utf8')
+      .trim()
+      .split('\n')
+      .map(l => fromLichess(JSON.parse(l), user)!))
     .filter(g => g.serverAnalysis)
 
   // Lichess's evals are on every move; judgments need no engine

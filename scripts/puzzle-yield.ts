@@ -21,9 +21,10 @@ const sfEngine = new Engine(uci)
 const nodes = 7_000_000
 const engine = { certify: (fen: string, o: CertifyOptions) => sfEngine.certify(fen, { ...o, movetime: undefined, nodes }), search: sfEngine.search.bind(sfEngine), searchLines: sfEngine.searchLines.bind(sfEngine) } as unknown as Engine
 
-const games = readFileSync('src/sync/fixtures/player_01.ndjson', 'utf8')
-  .trim().split('\n')
-  .map(l => fromLichess(JSON.parse(l), 'player_01')!)
+const games = ['player_01', 'player_02'].flatMap(user =>
+  readFileSync(`src/sync/fixtures/${user}.ndjson`, 'utf8')
+    .trim().split('\n')
+    .map(l => fromLichess(JSON.parse(l), user)!))
   .filter(g => g.serverAnalysis)
 const noEngine = { search: async () => ({ eval: { cp: 20 }, pv: [], depth: 1, multipv: 1 }) } as unknown as Engine
 
@@ -37,7 +38,7 @@ const buckets: Record<string, number> = {}
 for (const p of puzzles) buckets[p.solution.length] = (buckets[p.solution.length] ?? 0) + 1
 const inCap = (c: number) => puzzles.filter(p => p.solution.length <= c).length
 const summary = {
-  gamesInFixture: 38,
+  gamesInFixture: 49,
   gamesWithEvaluations: games.length,
   totalPuzzles: puzzles.length,
   buckets,

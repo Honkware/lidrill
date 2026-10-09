@@ -15,7 +15,10 @@ import { validateSlots } from './slots'
 //   sample 2 (material): 4k1n1/p3n2Q/2p3p1/1p1q1p2/1B3K2/3b4/1P1N1PPP/3B3R
 //   sample 3 (quiet):    3q3r/2pbn1k1/prn2pp1/1p2b2p/1P2P1P1/PQP4P/1B1NN1B1/K2R1R2
 
-const reports = JSON.parse(readFileSync('src/server/fixtures/gate-reports.json', 'utf8')) as unknown[]
+// The pins live on /10 corpus, frozen as its own fixture: the
+// live gate-reports.json grows with the corpus (added Player_02's
+// games) and the class picks below must not drift with it
+const reports = JSON.parse(readFileSync('src/server/fixtures/sample-gate-reports.json', 'utf8')) as unknown[]
 
 const packetOf = (raw: unknown, band: 'beginner' | 'club' | 'advanced' = 'club'): Packet => {
   const r = validReport(JSON.parse(JSON.stringify({ ...(raw as object), band })))

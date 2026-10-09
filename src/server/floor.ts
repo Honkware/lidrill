@@ -55,6 +55,9 @@ export function templateFloor(p: Packet, frame: FrameContext = MISS_FRAME): Slot
   // capture or mate the certified line actually contains;
   // nothing runs past it, and nothing sits past a certified mate.
   const why: string[] = []
+  // The slot shape caps a why at 8 refs (validateSlots); supplementary
+  // clauses below drop rather than overflow it
+  const whyRefs = () => [...why.join(' ').matchAll(/\{ref:[a-z0-9:-]+\}/g)].length
   let netLine: string | undefined // mateNet clause, budget-checked below
   if (p.threatStatus === 'certified' && p.threat) why.push(`They threatened ${ref('threat')}.`)
   else if (p.threatStatus === 'certifiedNull') why.push(`They had NO_THREAT: ${ref('best')}.`)
@@ -146,6 +149,21 @@ export function templateFloor(p: Packet, frame: FrameContext = MISS_FRAME): Slot
     }
   }
   if (p.didactic.puzzleType === 'conversion' && has('material')) why.push(`You had ${ref('material')}.`)
+  // The slot shape caps a why at 8 refs (validateSlots). When the assembled
+  // clauses overflow, trim the supplementary ones - never a required ref,
+  // the answer's outcome certificate, or the advanced deep fact
+  if (whyRefs() > 8) {
+    const requiredIds = new Set(p.didactic.requiredRefs.why.flatMap(r => r.split('|')))
+    const optional = (w: string) => ![...w.matchAll(/\{ref:([a-z0-9:-]+)\}/g)].some(m => requiredIds.has(m[1]!))
+    const mateLine = why.find(w => w.includes(', then ') && w.includes('{ref:c-mate}'))
+    if (mateLine && optional(mateLine)) why[why.indexOf(mateLine)] = `${ref('best')} gives ${ref('c-mate')}.`
+    const punishLine = why.find(w => w.startsWith('Against '))
+    if (whyRefs() > 8 && punishLine && optional(punishLine)) why.splice(why.indexOf(punishLine), 1)
+    for (let i = why.length - 1; i >= 0 && whyRefs() > 8; i--) {
+      const w = why[i]!
+      if (optional(w) && !w.includes('{ref:c-forced}') && (w.includes('{ref:c-stops}') || w.includes('{ref:c-mate-net}') || /\{ref:(alt\d+|c-fd\d+)\}/.test(w))) why.splice(i, 1)
+    }
+  }
 
   // The pattern, then one habit, both verbatim from the libraries. The
   // packet's glossId is already the right one - the motif's entry, the

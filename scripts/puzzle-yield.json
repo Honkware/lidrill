@@ -1,13 +1,13 @@
 {
-  "gamesInFixture": 38,
-  "gamesWithEvaluations": 25,
-  "totalPuzzles": 52,
+  "gamesInFixture": 49,
+  "gamesWithEvaluations": 40,
+  "totalPuzzles": 84,
   "buckets": {
-    "1": 43,
-    "3": 6,
-    "5": 3
+    "1": 69,
+    "3": 10,
+    "5": 5
   },
-  "inCapBeginner2": 43,
-  "inCapClub3": 49,
-  "inCapAdvanced5": 52
+  "inCapBeginner2": 69,
+  "inCapClub3": 79,
+  "inCapAdvanced5": 84
 }

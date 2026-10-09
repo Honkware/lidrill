@@ -32,7 +32,10 @@ import { validateSlots } from './slots'
 //
 //   bunx vitest run src/server/findings.test.ts
 
-const reports = JSON.parse(readFileSync('src/server/fixtures/gate-reports.json', 'utf8')) as unknown[]
+// Same freeze as samples.test.ts: these findings are pinned to the saved
+// corpus, so the class picks below read its frozen reports, not the live
+// gate output (which grows with the corpus - added Player_02's games)
+const reports = JSON.parse(readFileSync('src/server/fixtures/sample-gate-reports.json', 'utf8')) as unknown[]
 
 const packetOf = (raw: unknown, band: 'beginner' | 'club' | 'advanced' = 'club'): Packet => {
   const r = validReport(JSON.parse(JSON.stringify({ ...(raw as object), band })))
