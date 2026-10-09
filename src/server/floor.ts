@@ -58,7 +58,6 @@ export function templateFloor(p: Packet, frame: FrameContext = MISS_FRAME): Slot
   // The slot shape caps a why at 8 refs (validateSlots); supplementary
   // clauses below drop rather than overflow it
   const whyRefs = () => [...why.join(' ').matchAll(/\{ref:[a-z0-9:-]+\}/g)].length
-  let netLine: string | undefined // mateNet clause, budget-checked below
   if (p.threatStatus === 'certified' && p.threat) why.push(`They threatened ${ref('threat')}.`)
   else if (p.threatStatus === 'certifiedNull') why.push(`They had NO_THREAT: ${ref('best')}.`)
   else if (p.position.check.before && has('check')) why.push(`They gave ${ref('check')}, so the reply came first.`)
@@ -93,9 +92,8 @@ export function templateFloor(p: Packet, frame: FrameContext = MISS_FRAME): Slot
     else why.push(`${ref('best')} gives ${ref('c-mate')}.`)
     // MateNet: why the king cannot run rides along as its own
     // certified clause whenever the packet verified every flight square -
-    // budget-checked below (the clause is supplementary; the band's style
-    // budget is the hard contract)
-    if (has('c-mate-net')) why.push((netLine = `${ref('c-mate-net')}.`))
+    // the general budget trim below drops it if it overflows the style budget.
+    if (has('c-mate-net')) why.push(`${ref('c-mate-net')}.`)
   } else {
     const steps = outcomeSteps()
     // Quiet positions with no certified outcome: cite a short follow-up line

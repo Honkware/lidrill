@@ -717,6 +717,7 @@ export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION
   const matBefore = materialOf(pos, player)
   const pvEnd = fromFen(pv[pv.length - 1].fenAfter)!
   const matAfter = played ? materialOf(fromFen((played.reply.at(-1) ?? played).fenAfter)!, player) : materialOf(pvEnd, player)
+  const materialAfterPv = materialOf(pvEnd, player) - matBefore
 
   const status: Packet['meta']['certification']['status'] = refusals.length === 0 ? 'certified' : refusals.some(r => /depth|differs|not the puzzle|second opinion|range/.test(r)) ? 'refused' : 'partial'
   const holding = (report.holding ?? []).flatMap((u, i) => {
@@ -737,7 +738,7 @@ export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION
     !mateCert &&
     threatStatus !== 'certified' &&
     !certificates.some(c => c.id === 'c-forced') &&
-    best.materialAfterPv > 0 &&
+    materialAfterPv > 0 &&
     pv.slice(1).some(m => m.isCapture || m.mate)
   const glossKey: MotifKey =
     motifKey !== 'none' || mateCert || threatStatus !== 'certified'
@@ -849,7 +850,7 @@ export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION
       certifiedAtDepth: bs.stable ? bs.reached : null,
       reachedDepth: bs.reached,
       mateIn,
-      materialAfterPv: materialOf(pvEnd, player) - matBefore,
+      materialAfterPv: materialAfterPv,
       pv,
       pvComplete: pv.some(m => m.mate) || pv.length >= Math.min(8, pvUci.length),
       pvTerminal: pv.some(m => m.mate) ? 'mate' : bs.stable ? 'advantage-stable' : 'truncated',
