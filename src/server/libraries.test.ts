@@ -15,7 +15,7 @@ describe('versions', () => {
   it('are pinned', () => {
     expect(READABILITY_VERSION).toBe('fk-smog/1.0')
     expect(HABIT_LIB_VERSION).toBe('habit/1.2')
-    expect(MOTIF_LIB_VERSION).toBe('motifLib/1.1')
+    expect(MOTIF_LIB_VERSION).toBe('motifLib/1.2')
     expect(TONE_VERSION).toBe('tone/1.0')
   })
 })
@@ -250,13 +250,15 @@ describe('habit selection', () => {
 })
 
 describe('motif library', () => {
-  it('has an entry for every motif, the defensive gloss and "none" at every band', () => {
-    expect(MOTIF_KEYS).toHaveLength(13)
+  it('has an entry for every motif, the defensive gloss, "wins material" and "none" at every band', () => {
+    expect(MOTIF_KEYS).toHaveLength(14)
     expect(MOTIF_KEYS).toContain('none')
     expect(MOTIF_KEYS).toContain('meeting the threat')
+    expect(MOTIF_KEYS).toContain('wins material')
     expect(motifEntry('back-rank mate', 'club').id).toBe('gloss:back-rank-mate')
     expect(motifEntry('removing the defender', 'beginner').id).toBe('gloss:removing-the-defender')
     expect(motifEntry('meeting the threat', 'club').id).toBe('gloss:meeting-the-threat')
+    expect(motifEntry('wins material', 'advanced').id).toBe('gloss:wins-material')
     expect(motifEntry('none', 'advanced').id).toBe('gloss:none')
   })
 

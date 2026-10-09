@@ -65,10 +65,9 @@ export function templateFloor(p: Packet, frame: FrameContext = MISS_FRAME): Slot
 
   const mate = p.certificates.find(c => c.id === 'c-mate' && c.subject === 'best')
   // The answer line cut off at the outcome: the last capture or mate in it.
-  // Compact form: when the outcome move is deep in the line, cite the head
-  // of the line, an ellipsis, and the outcome move - never every ply of the
-  // hunt. The ellipsis tells the player (and the adjacency lint) that plies
-  // were skipped.
+  // Show every ply from the answer to that outcome when the whole sequence is
+  // five moves or fewer. If the outcome is deeper than that, drop the line
+  // entirely - a partial line with an ellipsis is worse than no line.
   const outcomeSteps = (): string[] => {
     let last = -1
     p.best.pv.forEach((m, i) => {
@@ -76,7 +75,7 @@ export function templateFloor(p: Packet, frame: FrameContext = MISS_FRAME): Slot
     })
     if (last < 1) return []
     const ids = p.best.pv.slice(1, last + 1).map(m => ref(m.id))
-    return ids.length > 2 ? [ids[0]!, '…', ids[ids.length - 1]!] : ids
+    return ids.length <= 5 ? ids : []
   }
   // A certified material or mate outcome: when there is one, every cited
   // line must end at it (the validator's V-LINE); when there is none the
@@ -85,9 +84,11 @@ export function templateFloor(p: Packet, frame: FrameContext = MISS_FRAME): Slot
     p.certificates.some(c => c.type === 'tactical' || c.type === 'mate' || c.type === 'stopsThreat') ||
     (!!p.threat && p.threat.consequence.type !== 'other')
   if (mate) {
-    // The bounded form: the certified mate line only, ending at the mate
+    // The bounded form: the certified mate line only, ending at the mate.
+    // Same five-ply ceiling: show the whole short line, otherwise collapse to
+    // "gives mate" rather than skipping plies with an ellipsis.
     const line = (((mate.payload as { lineIds?: string[] }).lineIds) ?? []).slice(1)
-    const steps = line.length > 3 ? [line[0]!, line[line.length - 1]!] : line
+    const steps = line.length <= 5 ? line : []
     if (steps.length) why.push(`${ref('best')}, then ${steps.map(ref).join(', ')}: ${ref('c-mate')}.`)
     else why.push(`${ref('best')} gives ${ref('c-mate')}.`)
     // MateNet: why the king cannot run rides along as its own
@@ -97,6 +98,9 @@ export function templateFloor(p: Packet, frame: FrameContext = MISS_FRAME): Slot
     if (has('c-mate-net')) why.push((netLine = `${ref('c-mate-net')}.`))
   } else {
     const steps = outcomeSteps()
+    // Quiet positions with no certified outcome: cite a short follow-up line
+    // (up to three plies) as evidence. This is not the full hunt; it just
+    // shows the answer does something concrete.
     const quietLine = p.best.pv.slice(1, 4).map(m => ref(m.id))
     if (steps.length)
       why.push(`After ${ref('best')}, ${steps.join(', ')}.`)
@@ -207,27 +211,46 @@ export function templateFloor(p: Packet, frame: FrameContext = MISS_FRAME): Slot
         : has('c-mate')
           ? `Your point: ${ref('c-mate')}.`
           : glossPattern
-  const out = [slot('whatHappened', what), slot('why', why.join(' ')), slot('pattern', pattern)]
   // The habit only rides along when it matches the packet's mechanism:
   // its tagged motifs are certified here, and a threat-keyed habit only
   // when a threat certified - otherwise the floor is shorter
   const habit = HABITS.find(h => h.id === p.didactic.habitSlotId)
-  if (habit) {
+  const shouldAddHabit = !!habit && (() => {
     const concepts = p.concepts.map(c => c.tag)
     const mechanismMatches = !habit.when || habit.when.some(m => concepts.includes(m))
     const threatMatches = !habit.threat || p.threatStatus === 'certified'
-    if (mechanismMatches && threatMatches) out.push(slot('nextTime', ref(p.didactic.habitSlotId!)))
+    return mechanismMatches && threatMatches
+  })()
+
+  // / the style budget is a hard contract. Drop optional why
+  // clauses (mate net, punish, feature deltas, alternatives) from the end until
+  // the rendered floor fits; never drop a ref the packet's required set asked
+  // for in the why slot.
+  const requiredWhyIds = new Set(p.didactic.requiredRefs.why.flatMap(r => r.split('|')))
+  const DEEP = /^(alt\d+|c-fd\d+|c-forced)$/
+  const deepAvailable = p.claimAnchors.some(a => DEEP.test(a))
+  const isDeepClause = (w: string) => /\{ref:(alt\d+|c-fd\d+|c-forced)\}/.test(w)
+  const optionalWhyClause = (w: string) => {
+    // The mate net is supplementary - the bounded mate form already satisfies
+    // the required outcome, so the net is the first thing to drop for budget.
+    if (/\{ref:c-mate-net\}/.test(w)) return true
+    // At advanced, a deep fact (alt, feature delta, forced cert) is needed
+    // whenever one is certified; don't budget-trim it away.
+    if (band === 'advanced' && deepAvailable && isDeepClause(w)) return false
+    return ![...w.matchAll(/\{ref:([a-z0-9:-]+)\}/g)].some(m => requiredWhyIds.has(m[1]!))
   }
-  // The mateNet clause is supplementary - the band's style budget is
-  // the hard contract, so a floor that would overflow without fitting drops
-  // the clause (Beginner floors, and any motif-rich floor at any band)
-  if (netLine) {
-    const total = words(Object.values(renderText(out, p)).join(' ')).length
-    if (total > STYLE_WORDS[band]) {
-      const whySlot = out.find(s => s.slot === 'why')!
-      whySlot.text = whySlot.text.replace(netLine, ' ').replace(/\s{2,}/g, ' ').trim()
-      whySlot.refs = whySlot.refs.filter(r => r !== 'c-mate-net')
-    }
+  const buildOut = (whyText: string) => {
+    const o = [slot('whatHappened', what), slot('why', whyText), slot('pattern', pattern)]
+    if (shouldAddHabit) o.push(slot('nextTime', ref(p.didactic.habitSlotId!)))
+    return o
   }
-  return out
+  while (why.length > 0) {
+    const total = words(Object.values(renderText(buildOut(why.join(' ')), p)).join(' ')).length
+    if (total <= STYLE_WORDS[band]) break
+    const i = why.findLastIndex(optionalWhyClause)
+    if (i < 0) break
+    why.splice(i, 1)
+  }
+
+  return buildOut(why.join(' '))
 }

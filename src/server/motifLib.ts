@@ -8,9 +8,9 @@ import type { MotifName } from './motifs'
 // plainly, without talking down. Change the texts only together with the
 // version.
 
-export const MOTIF_LIB_VERSION = 'motifLib/1.1'
+export const MOTIF_LIB_VERSION = 'motifLib/1.2'
 
-export type MotifKey = MotifName | 'none' | 'meeting the threat'
+export type MotifKey = MotifName | 'none' | 'meeting the threat' | 'wins material'
 
 export interface MotifEntry {
   id: string // 'gloss:<motif-in-kebab-case>', the same at every band
@@ -177,16 +177,33 @@ const TEXTS: Record<MotifKey, Texts> = {
   },
   none: {
     beginner: {
-      gloss: 'No one trick decides this; the best move does the most work.',
+      gloss: 'The best move is the right plan.',
       rule: 'Look at checks, then takes, then threats.',
     },
     club: {
-      gloss: 'No named pattern decides this; the best move is the most forcing one.',
+      gloss: 'The best move makes the position better.',
       rule: 'Check checks, captures and threats, in that order.',
     },
     advanced: {
-      gloss: 'No named pattern decides this; it comes down to concrete calculation.',
-      rule: 'Rank candidate moves by how forcing they are, and calculate those first.',
+      gloss: 'The best move improves the position by calculation.',
+      rule: 'Rank moves by concrete outcome, not by pattern.',
+    },
+  },
+  // Material-by-force positions that lack a named tactical motif. The line
+  // nets material when calculated to the end; the gloss names the outcome so
+  // the pattern slot is never a shrug.
+  'wins material': {
+    beginner: {
+      gloss: 'The best move wins a piece or pawn.',
+      rule: 'Look at checks, then takes, then threats.',
+    },
+    club: {
+      gloss: 'The best move wins material by force.',
+      rule: 'Check checks, captures and threats, in that order.',
+    },
+    advanced: {
+      gloss: 'The best move wins material by force.',
+      rule: 'Rank moves by concrete outcome, not by pattern.',
     },
   },
   // The defensive gloss for a quiet position whose task is a certified

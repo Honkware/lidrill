@@ -729,9 +729,24 @@ export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION
   const motifKey: MotifKey = bestMotif?.name ?? 'none'
   // The pattern slot's gloss: the certified motif's entry, the bounded mate
   // form, or - when a quiet position's task is a certified threat -
-  // the meeting-the-threat defensive gloss, never the "no named pattern" one
+  // the meeting-the-threat defensive gloss. When there is no motif but the
+  // best line nets material by force, say so instead of "no named pattern".
   const mateCert = certificates.some(c => c.type === 'mate')
-  const glossKey: MotifKey = motifKey !== 'none' || mateCert || threatStatus !== 'certified' ? motifKey : 'meeting the threat'
+  const winsMaterial =
+    motifKey === 'none' &&
+    !mateCert &&
+    threatStatus !== 'certified' &&
+    !certificates.some(c => c.id === 'c-forced') &&
+    best.materialAfterPv > 0 &&
+    pv.slice(1).some(m => m.isCapture || m.mate)
+  const glossKey: MotifKey =
+    motifKey !== 'none' || mateCert || threatStatus !== 'certified'
+      ? winsMaterial
+        ? 'wins material'
+        : motifKey
+      : winsMaterial
+        ? 'wins material'
+        : 'meeting the threat'
   // Trigger-aware habit selection: only a habit whose motifs match
   // this packet's certified concepts, or family advice, is eligible; the
   // weekly focus wins only inside that set. mechanism-matching: when
@@ -790,7 +805,8 @@ export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION
     required.why = ['c-mate-net|c-mate']
   } else {
     if (kind === 'hang' || kind === 'hold' || kind === 'defensive') required.why.push(holding.length > 1 ? holding.map(h => h.id).join('|') : 'best')
-    if ((kind === 'missed-win' || kind === 'lichess') && pv.length > 1 && threatStatus !== 'certified') required.why.push(pv.slice(1, 4).map(m => m.id).join('|'))
+    if ((kind === 'missed-win' || kind === 'lichess') && pv.length > 1 && threatStatus !== 'certified' && threatStatus !== 'certifiedNull')
+      required.why.push(pv.slice(1, 4).map(m => m.id).join('|'))
     if (kind === 'conversion') required.why.push('material')
   }
 
