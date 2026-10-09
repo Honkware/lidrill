@@ -112,6 +112,23 @@ export class Engine {
     this.uci.send('stop')
   }
 
+  // Wait until the worker has finished its startup handshake. Calling this
+  // during app boot means the first real search starts from a warm engine.
+  ready(): Promise<void> {
+    return this.queue.then(() =>
+      new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new EngineStalled('Stockfish did not become ready')), 5000)
+        this.listener = line => {
+          if (line === 'readyok') {
+            clearTimeout(timer)
+            resolve()
+          }
+        }
+        this.uci.send('isready')
+      }),
+    )
+  }
+
   certify(fen: string, o: CertifyOptions): Promise<CertifiedRun> {
     const run = () =>
       new Promise<CertifiedRun>((resolve, reject) => {

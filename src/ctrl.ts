@@ -10,7 +10,7 @@ import { fetchStudyLines, listStudies, STUDY_READ_SCOPE, studyCompliance, type S
 import { STUDY_SCOPE, sendToStudy } from './lichess/study'
 import { applyLook, BOARDS, PIECE_SETS } from './look'
 import { compliance, openingTable, repertoireTargets, streak, type OpeningRow, type Streak } from './metrics'
-import { forgetLichessAccount, getEngine, precertifyDue, saveProfile, syncAndAnalyze } from './pipeline'
+import { forgetLichessAccount, getEngine, precertifyDue, saveProfile, syncAndAnalyze, warmEngine } from './pipeline'
 import { PracticeRun } from './practice'
 import { Replay } from './replay'
 import { weekReport, weeklyZeroHang, type WeekReport } from './report'
@@ -120,6 +120,9 @@ export class Ctrl {
     if (after === 'studies') this.loadStudies()
     if (this.auth || this.profile?.chesscomUser) this.sync()
     this.startServerSync()
+    // Warm the interactive engine in the background so drills and practice
+    // don't pay the wasm startup cost on the first move.
+    warmEngine()
   }
 
   get signedOut() {

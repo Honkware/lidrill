@@ -5,7 +5,7 @@ import type { Band } from '../db'
 import { amount, mateIn, points } from './amount'
 import { HABITS } from './habits'
 import { MOTIF_KEYS, motifEntry } from './motifLib'
-import { cpOf, type Packet, type PvMove, type SlotName, type TypedEval } from './packet'
+import { cpOf, VALUE, type Packet, type PvMove, type SlotName, type TypedEval } from './packet'
 
 // The renderer: the narrator writes {ref:id} where a fact
 // goes, and only this file turns ids into moves, numbers and library text.
@@ -52,8 +52,15 @@ export function materialText(n: number, band: Band): string {
 
 const CONSEQUENCE = (p: Packet) => {
   const t = p.threat!
+  const head = t.line[0]
   if (t.consequence.type === 'mate') return 'which would mate'
-  return t.consequence.type === 'winsMaterial' ? `which would win ${points(t.consequence.material ?? 0)}` : `which would gain ${amount(t.consequence.swingCp, p.context.band)}`
+  // Concrete target first: "which would win the rook on b4" when the threat's
+  // first move is a capture. Falls back to the material bucket only when the
+  // target is unknown or the swing is diffuse.
+  const pieceName = (n: number) => points(n).replace(/^an? /, '')
+  if (head?.captured) return `which would win the ${pieceName(t.consequence.material ?? VALUE[head.captured])} on ${head.to}`
+  if (t.consequence.type === 'winsMaterial') return `which would win ${points(t.consequence.material ?? 0)}`
+  return `which would gain ${amount(t.consequence.swingCp, p.context.band)}`
 }
 
 // Every move in the packet by id, for text and board links

@@ -103,6 +103,19 @@ const refIds = (t: string) => [...t.matchAll(REF)].map(m => m[1] ?? NO_THREAT_ID
 
 const MECHANISM = /^(t\d+|pv[1-9]\d*|pl\d+|tr\d+|alt\d+|threat|c-(?!nothreat$|draw$).+)$/
 const DEEP = /^(alt\d+|c-fd\d+|c-forced)$/
+const LINE_REF = /^(t\d+|pv[1-9]\d*|pl\d+|tr\d+|threat)$/
+
+// V-LINE adjacency: moves listed in a sequence must be consecutive plies
+// in the certified line, or the text must mark the gap with an ellipsis. This
+// stops "After A, B follow" when B is several plies deep and the board state
+// has changed in between.
+function adjacentInLine(id1: string, id2: string, p: Packet): boolean {
+  const moves = movesById(p)
+  const a = moves.get(id1)
+  const b = moves.get(id2)
+  if (!a || !b) return false
+  return a.fenAfter === b.fenBefore
+}
 
 // V-POV: a player possessive sits directly on a move ref
 const PLAYER_POSSESSIVE = /\byour\s+\{ref:([a-z0-9:-]+)\}/gi
@@ -235,13 +248,26 @@ export function validateSlots(out: unknown, p: Packet, frame: FrameContext = MIS
       return !!cert && (cert.type === 'tactical' || cert.type === 'stopsThreat' || cert.type === 'forced')
     }
     for (const sent of sentencesOf(s.text)) {
-      const ids = [...sent.matchAll(REF)].map(rm => rm[1] ?? NO_THREAT_ID)
+      const matches = [...sent.matchAll(REF)]
+      const ids = matches.map(rm => rm[1] ?? NO_THREAT_ID)
       for (const id of ids) {
         if (mateLine.size && /^pv\d+$/.test(id) && !mateLine.has(id)) v.push(`${s.slot}: ${id} is past the certified mate line - the line ends at the mate`)
       }
       const continuation = ids.filter(id => /^(pv[1-9]\d*|t[1-9]\d*)$/.test(id))
       if (outcomeCertified && continuation.length && !endsAtOutcome(ids[ids.length - 1]!))
         v.push(`${s.slot}: the line runs past the answer without ending at the certified outcome - end at the capture, mate or certified amount that decides it ("${sent.trim()}")`)
+      // V-LINE adjacency: two line refs in a row must be consecutive
+      // plies, or the text must mark the gap with an ellipsis. This stops
+      // "After A, B follow" when B is several plies deep.
+      for (let i = 0; i < matches.length - 1; i++) {
+        const a = ids[i]!
+        const b = ids[i + 1]!
+        if (!LINE_REF.test(a) || !LINE_REF.test(b)) continue
+        if (adjacentInLine(a, b, p)) continue
+        const between = sent.slice(matches[i]!.index + matches[i]![0].length, matches[i + 1]!.index)
+        if (/\.{2,}|…/.test(between)) continue
+        v.push(`${s.slot}: ${a} and ${b} are not consecutive plies - mark the gap with "..." or only list adjacent moves ("${sent.trim()}")`)
+      }
     }
     // V-POV: possessives attach only to the game move ({ref:played});
     // "your" on the answer or its line claims moves the player never played

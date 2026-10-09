@@ -4,7 +4,7 @@ import { makeSan } from 'chessops/san'
 import type { Color, Role } from 'chessops/types'
 import { makeSquare, parseSquare, parseUci } from 'chessops/util'
 import type { Band } from '../db'
-import { amount } from './amount'
+import { amount, amountMore } from './amount'
 import { featureBlock, FEATURES_VERSION, type FeatureBlock, type FeatureDelta } from './features'
 import { canonicalFen, drawRule, gameState, validPosition, type DrawRule, type GameState } from './gamestate'
 import { family, HABIT_LIB_VERSION, selectHabit } from './habits'
@@ -223,7 +223,7 @@ export interface Packet {
 
 // --- helpers ------------------------------------------------------------------
 
-const VALUE: Record<Role, number> = { pawn: 1, knight: 3, bishop: 3, rook: 5, queen: 9, king: 0 }
+export const VALUE: Record<Role, number> = { pawn: 1, knight: 3, bishop: 3, rook: 5, queen: 9, king: 0 }
 const sideOf = (c: Color): Side => (c === 'white' ? 'w' : 'b')
 const other = (c: Color): Color => (c === 'white' ? 'black' : 'white')
 
@@ -651,7 +651,7 @@ export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION
         ? bestE.value === alt.eval.value
           ? `mate in ${bestE.value} either way`
           : `mate in ${bestE.value} rather than mate in ${alt.eval.value}`
-        : `worth only about ${amount(Math.max(0, alt.gapCp), band)} more`
+        : `worth only about ${amountMore(Math.max(0, alt.gapCp), band)}`
     return [{ id: `c-acc${i + 1}`, type: 'acceptance' as const, subject: alt.id, side: sideOf(player), targetSide: sideOf(opp), payload: { move: uci, gapCp: alt.gapCp }, text }]
   })
 

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { backfillPackets } from './backfill'
 import { db, type ExplanationRow, type Puzzle } from './db'
 import { CERT_RUN_VERSION } from './explain'
+import * as pipeline from './pipeline'
 import type { EngineRun } from './server/packet'
 
 const fen = 'r3k3/8/8/3N4/8/8/8/4K3 w - - 0 1'
@@ -43,22 +44,15 @@ beforeEach(async () => {
   localStorage.clear()
   uploads = 0
   uploadOk = true
-  // getCertEngines() builds Stockfish workers eagerly. None ever searches
-  // successfully here: every command crashes the worker, so a precertify that
-  // actually needed the engine rejects fast instead of hanging the test
-  vi.stubGlobal(
-    'Worker',
-    class {
-      private errs: ((e: unknown) => void)[] = []
-      postMessage() {
-        setTimeout(() => this.errs.forEach(fn => fn({ preventDefault() {} })), 0)
-      }
-      addEventListener(type: string, fn: (e: unknown) => void) {
-        if (type === 'error') this.errs.push(fn)
-      }
-      terminate() {}
-    },
-  )
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
+  // getCertEngines() builds Stockfish workers eagerly. Stub it with engines
+  // that reject immediately so the backfill logic is tested without wasm
+  // noise or async worker-error flakes.
+  vi.spyOn(pipeline, 'getCertEngines').mockReturnValue([
+    { certify: vi.fn().mockRejectedValue(new Error('stub engine')) } as never,
+    { certify: vi.fn().mockRejectedValue(new Error('stub engine')) } as never,
+    { certify: vi.fn().mockRejectedValue(new Error('stub engine')) } as never,
+  ])
   vi.stubGlobal('fetch', async (url: string) => {
     if (url === '/api/challenge') return new Response(JSON.stringify({ nonce: 'abc', exp: Date.now() + 60000, bits: 4, sig: 's' }))
     if (url === '/api/packet') {
@@ -68,7 +62,10 @@ beforeEach(async () => {
     throw new Error(`unexpected ${url}`)
   })
 })
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+})
 
 const seed = async () => {
   await db.puzzles.put(puzzle)

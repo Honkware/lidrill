@@ -1,6 +1,6 @@
 import { templateFloor } from './floor'
 import { fromFen } from './facts'
-import { solvingRefOf, type Packet, type SetMembership } from './packet'
+import { deltaText, solvingRefOf, type Packet, type SetMembership } from './packet'
 import { STYLE_WORDS } from './readability'
 import { movesById, gameFrameIds, NO_THREAT_ID, REF, renderRef, SLOTS, type Slot } from './render'
 import { MISS_FRAME, requiredFor, validateSlots, type FrameContext } from './slots'
@@ -37,7 +37,7 @@ export type Caller = (call: LlmCall) => Promise<LlmResult>
 // Pinned per pass: reproducible budgets; the gate is re-run whenever
 // one of these changes
 export const MODELS = {
-  draft: { model: 'google/gemini-3.8-flash', temperature: 0.3, maxTokens: 900, usdPerMTokIn: 0.75, usdPerMTokOut: 3.75 },
+  draft: { model: 'google/gemini-3.8-flash', temperature: 0.3, maxTokens: 700, usdPerMTokIn: 0.75, usdPerMTokOut: 3.75 },
   // Measured: haiku truncates at 2000 (finish_reason "length" -
   // 3 of 20 decompose calls, some with the whole budget spent before any
   // content). 4000 leaves the prune untouched; it only gives the claim
@@ -48,7 +48,7 @@ export const MODELS = {
   // gate covers smooth under the draft slug's entry. The auto-router path
   // survives only behind an explicit experiment opt-in (NarrateOptions.
   // autoRouter), for offline/adversarial generation; it is off by default.
-  smooth: { model: 'google/gemini-3.8-flash', temperature: 0.3, maxTokens: 900, usdPerMTokIn: 0.75, usdPerMTokOut: 3.75 },
+  smooth: { model: 'google/gemini-3.8-flash', temperature: 0.3, maxTokens: 700, usdPerMTokIn: 0.75, usdPerMTokOut: 3.75 },
 } as const
 export const BUDGET_USD = 0.05
 export const MAX_CALLS = 5
@@ -75,10 +75,10 @@ export const SYSTEM_V2 = [
   'Trigger-anchor rule: a claim about an abstract idea (pressure, space, the initiative) must carry the fact id that makes it true in the same sentence; if no fact proves it, leave it out.',
   'Stay under the word budget the packet gives for the whole rendered explanation. Short sentences, subject-verb-object first, no stacked subordinate clauses.',
   'whatHappened: the move made here and what it cost - the player\'s try in this puzzle when one is recorded, otherwise the original game move, marked as game context. why: the mechanism, using the required ids and enough line steps. pattern: the certified pattern and its library text - open the pattern slot with the position-anchored instance (at least one packet ref that is not library text: the move, square or certificate that makes it true), then the definition ref; a bare definition with no position ref fails. Render each magnitude once: one swing, one bucket - never restate the same amount in a second phrasing or a parenthetical. nextTime: the habit id, nothing else of substance.',
-  'solve frames - the input says which: best - the player found the engine\'s best move: whatHappened opens by crediting it ({ref:best}), then explain that move on its merits. also-good - the player\'s move is in the acceptance set: open whatHappened with "Your move works.", name the solving move ({ref:alt1}…) and why it is sound, then name the engine\'s first choice ({ref:best}) with the certified gap ({ref:c-acc1}, "worth about … more"). miss - the contrast frame: the game move (or try) and what it cost, then "Best was: {ref:best}".',
+  'solve frames - the input says which: best - the player found the engine\'s best move: whatHappened opens by crediting it ({ref:best}), then explain that move on its merits. When there is no named tactic (no c-motif, no mate), use the strategic features the move improves - development, space, king safety, activity, pawn structure - and anchor each claim to a c-fd* fact id from the list. also-good - the player\'s move is in the acceptance set: open whatHappened with "Your move works.", name the solving move ({ref:alt1}…) and why it is sound, then name the engine\'s first choice ({ref:best}) with the certified gap ({ref:c-acc1}, "worth about … more"). miss - the contrast frame: the game move (or try) and what it cost, then "Best was: {ref:best}".',
   'tokens: "Answer:" is retired everywhere - with an acceptance set there is no single answer; the miss frame labels best "Best was:". "cost you" is legal only in the miss frame - never in best or also-good.',
   'Ownership: say "you"/"your" for the player\'s moves and patterns and "they"/"their" for the opponent\'s, right before the id, in the same sentence. Amounts like {ref:swing} take no "your". V-POV: a possessive attaches only to the game move ({ref:played}); the answer and its line are not yours yet - no "your" on them.',
-  'V-LINE: line steps beyond the answer are evidence, and evidence ends at the certified consequence - the capture, mate or certified amount that decides the line. Never run the line past the answer mid-hunt; when the consequence is certified, stop there.',
+  'V-LINE: line steps beyond the answer are evidence, and evidence ends at the certified consequence - the capture, mate or certified amount that decides the line. Never run the line past the answer mid-hunt; when the consequence is certified, stop there. Moves listed in a sequence must be consecutive plies from the same line; if you skip plies, mark the gap with "...". Do not write "follow" or "leads to" for non-mating lines - just state the line or say "the key line is".',
   'Certificate ids (c-…) render as a whole clause, like "every other move is at least 0.8 pawns worse": put them after a colon or after "because", never inside a phrase.',
   'Only say the answer stops, prevents or meets the threat if c-stops is in the list; only say a move was forced, needed or the only move if c-forced is.',
   'Plain, short sentences. No praise, no labels like brilliant, no rhetorical questions, no exclamation marks. Do not open a sentence with This, That, It or Such used as a pronoun.',
@@ -179,6 +179,10 @@ export function promptView(p: Packet, frame: FrameContext = MISS_FRAME) {
     whyNeedsAtLeastThisManyLineStepsOrCertificates: p.didactic.mechanismMin,
     whyMustAddSomethingNotInWhatHappened: true,
     canSay: { forced: p.certificates.some(c => c.id === 'c-forced'), mate: p.certificates.some(c => c.type === 'mate') || p.threat?.consequence.type === 'mate' },
+    // Strategic changes the best move causes, for quiet positions with no
+    // named tactical motif. Each entry is a certified feature delta the model
+    // may cite in the why/pattern slots to explain the move on its merits.
+    features: (p.features?.deltas ?? []).slice(0, 3).map(d => ({ id: d.id, text: deltaText(d), causedBy: d.causedBy, side: d.side })),
   }
 }
 

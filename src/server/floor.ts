@@ -66,7 +66,9 @@ export function templateFloor(p: Packet, frame: FrameContext = MISS_FRAME): Slot
   const mate = p.certificates.find(c => c.id === 'c-mate' && c.subject === 'best')
   // The answer line cut off at the outcome: the last capture or mate in it.
   // Compact form: when the outcome move is deep in the line, cite the head
-  // of the line and the outcome move, never every ply of the hunt.
+  // of the line, an ellipsis, and the outcome move - never every ply of the
+  // hunt. The ellipsis tells the player (and the adjacency lint) that plies
+  // were skipped.
   const outcomeSteps = (): string[] => {
     let last = -1
     p.best.pv.forEach((m, i) => {
@@ -74,7 +76,7 @@ export function templateFloor(p: Packet, frame: FrameContext = MISS_FRAME): Slot
     })
     if (last < 1) return []
     const ids = p.best.pv.slice(1, last + 1).map(m => ref(m.id))
-    return ids.length > 2 ? [ids[0]!, ids[ids.length - 1]!] : ids
+    return ids.length > 2 ? [ids[0]!, '…', ids[ids.length - 1]!] : ids
   }
   // A certified material or mate outcome: when there is one, every cited
   // line must end at it (the validator's V-LINE); when there is none the
@@ -97,11 +99,20 @@ export function templateFloor(p: Packet, frame: FrameContext = MISS_FRAME): Slot
     const steps = outcomeSteps()
     const quietLine = p.best.pv.slice(1, 4).map(m => ref(m.id))
     if (steps.length)
-      why.push(`After ${ref('best')}, ${steps.join(', ')} ${steps.length > 1 ? 'follow' : 'follows'}.`)
+      why.push(`After ${ref('best')}, ${steps.join(', ')}.`)
     else if (p.threat && p.threat.line.length > 1 && p.threat.consequence.type !== 'other')
-      why.push(`Their idea ran ${p.threat.line.slice(1).map(m => ref(m.id)).join(', ')}: ${ref('threat')}.`)
-    else if (!outcomeCertified && quietLine.length)
-      why.push(`After ${ref('best')}, ${quietLine.join(', ')} ${quietLine.length > 1 ? 'follow' : 'follows'}.`)
+      // The threat's consequence already appears in the required "They threatened"
+      // clause; repeat only the follow-up moves here, not the whole threat text.
+      why.push(`Their idea ran ${p.threat.line.slice(1).map(m => ref(m.id)).join(', ')}.`)
+    else if (!outcomeCertified && quietLine.length) {
+      // Best/also-good frames explain the found move on its merits; when the
+      // packet certified a strategic feature change, cite that instead of a
+      // bare follow-up line, especially for beginners who need the "why".
+      const feature = p.claimAnchors.find(a => /^c-fd\d+$/.test(a))
+      if ((frame.membership === 'best' || frame.membership === 'set') && feature)
+        why.push(`${ref(feature)}.`)
+      else why.push(`After ${ref('best')}, ${quietLine.join(', ')}.`)
+    }
     else why.push(`Best was: ${ref('best')}.`)
   }
   if (p.holding.length > 1 && !why.some(w => w.includes('{ref:hold'))) why.push(`${ref(p.holding[0].id)} was one way to hold.`)
@@ -179,7 +190,7 @@ export function templateFloor(p: Packet, frame: FrameContext = MISS_FRAME): Slot
   const glossPattern = has('c-stops')
     ? `${ref('c-stops')}. ${ref(p.didactic.glossId)}`
     : p.threat
-      ? `The problem was their ${ref('threat')}. ${ref(p.didactic.glossId)}`
+      ? `The task is to meet their threat, so ${ref('best')} answers it. ${ref(p.didactic.glossId)}`
       : `The point here is ${ref('best')}. ${ref(p.didactic.glossId)}`
   const pattern =
     frame.membership === 'set' && p.didactic.motifCert

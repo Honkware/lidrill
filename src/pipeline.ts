@@ -26,6 +26,7 @@ export interface Accounts {
 // the page; four is plenty and keeps phones from cooking.
 let engine: Engine | undefined
 export const getEngine = () => (engine ??= new Engine(() => workerEngine()))
+export const warmEngine = () => getEngine().ready().catch(() => {})
 
 // Engines for "Why?" certification, apart from the drill's and the analysis
 // pool's so neither waits behind a certification: up to three
