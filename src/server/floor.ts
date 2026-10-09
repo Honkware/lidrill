@@ -100,11 +100,18 @@ export function templateFloor(p: Packet, frame: FrameContext = MISS_FRAME): Slot
     const quietLine = p.best.pv.slice(1, 4).map(m => ref(m.id))
     if (steps.length)
       why.push(`After ${ref('best')}, ${steps.join(', ')}.`)
-    else if (p.threat && p.threat.line.length > 1 && p.threat.consequence.type !== 'other')
+    else if (p.threat && p.threat.line.length > 1 && p.threat.consequence.type !== 'other') {
       // The threat's consequence already appears in the required "They threatened"
-      // clause; repeat only the follow-up moves here, not the whole threat text.
-      why.push(`Their idea ran ${p.threat.line.slice(1).map(m => ref(m.id)).join(', ')}.`)
-    else if (!outcomeCertified && quietLine.length) {
+      // clause. In the affirm frames explain how the answer meets the threat;
+      // only the miss frame needs the opponent's follow-up line.
+      const feature = p.claimAnchors.find(a => /^c-fd\d+$/.test(a))
+      if (frame.membership !== 'miss' && feature)
+        why.push(`${ref(feature)}.`)
+      else if (frame.membership !== 'miss' && has('c-stops'))
+        why.push(`${ref('best')} ${ref('c-stops')}.`)
+      else
+        why.push(`Their idea ran ${p.threat.line.slice(1).map(m => ref(m.id)).join(', ')}.`)
+    } else if (!outcomeCertified && quietLine.length) {
       // Best/also-good frames explain the found move on its merits; when the
       // packet certified a strategic feature change, cite that instead of a
       // bare follow-up line, especially for beginners who need the "why".
