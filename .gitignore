@@ -33,5 +33,25 @@ public/engine/
 .env*
 !.env.example
 
-# stray build artifacts
+# keys, sessions, caches and local data
+*.pem
+*.key
+*.session
+.cache
+*.sqlite
+*.db
+
+# archives and model weights
+*.zip
+*.tar
+*.tar.gz
+*.tgz
 *.whl
+*.bundle
+*.onnx
+*.safetensors
+*.gguf
+
+# written by bun run test:gate
+gate-out.json
+gate7-out.json

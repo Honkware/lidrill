@@ -1,0 +1,6 @@
+# Copy to .dev.vars for `wrangler dev`. In production both are Worker secrets:
+#   wrangler secret put OPENROUTER_API_KEY
+#   wrangler secret put POW_SECRET
+OPENROUTER_API_KEY=your-openrouter-key
+# Any long random string; it signs the /api/challenge proof-of-work tokens
+POW_SECRET=change-me
