@@ -10,6 +10,8 @@ import { fromFen, pieceName, type LineReplay, type PlayedMove } from './facts'
 // tagger (lichess-puzzler tagger/cook.py), tightened: a pattern only counts
 // if the side using it wins material or mates afterwards, pins include pins
 // to the queen, and pinned defenders don't count as defenders.
+// lichess-puzzler is copyright its authors (github.com/ornicar/lichess-puzzler)
+// and licensed AGPL-3.0.
 
 export type MotifName =
   | 'smothered mate'

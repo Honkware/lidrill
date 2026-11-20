@@ -2,7 +2,8 @@ import type { Eval, Judgment } from '../db'
 
 // Ported from lila: ui/lib/src/ceval/winningChances.ts and
 // modules/tree/src/main/Advice.scala, so badges agree with Lichess's own
-// analysis.
+// analysis. lila is copyright its authors (github.com/lichess-org/lila) and
+// licensed AGPL-3.0-or-later.
 
 const raw = (cp: number) => 2 / (1 + Math.exp(-0.00368208 * cp)) - 1
 

@@ -152,7 +152,7 @@ export function settingsView(ctrl: Ctrl): VNode {
       ],
       'space-y-3',
     ),
-    el('p', 'px-1 text-xs text-dim', 'lidrill is open source under the GPL. Stockfish 19 runs in your browser.'),
+    el('p', 'px-1 text-xs text-dim', 'lidrill is open source under the AGPL. Stockfish 19 runs in your browser.'),
     el(
       'button',
       'inline-flex min-h-11 items-center gap-2 px-1 text-sm text-dim',
