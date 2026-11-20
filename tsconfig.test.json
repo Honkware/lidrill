@@ -26,6 +26,7 @@
   },
   "include": [
     "src/**/*.test.ts",
-    "worker/**/*.test.ts"
+    "worker/**/*.test.ts",
+    "scripts/offline-gate.ts"
   ]
 }

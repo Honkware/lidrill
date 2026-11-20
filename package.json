@@ -13,7 +13,8 @@
     "preview": "vite preview",
     "deploy": "bun run build && wrangler deploy",
     "test:golden": "GOLDEN=1 vitest run src/golden.test.ts",
-    "test:gate": "GATE=1 vitest run src/gate.test.ts"
+    "test:gate": "GATE=1 vitest run src/gate.test.ts",
+    "gate:offline": "bun scripts/offline-gate.ts"
   },
   "dependencies": {
     "@lichess-org/chessground": "^10.1.1",
