@@ -1,63 +1,41 @@
 # lidrill
 
-Turns your own chess games into puzzles. Sign in with Lichess, and lidrill
-runs Stockfish over your games in the browser, finds the moves that cost
-you, and schedules them as a short daily drill (FSRS). Chess.com games can
-be added by username.
+lidrill ([lidrill.org](https://lidrill.org)) pulls your games from Lichess or Chess.com, runs Stockfish over them in the browser, and gives you back the positions where you went wrong as a short daily drill. The puzzles are scheduled with spaced repetition, so the ones you keep missing come back more often.
 
-Live at <https://lidrill.org>.
+## Explanations
 
-Besides the daily puzzles: Turning Points replays a game and stops where it
-turned; conversion and defense drills play positions from your games out
-against Stockfish; a journal and a zero-hang streak track the games
-themselves. Signed in, it also reads your Lichess puzzle dashboard and
-mixes in puzzles you failed there (at most 30% of a day).
+After a puzzle you can tap "Why?" to get an explanation in plain language. I didn't want an LLM guessing about a chess position, since they get moves wrong often, so the model never sees the board:
 
-Games, analysis and puzzles live in IndexedDB in your browser, and the
-Lichess token too (revoked when you sign out). The network calls go to
-Lichess and Chess.com, plus one to lidrill's own Worker when you tap "Why?"
-after a puzzle: it sends that position and Stockfish's lines, and gets back
-a two-sentence explanation from a model on OpenRouter.
+1. Stockfish searches the position in your browser.
+2. The Worker turns the engine's lines into a list of facts, such as the evals, the threat, captures, mates and any tactical patterns it detected.
+3. The model writes the explanation, but it can only point at those facts by id.
+4. A rule-based checker rejects a draft that mentions a move, pattern or mate that isn't in the facts, and a second model drops any claim with no fact behind it.
+5. If the draft still fails after one repair attempt, you get a simpler explanation built directly from the facts.
 
-The first sync pulls your newest 200 games per site. Games Lichess has
-already analyzed reuse its evals. The rest are analyzed at depth 14 with
-the single-threaded Stockfish 19 lite build, on up to four workers at once
-(cores minus one). A full first pass still takes a while; puzzles show up
-as each game finishes.
+The moves in the final text are filled in from the engine's lines by the renderer. An explanation costs between 1 and 2 cents in model calls.
+
+## What else it does
+
+- Turning Points replays one of your games and stops at the moves where it turned.
+- Conversion and defense drills let you play out your own positions against Stockfish.
+- Signed-in accounts sync between devices. Otherwise everything stays in your browser.
 
 ## Development
 
-Needs [Bun](https://bun.sh).
+You need [Bun](https://bun.sh).
 
 ```sh
 bun install
-bun run dev       # copies the engine into public/engine, then starts Vite
-bun run test      # vitest
-bun run test:golden  # also the slow Stockfish checks on the reference games
-bun run lint      # oxlint
-bun run build     # typecheck + production build into dist/
+bun run dev
+bun run test
 ```
 
-Sign-in redirects to `<origin>/auth`, so it works from `localhost` too.
-Lichess needs no app registration for this. The default sign-in asks only
-for `puzzle:read`; `study:write` and `preference:read` are requested the
-first time you use the feature that needs them.
+`bun run dev` starts the app without explanations, because those need the Worker. To try them locally, run `bun run build` and then `wrangler dev`, with your OpenRouter key in `.dev.vars` (there is a `.dev.vars.example` to copy).
 
-`bun run deploy` builds and publishes `dist/` as Cloudflare Workers static
-assets (`wrangler.jsonc`, which also binds lidrill.org). Wrangler reads
-`CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` from the environment.
-The CSP and other headers are in `public/_headers`. The Worker
-(`worker/index.ts`) handles `/api/explain` (the legacy report-in shape and
-the slim `{"v":2, packetHash, band}` shape) and `/api/packet` (the packet
-store); it needs the secret `OPENROUTER_API_KEY` (`wrangler secret put
-OPENROUTER_API_KEY`). The `PACKETS` KV binding holds built packets, keyed by
-packet hash with a 30-day TTL: the checked-in id is a local dev id (wrangler
-dev emulates KV), so before deploying run `wrangler kv namespace create
-PACKETS` (and once more with `--preview` for the preview id) and paste the
-real ids into `wrangler.jsonc`.
+If you want to host your own copy, change the route in `wrangler.jsonc` and the allowed origins in `worker/index.ts`, create a `PACKETS` KV namespace, and set the `OPENROUTER_API_KEY` and `POW_SECRET` secrets. The sync service lives in `server/` and is described in `docs/server-tier.md`.
 
-The design and its reasoning are in [docs/spec.md].
+## Licence and credits
 
-## License
+lidrill is AGPL-3.0-or-later because the move labels and the pattern rules are ported from [lila](https://github.com/lichess-org/lila) and [lichess-puzzler](https://github.com/ornicar/lichess-puzzler). The board is [chessground](https://github.com/lichess-org/chessground), the rules come from [chessops](https://github.com/niklasf/chessops), and the engine is [Stockfish](https://stockfishchess.org) 19 through [stockfish.js](https://github.com/nmrugg/stockfish.js). Licences for the piece sets and fonts are in `public/`.
 
-GPL-3.0-or-later. Piece set credits are in `public/pieces/README.md`.
+This is an independent project and has no connection to Lichess or Chess.com beyond using their public APIs.
