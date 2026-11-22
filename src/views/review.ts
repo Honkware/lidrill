@@ -92,7 +92,7 @@ export function gameView(ctrl: Ctrl): VNode {
         `${g.result === 'win' ? 'Won' : g.result === 'loss' ? 'Lost' : 'Drew'} as ${g.color} · ${g.opening || g.eco || 'unknown opening'} · ${dateLabel(g.playedAt)}`,
         g.accuracy ? ` · accuracy ${g.accuracy}%` : '',
       ]),
-      lowPoints(v),
+      advice(v),
       studyNote(ctrl, v),
       moveList(v),
       journalCard(ctrl, v),
@@ -129,22 +129,28 @@ function controls(v: GameView): VNode {
   ])
 }
 
-function lowPoints(v: GameView): VNode | null {
-  const pts = v.lowPoints
-  if (!pts.length) return null
+const ADVICE = [
+  ['inaccuracy', 'inaccuracies'],
+  ['mistake', 'mistakes'],
+  ['blunder', 'blunders'],
+] as const
+
+// The player's side of Lichess's advice summary (lila
+// ui/analyse/src/view/roundTraining.ts): a count per judgment, and a click
+// steps through those moves
+function advice(v: GameView): VNode | null {
+  if (!v.game.analyzedAt) return null
   return el('div', [
-    label('Jump to your mistakes'),
+    label('Your moves'),
     el(
       'div',
-      'mt-2 flex flex-wrap gap-2',
-      pts.map(ply => {
-        const m = v.game.moves[ply - 1]
-        return el(
-          'button',
-          'min-h-9 rounded-full bg-raised px-3 text-sm',
-          { attrs: { type: 'button' }, class: { [judgColor[m.judg!]]: true, 'ring-2': v.ply === ply }, on: { click: () => v.go(ply) } },
-          `${Math.ceil(ply / 2)}${ply % 2 ? '.' : '…'} ${m.san}${judgMark[m.judg!]}`,
-        )
+      'mt-2 flex flex-wrap gap-x-1 rounded-xl bg-surface p-1 text-sm',
+      ADVICE.map(([j, many]) => {
+        const n = v.judged(j).length
+        const text = [el('strong', 'tabular-nums', String(n)), ` ${n === 1 ? j : many}`]
+        return n
+          ? el('button', `rounded-lg px-3 py-2 hover:bg-raised ${judgColor[j]}`, { attrs: { type: 'button' }, on: { click: () => v.nextJudged(j) } }, text)
+          : el('span', 'px-3 py-2 text-dim opacity-60', text)
       }),
     ),
   ])

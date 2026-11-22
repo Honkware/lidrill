@@ -7,7 +7,7 @@ import { makeSan } from 'chessops/san'
 import { parseUci } from 'chessops/util'
 import type { Color } from 'chessops/types'
 import { checkColor } from './checkColor'
-import type { Game, JournalEntry, Puzzle } from './db'
+import type { Game, JournalEntry, Judgment, Puzzle } from './db'
 
 // Lichess's keys for stepping through a game (lila ui/round/src/keyboard.ts):
 // left/k back, right/j on, up/0/home to the start, down/$/end to the end.
@@ -80,9 +80,17 @@ export class GameView {
     return move ? makeSan(Chess.fromSetup(parseFen(this.fens[ply - 1]).unwrap()).unwrap(), move) : uci
   }
 
-  // The player's mistakes and blunders, for "jump to" buttons
-  get lowPoints(): number[] {
+  // Plies of the player's moves with this judgment
+  judged(j: Judgment): number[] {
     const mine = this.game.color === 'white' ? 1 : 0
-    return this.game.moves.flatMap((m, i) => ((i + 1) % 2 === mine && (m.judg === 'blunder' || m.judg === 'mistake') ? [i + 1] : []))
+    return this.game.moves.flatMap((m, i) => ((i + 1) % 2 === mine && m.judg === j ? [i + 1] : []))
+  }
+
+  // The next of those after the current ply, wrapping round, as lila's
+  // jumpToGlyphSymbol does for the advice summary
+  nextJudged(j: Judgment) {
+    const plies = this.judged(j)
+    const to = plies.find(p => p > this.ply) ?? plies[0]
+    if (to !== undefined) this.go(to)
   }
 }
