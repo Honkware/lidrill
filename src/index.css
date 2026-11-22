@@ -95,3 +95,19 @@ html[data-board='walnut'] { --sq-light: #e8c9a1; --sq-dark: #8a5a33; }
 .cg-wrap coords coord { color: var(--sq-light); }
 .cg-wrap coords:not(.black) coord:nth-child(even),
 .cg-wrap coords.black coord:nth-child(odd) { color: var(--sq-dark); }
+
+/* Move list, after lila's .tview2-column (src/views/moves.ts). --mv is the
+   move's colour: its judgment, or the accent when it is the active move. */
+.moves { position: relative; display: flex; flex-wrap: wrap; align-content: flex-start; overflow-y: auto; overscroll-behavior: contain; border-radius: 0.75rem; background: var(--color-surface); user-select: none; }
+.moves .idx { flex: 0 0 13%; display: flex; justify-content: center; line-height: 2.07em; background: var(--color-raised); color: color-mix(in oklab, var(--color-dim) 60%, transparent); font-variant-numeric: tabular-nums; }
+.moves .mv { --mv: var(--color-fg); flex: 0 0 43.5%; display: flex; align-items: baseline; min-width: 0; padding: 0 0.3em 0 0.5em; line-height: 1.75em; font-size: 1.05em; text-align: left; white-space: nowrap; color: var(--mv); cursor: pointer; }
+.moves .mv.active { --mv: var(--color-accent); font-weight: 700; color: var(--color-bg); background: color-mix(in oklab, var(--mv) 85%, transparent); }
+.moves .mv.inaccuracy { --mv: var(--color-inaccuracy); }
+.moves .mv.mistake { --mv: var(--color-mistake); }
+.moves .mv.blunder { --mv: var(--color-blunder); }
+.moves .mv.book:not(.active) { opacity: 0.6; }
+@media (hover: hover) { .moves .mv:not(.active):hover { background: color-mix(in oklab, var(--mv) 15%, transparent); } }
+.moves .glyph { margin-left: 0.08em; font-size: 0.82em; }
+.moves .ev { margin-left: auto; padding-left: 0.3em; font-size: 0.8em; font-weight: 400; color: var(--color-dim); font-variant-numeric: tabular-nums; }
+.moves .mv.active .ev { color: inherit; }
+.moves .result { flex: 0 0 100%; padding: 5px 0 3px; text-align: center; font-weight: 700; font-size: 1.1em; border-top: 1px solid var(--color-raised); }
