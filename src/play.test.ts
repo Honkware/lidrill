@@ -2,6 +2,7 @@ import { Chess } from 'chessops/chess'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { material, PlayRun, readChoices, readGame, writeChoices } from './play'
 import { computeBand } from './profile'
+import { sound } from './sound'
 
 // A game against a scripted opponent: the fetch stands in for the Maia
 // endpoint and answers from a list, so no board and no server are needed.
@@ -225,6 +226,19 @@ describe('PlayRun clocks', () => {
     vi.spyOn(Chess.prototype, 'hasInsufficientMaterial').mockImplementation(color => color === 'white')
     await pass(300000)
     expect([bare.result, bare.ending]).toEqual(['draw', 'Time out'])
+  })
+
+  it('sounds once a game when the player drops under ten seconds', async () => {
+    const low = vi.spyOn(sound, 'lowtime')
+    const { fetchFn } = maia([{ move: 'g1f3' }])
+    const run = new PlayRun({ ...timed, clock: { base: 15, inc: 0 }, color: 'black', start }, () => {}, () => {}, fetchFn, now)
+    await pass(4000)
+    expect(low).not.toHaveBeenCalled()
+    await pass(2000)
+    expect(low).toHaveBeenCalledTimes(1)
+    await play(run, ['c7c5'])
+    await pass(1000)
+    expect([run.running, low.mock.calls.length]).toEqual(['black', 1])
   })
 
   it('wins when Maia runs out of time', async () => {

@@ -4,7 +4,7 @@
 // Buffers are decoded once so they play instantly on phones. Nothing plays
 // before the first tap (browsers block it) or when sound is off.
 
-export type SoundName = 'move' | 'capture' | 'check' | 'good' | 'bad' | 'win' | 'lose' | 'draw' | 'notify'
+export type SoundName = 'move' | 'capture' | 'check' | 'good' | 'bad' | 'win' | 'lose' | 'draw' | 'notify' | 'lowtime'
 
 // Which sound a just-landed move makes: a capture or a check outranks a plain
 // knock. Pure, so the mapping is testable without an AudioContext.
@@ -131,4 +131,5 @@ export const sound = {
   lose: () => play('lose'),
   draw: () => play('draw'),
   notify: () => play('notify'),
+  lowtime: () => play('lowtime'),
 }

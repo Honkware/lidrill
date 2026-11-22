@@ -136,6 +136,9 @@ export function material(fen: string): { white: Role[]; black: Role[]; diff: num
   return { white: taken('white'), black: taken('black'), diff }
 }
 
+// The player's clock sounds once a game when it drops under this
+const LOW_TIME = 10000
+
 let runs = 0
 
 export class PlayRun {
@@ -170,6 +173,7 @@ export class PlayRun {
   private since?: number
   private clocks: number[] // centiseconds left after each move
   private timer?: ReturnType<typeof setInterval>
+  private warned: boolean // the player's low-time sound has played
   private onKey = (e: KeyboardEvent) => {
     const to = stepKey(e, this.viewPly, this.moves.length)
     if (to === undefined) return
@@ -186,6 +190,8 @@ export class PlayRun {
     this.now = now
     this.moves = [...(from?.moves ?? opts.start?.moves ?? [])]
     this.clocks = [...(from?.clocks ?? [])]
+    // Back after a reload already under the mark, the warning was heard
+    this.warned = !!from && from.left[opts.color] < LOW_TIME
     this.count()
     for (const m of this.moves) {
       this.pos.play(parseUci(m.uci)!)
@@ -254,7 +260,12 @@ export class PlayRun {
   }
 
   private tick() {
-    if (this.since !== undefined && !this.flag()) this.redraw()
+    if (this.since === undefined || this.flag()) return
+    if (!this.warned && this.running === this.opts.color && this.clock(this.opts.color) < LOW_TIME) {
+      this.warned = true
+      sound.lowtime()
+    }
+    this.redraw()
   }
 
   // Ends the game when the side to move is out of time. It is a draw when
