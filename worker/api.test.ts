@@ -343,3 +343,21 @@ describe('POST /api/maia/move', () => {
     expect((await post('/api/maia/move', game, { proof: null })).status).toBe(400)
   })
 })
+
+describe('POST /api/maia/policy', () => {
+  const position = { moves: ['e2e4'], level: 1500 }
+
+  it('goes the way a move does, to the policy route and under the same guards', async () => {
+    const calls: string[] = []
+    vi.stubGlobal('fetch', async (url: string) => {
+      calls.push(url)
+      return new Response(JSON.stringify({ moves: [{ uci: 'e7e5', p: 0.6 }] }))
+    })
+    expect(await (await post('/api/maia/policy', position, { proof: null })).json()).toEqual({ moves: [{ uci: 'e7e5', p: 0.6 }] })
+    expect(calls).toEqual(['https://backend.example/maia/policy'])
+    expect((await post('/api/maia/policy', position, { origin: 'https://evil.example', proof: null })).status).toBe(403)
+    maiaLimitOk = false
+    expect((await post('/api/maia/policy', position, { proof: null })).status).toBe(429)
+    expect(calls).toHaveLength(1)
+  })
+})
