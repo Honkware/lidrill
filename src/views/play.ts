@@ -1,5 +1,6 @@
 import type { VNode } from 'snabbdom'
 import type { Ctrl } from '../ctrl'
+import type { PlayRun } from '../play'
 import { el } from '../el'
 import { moveTable, score } from './moves'
 import { board, button, plural, topBar } from './ui'
@@ -15,6 +16,7 @@ export function playView(ctrl: Ctrl): VNode {
     el('div', [el('div', 'md:hidden', [bar()]), board(run.key, e => run.mount(e))]),
     el('aside', 'space-y-4 px-4 pb-8 pt-3 md:px-0 md:pt-0', [
       el('div', 'hidden md:block', [bar()]),
+      clocks(run),
       el('p', 'text-sm', start ? `From move ${Math.floor(start.moves.length / 2) + 1} of one of your games${start.opening ? `, ${start.opening.split(':')[0]}` : ''}.` : 'A game from the first move.'),
       el('div', 'flex gap-6 text-sm', [
         el('div', [el('p', 'text-xs text-dim', 'Maia'), el('p', 'font-medium tabular-nums', { attrs: { title: 'Approximate Lichess blitz rating' } }, `about ${level}`)]),
@@ -25,6 +27,24 @@ export function playView(ctrl: Ctrl): VNode {
       run.state === 'over' ? over(ctrl) : live(ctrl),
     ]),
   ])
+}
+
+// m:ss, with tenths under ten seconds as on Lichess
+function clockText(ms: number): string {
+  const s = Math.floor(ms / 1000)
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}${ms < 10000 ? `.${Math.floor((ms % 1000) / 100)}` : ''}`
+}
+
+function clocks(run: PlayRun): VNode | null {
+  if (!run.opts.clock) return null
+  const row = (name: string, color: 'white' | 'black') => {
+    const ms = run.clock(color)
+    return el('div', 'flex items-baseline justify-between rounded-lg px-3 py-1', { class: { 'bg-raised': run.running === color, 'text-bad': ms < 10000 } }, [
+      el('span', 'text-sm', name),
+      el('span', 'font-display text-2xl tabular-nums', clockText(ms)),
+    ])
+  }
+  return el('div', 'max-w-xs space-y-1', [row('Maia', run.opts.color === 'white' ? 'black' : 'white'), row('You', run.opts.color)])
 }
 
 function live(ctrl: Ctrl): VNode {
