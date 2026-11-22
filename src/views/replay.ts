@@ -67,7 +67,7 @@ function side(ctrl: Ctrl, r: Replay): VNode {
     ])
   return el('div', 'space-y-4', [
     progressDots(r),
-    el('p', 'text-sm text-dim', `Replaying. Find the ${plural(n, 'move')} where the game turned.`),
-    button(r.current ? 'Skip to the next stop' : 'Skip to the end', () => r.skip(), 'quiet'),
+    el('p', 'text-sm text-dim', `Replaying the game. ${plural(n, 'turning point')} to find.`),
+    button(r.current ? 'Skip to the next turning point' : 'Skip to the end', () => r.skip(), 'quiet'),
   ])
 }

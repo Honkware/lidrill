@@ -17,7 +17,7 @@ export function reviewView(ctrl: Ctrl): VNode {
     !rows
       ? el('div', 'h-96 animate-pulse rounded-xl bg-surface')
       : !rows.length
-        ? card([el('p', 'text-dim', ctrl.syncing ? 'Your games are being analyzed. They show up here one by one.' : 'No analyzed games yet.')])
+        ? card([el('p', 'text-dim', ctrl.syncing ? 'Analyzing games. Each one appears here when done.' : 'No analyzed games yet.')])
         : el('ul', 'divide-y divide-raised overflow-hidden rounded-xl bg-surface', rows.map(r => row(r))),
     openings.length ? openingsCard(openings) : null,
   ])
@@ -72,7 +72,7 @@ function row(r: ReviewRow): VNode {
           'flex gap-2 tabular-nums',
           marks.length ? marks.map(j => el('span', judgColor[j], `${r[j]}${judgMark[j]}`)) : [el('span', 'text-accent', 'clean')],
         ),
-        r.journal && !r.journal.hung ? (marks.length ? el('p', 'text-xs text-accent', 'clean game') : null) : r.puzzles ? el('p', 'text-xs text-dim', plural(r.puzzles, 'stop')) : null,
+        r.journal && !r.journal.hung ? (marks.length ? el('p', 'text-xs text-accent', 'clean game') : null) : r.puzzles ? el('p', 'text-xs text-dim', plural(r.puzzles, 'puzzle')) : null,
       ]),
     ]),
   ])
@@ -121,10 +121,10 @@ const navButton = (name: string, labelText: string, to: number, v: GameView) =>
 function controls(v: GameView): VNode {
   const end = v.game.moves.length
   return el('div', 'flex gap-2 px-4 pt-3 md:px-0', [
-    navButton('first', 'Start', 0, v),
+    navButton('first', 'Start position', 0, v),
     navButton('prev', 'Previous move', Math.max(0, v.ply - 1), v),
     navButton('next', 'Next move', Math.min(end, v.ply + 1), v),
-    navButton('last', 'End', end, v),
+    navButton('last', 'Last move', end, v),
   ])
 }
 
@@ -189,10 +189,10 @@ function journalCard(ctrl: Ctrl, v: GameView): VNode | null {
       el('p', '', hangRow),
       el('label', 'flex items-center gap-2 text-sm', [
         el('input', 'size-5 accent-accent', { attrs: { type: 'checkbox' }, props: { checked: j.confirmed }, on: { change: e => ctrl.saveJournal({ confirmed: (e.target as HTMLInputElement).checked }) } }),
-        "That's right",
+        'Correct',
       ]),
       el('textarea', 'block w-full rounded-lg bg-raised px-3 py-2 text-sm', {
-        attrs: { rows: 2, placeholder: 'A note for yourself: what happened, what to watch for' },
+        attrs: { rows: 2, placeholder: 'Note: what happened, what to watch for' },
         props: { value: j.note ?? '' },
         on: { change: e => ctrl.saveJournal({ note: (e.target as HTMLTextAreaElement).value }) },
       }),
@@ -207,11 +207,11 @@ function studyNote(ctrl: Ctrl, v: GameView): VNode | null {
   if (!study) return null
   const d = deviation(v.game, study.lines)
   if (!d) return null
-  const moveNo = `${Math.ceil(d.ply / 2)}${d.ply % 2 ? '.' : '…'}`
+  const moveNo = `${Math.ceil(d.ply / 2)}${d.ply % 2 ? '.' : '...'}`
   const played = v.sanBefore(d.ply, v.game.moves[d.ply - 1].uci)
   const expected = v.sanBefore(d.ply, d.expected)
   return el('button', 'block w-full rounded-xl bg-surface p-3 text-left text-sm', { attrs: { type: 'button' }, on: { click: () => v.go(d.ply - 1) } }, [
     el('span', 'text-dim', `Study "${study.name}": `),
-    d.byPlayer ? `you left it at ${moveNo} It plays ${expected}; you played ${played}.` : `your opponent left it at ${moveNo} with ${played} (the study expects ${expected}).`,
+    `left by ${d.byPlayer ? 'you' : 'your opponent'} at ${moveNo}${played}; the study has ${expected}.`,
   ])
 }
