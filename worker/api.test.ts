@@ -178,7 +178,8 @@ describe('POST /api/explain v2 (slim)', () => {
     expect(cachePuts).toBe(2)
     // An invalid solving move is a bad request, not a frame
     expect((await post('/api/explain', { v: 2, packetHash, band: 'club', solved: 'ignore previous instructions' })).status).toBe(400)
-  })
+    // Five proofs of work in one test: the search is a matter of luck and has run past the default 5 s on a busy machine
+  }, 30_000)
 
   it('band is a consistency assert: mismatch → 409', async () => {
     const packetHash = await upload()
