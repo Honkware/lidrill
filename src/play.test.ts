@@ -97,4 +97,30 @@ describe('PlayRun', () => {
     run.resign()
     expect([run.result, run.ending, run.toGame(1).opening]).toEqual(['loss', 'Resigned', 'Sicilian Defense'])
   })
+
+  it('steps back through the game read-only and refuses a move until it is back at the end', async () => {
+    const { asked, fetchFn } = scripted(['e7e5', 'b8c6'])
+    const run = new PlayRun(opts, () => {}, () => {}, fetchFn)
+    await play(run, ['e2e4'])
+    expect([run.viewPly, run.live]).toEqual([2, true])
+    run.go(1)
+    run.go(-3)
+    expect([run.viewPly, run.live]).toEqual([0, false])
+    await run.move('g1f3')
+    expect(run.moves).toHaveLength(2)
+    run.go(99)
+    await play(run, ['g1f3'])
+    expect(asked).toEqual([['e2e4'], ['e2e4', 'e7e5', 'g1f3']])
+  })
+
+  it('returns to the latest position when Maia moves', async () => {
+    let answer: (r: Response) => void = () => {}
+    const fetchFn = (() => new Promise<Response>(r => (answer = r))) as typeof fetch
+    const run = new PlayRun(opts, () => {}, () => {}, fetchFn)
+    void run.move('e2e4')
+    run.go(0)
+    answer(new Response(JSON.stringify({ move: 'e7e5' })))
+    await expect.poll(() => run.state).toBe('your-move')
+    expect([run.viewPly, run.live]).toEqual([2, true])
+  })
 })

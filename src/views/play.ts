@@ -1,6 +1,7 @@
 import type { VNode } from 'snabbdom'
 import type { Ctrl } from '../ctrl'
 import { el } from '../el'
+import { moveTable, score } from './moves'
 import { board, button, plural, topBar } from './ui'
 
 const RESULT = { win: 'You won', loss: 'You lost', draw: 'Draw' } as const
@@ -20,6 +21,7 @@ export function playView(ctrl: Ctrl): VNode {
         el('div', [el('p', 'text-xs text-dim', 'You play'), el('p', 'font-medium', run.opts.color)]),
         run.last ? el('div', [el('p', 'text-xs text-dim', 'Maia played'), el('p', 'font-medium', run.last)]) : null,
       ]),
+      run.moves.length ? moveTable(run.moves, run.viewPly, ply => run.go(ply), run.result && score(run.result, run.opts.color)) : null,
       run.state === 'over' ? over(ctrl) : live(ctrl),
     ]),
   ])
@@ -31,7 +33,10 @@ function live(ctrl: Ctrl): VNode {
     run.state === 'failed'
       ? el('div', 'space-y-2', [el('p', 'text-sm text-bad', run.error), button('Try again', () => run.retry(), 'plain')])
       : el('p', 'text-sm text-dim', run.state === 'thinking' ? 'Maia is thinking…' : 'Your move.'),
-    button('Resign', () => run.resign(), 'quiet'),
+    el('div', 'flex flex-wrap gap-2', [
+      run.live ? null : button('Back to the game', () => run.go(run.moves.length), 'plain'),
+      button('Resign', () => run.resign(), 'quiet'),
+    ]),
   ])
 }
 

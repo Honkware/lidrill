@@ -6,8 +6,10 @@ import { chessgroundDests } from 'chessops/compat'
 import { makeFen } from 'chessops/fen'
 import { makeSan } from 'chessops/san'
 import { makeUci, parseSquare, parseUci } from 'chessops/util'
+import type { Color } from 'chessops/types'
 import { checkColor } from './checkColor'
 import type { Game, Result } from './db'
+import { stepKey } from './gameview'
 import { fetchMove, type Start } from './maia'
 import { landSound, sound } from './sound'
 
@@ -45,6 +47,11 @@ export class PlayRun {
   saved?: Game
   readonly opts: PlayOptions
   readonly moves: { san: string; uci: string }[]
+  // The position on the board: the live one unless the player has stepped
+  // back, and then the board is read-only
+  viewPly = 0
+  private fens: string[] = []
+  private checks: (Color | false)[] = []
   private pos = Chess.default()
   private seen = new Map<string, number>()
   private cg?: Api
@@ -52,6 +59,12 @@ export class PlayRun {
   private onEnd: (run: PlayRun) => void
   private fetchFn: typeof fetch
   private gone = false
+  private onKey = (e: KeyboardEvent) => {
+    const to = stepKey(e, this.viewPly, this.moves.length)
+    if (to === undefined) return
+    e.preventDefault()
+    this.go(to)
+  }
 
   constructor(opts: PlayOptions, redraw: () => void, onEnd: (run: PlayRun) => void, fetchFn: typeof fetch = fetch) {
     this.opts = opts
@@ -64,6 +77,7 @@ export class PlayRun {
       this.pos.play(parseUci(m.uci)!)
       this.count()
     }
+    this.viewPly = this.moves.length
     if (this.pos.turn !== opts.color) void this.reply()
   }
 
@@ -79,26 +93,42 @@ export class PlayRun {
       movable: { free: false, showDests: true },
       events: { move: (orig, dest) => this.onMove(orig, dest) },
     })
+    window.addEventListener('keydown', this.onKey)
     this.sync()
   }
 
   destroy() {
     this.gone = true
+    window.removeEventListener('keydown', this.onKey)
     this.cg?.destroy()
   }
 
+  get live() {
+    return this.viewPly === this.moves.length
+  }
+
+  go(ply: number) {
+    this.viewPly = Math.max(0, Math.min(this.moves.length, ply))
+    this.sync()
+    this.redraw()
+  }
+
+  // Counts the position for repetition and keeps it for stepping back
   private count() {
     const key = positionKey(this.pos)
     this.seen.set(key, (this.seen.get(key) ?? 0) + 1)
+    this.fens.push(makeFen(this.pos.toSetup()))
+    this.checks.push(checkColor(this.pos))
   }
 
   private sync() {
-    const last = this.moves.at(-1)?.uci
-    const mine = this.state === 'your-move'
+    const ply = this.viewPly
+    const last = this.moves[ply - 1]?.uci
+    const mine = this.state === 'your-move' && this.live
     this.cg?.set({
-      fen: makeFen(this.pos.toSetup()),
-      turnColor: this.pos.turn,
-      check: checkColor(this.pos),
+      fen: this.fens[ply],
+      turnColor: ply % 2 === 0 ? 'white' : 'black',
+      check: this.checks[ply],
       lastMove: last ? ([last.slice(0, 2), last.slice(2, 4)] as Key[]) : undefined,
       movable: mine ? { color: this.opts.color, dests: chessgroundDests(this.pos) } : { color: undefined, dests: new Map() },
     })
@@ -120,6 +150,8 @@ export class PlayRun {
     this.moves.push({ san: makeSan(this.pos, move), uci: makeUci(move) })
     this.pos.play(move)
     this.count()
+    // Either side's move brings a player who stepped back to the live board
+    this.viewPly = this.moves.length
     sound[landSound(capture, this.pos.isCheck())]()
     if (this.pos.isCheckmate()) return this.end(mover === this.opts.color ? 'win' : 'loss', 'Checkmate'), false
     if (drawn(this.pos, this.seen)) return this.end('draw', this.pos.isStalemate() ? 'Stalemate' : 'Draw'), false
@@ -128,7 +160,7 @@ export class PlayRun {
 
   // The player's move, as the board reports it
   async move(uci: string) {
-    if (this.state !== 'your-move') return
+    if (this.state !== 'your-move' || !this.live) return
     if (!this.push(uci)) return
     await this.reply()
   }
