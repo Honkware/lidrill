@@ -28,7 +28,7 @@ export function welcomeView(ctrl: Ctrl): VNode {
     ctrl.status ? el('p', 'text-sm text-bad', ctrl.status) : null,
     el('p', 'text-sm text-dim', 'Your games and puzzles stay in this browser. lidrill has no account of its own.'),
     el('details', 'text-sm', [
-      el('summary', 'cursor-pointer py-2 text-dim', 'Only play on Chess.com?'),
+      el('summary', 'cursor-pointer py-2 text-dim', 'Chess.com only'),
       el('div', 'mt-2 space-y-2', [el('p', 'text-dim', 'Chess.com games are public, so a username is enough.'), chesscomField(ctrl, 'Import')]),
     ]),
   ])

@@ -91,7 +91,7 @@ function header(ctrl: Ctrl, full: boolean): VNode | null {
         ctrl.syncing && ctrl.progress?.total
           ? el('a', 'flex items-center gap-2 tabular-nums', { attrs: { href: '#/games' } }, [
               el('span', 'size-2 animate-pulse rounded-full bg-accent'),
-              `Analyzing ${ctrl.progress.done}/${ctrl.progress.total}`,
+              `Analyzing ${ctrl.progress.done} of ${ctrl.progress.total}`,
             ])
           : null,
         ctrl.auth ? el('span', 'hidden sm:inline', ctrl.auth.username) : null,

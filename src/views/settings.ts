@@ -38,7 +38,7 @@ export function settingsView(ctrl: Ctrl): VNode {
     card(
       [
         label('What counts'),
-        el('p', 'text-sm text-dim', 'A streak game is one with nothing given away. At your level:'),
+        el('p', 'text-sm text-dim', 'A streak game is one with nothing given away. At each level:'),
         ...(['beginner', 'club', 'advanced'] as const).map(b =>
           el('p', 'text-sm', { class: { 'text-dim': p?.band !== b } }, [p?.band === b ? el('strong', '', 'You: ') : '', HANG_RULE[b]]),
         ),
@@ -81,7 +81,7 @@ export function settingsView(ctrl: Ctrl): VNode {
     card(
       [
         label('Openings plan'),
-        el('p', 'text-sm text-dim', 'Today shows how often your games reach these. Pick up to four of the openings you play, or leave them all off and lidrill picks for you.'),
+        el('p', 'text-sm text-dim', 'Pick up to four of the openings you play, or leave them all off and lidrill picks for you.'),
         ctrl.playedFamilies.length
           ? el(
               'div',
@@ -96,7 +96,7 @@ export function settingsView(ctrl: Ctrl): VNode {
                 )
               }),
             )
-          : el('p', 'text-sm text-dim', 'Your openings show up here once games are imported.'),
+          : el('p', 'text-sm text-dim', 'Openings appear here once games are imported.'),
         ctrl.auth ? studyPicker(ctrl) : null,
       ],
       'space-y-3',

@@ -15,7 +15,7 @@ export function gamesView(ctrl: Ctrl): VNode {
       [
         label('Lichess'),
         ctrl.auth
-          ? el('p', 'text-sm', `Signed in as ${ctrl.auth.username}. New games come in each time you open lidrill.`)
+          ? el('p', 'text-sm', `Signed in as ${ctrl.auth.username}. New games sync each time lidrill opens.`)
           : el('div', 'space-y-2', [el('p', 'text-sm text-dim', 'Sign in to add your Lichess games.'), button('Sign in with Lichess', () => ctrl.signIn())]),
         el('div', 'flex gap-3', [
           button(ctrl.syncing ? 'Syncing…' : 'Sync now', () => ctrl.sync(), 'primary', ctrl.syncing),
@@ -25,11 +25,11 @@ export function gamesView(ctrl: Ctrl): VNode {
         prog && prog.total
           ? h('div', [
               el('div', 'h-2 rounded bg-raised', [el('div', 'h-2 rounded bg-accent', { style: { width: `${(100 * prog.done) / prog.total}%` } })]),
-              el('p', 'mt-1 text-xs text-dim', `${prog.done} / ${prog.total} games analyzed this run`),
+              el('p', 'mt-1 text-xs text-dim', `${prog.done} of ${prog.total} games analyzed this run`),
             ])
           : null,
         el('p', 'text-sm text-dim', `${games} games, ${analyzed} analyzed, ${puzzles} puzzles.`),
-        p ? el('p', 'text-sm text-dim', [`lidrill sees you as a ${p.band} player. `, whatCountsLink()]) : null,
+        p ? el('p', 'text-sm text-dim', [`Level: ${p.band}. `, whatCountsLink()]) : null,
       ],
       'space-y-3',
     ),
@@ -40,8 +40,8 @@ export function gamesView(ctrl: Ctrl): VNode {
           'p',
           'text-sm text-dim',
           p?.chesscomUser
-            ? `Also importing games for ${p.chesscomUser}. Clear the name to stop.`
-            : 'Play there too? Add your username and those games get drilled as well.',
+            ? `Importing games for ${p.chesscomUser}. Clear the name to stop.`
+            : 'Add a username to import and drill those games too.',
         ),
         chesscomField(ctrl, p?.chesscomUser ? 'Save' : 'Add'),
       ],

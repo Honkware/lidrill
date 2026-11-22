@@ -46,7 +46,7 @@ function snapshot(claim: PrecisionClaim): VNode {
 const MARKS: { mark: Mark; label: string; title: string }[] = [
   { mark: 'right', label: 'Right', title: 'The claim is true in this position' },
   { mark: 'wrong', label: 'Wrong', title: 'The claim is false in this position' },
-  { mark: 'unknown', label: 'Can’t tell', title: 'Not enough context to judge' },
+  { mark: 'unknown', label: "Can't tell", title: 'Not enough context to judge' },
 ]
 
 const SLOT_LABEL: Record<string, string> = {
@@ -61,16 +61,16 @@ function summaryCard(ctrl: Ctrl): VNode {
   const s = summarize(corpus.claims, marks)
   const done = s.marked === s.total
   return card([
-    label('Release gate - explanation precision'),
+    label('Release gate: explanation precision'),
     el('p', 'mt-1 text-sm text-dim', [
       `${s.marked} of ${s.total} claims marked`,
-      done ? '' : ' - mark every claim, then export for the gate',
-      ` · source: ${corpus.source === 'model' ? 'narrated (gate run)' : 'floor text - rerun after a narrated gate for model claims'}`,
+      done ? '' : '. Mark every claim, then export for the gate',
+      ` · source: ${corpus.source === 'model' ? 'narrated (gate run)' : 'floor text (rerun after a narrated gate for model claims)'}`,
     ]),
     el('div', 'mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm', [
       el('span', '', [el('span', 'font-medium text-accent', `${s.right}`), ' right']),
       el('span', '', [el('span', 'font-medium text-bad', `${s.wrong}`), ' wrong']),
-      el('span', 'text-dim', `${s.unknown} can’t tell`),
+      el('span', 'text-dim', `${s.unknown} can't tell`),
       el('span', '', ['claim precision: ', el('span', { class: { 'font-medium': true, 'text-accent': s.precision !== null && s.precision >= 0.99, 'text-bad': s.precision !== null && s.precision < 0.99 } }, pct(s.precision ?? undefined))]),
     ]),
     el('div', 'mt-3 flex flex-wrap gap-2', [
