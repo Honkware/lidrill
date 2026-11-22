@@ -5,7 +5,7 @@ import type { Game } from '../db'
 import { el } from '../el'
 import type { GameView } from '../gameview'
 import { deviation } from '../lichess/repertoire'
-import { board, btnClass, button, card, dateLabel, icon, judgColor, judgMark, label, listRow, loading, loadingBlock, plural, resultChip, rowList, topBar } from './ui'
+import { board, btnClass, button, card, dateLabel, empty, icon, judgColor, judgMark, label, listRow, loading, loadingBlock, plural, resultChip, rowList, topBar } from './ui'
 import { journalHangParts } from '../server/surface'
 import { moveTable, score } from './moves'
 
@@ -17,7 +17,7 @@ export function reviewView(ctrl: Ctrl): VNode {
     !rows
       ? loadingBlock('h-96')
       : !rows.length
-        ? card([el('p', 'text-dim', ctrl.syncing ? 'Analyzing games. Each one appears here when done.' : 'No analyzed games yet.')])
+        ? empty(ctrl.syncing ? 'Analyzing games. Each one appears here when done.' : 'No analyzed games yet.')
         : rowList(rows.map(r => row(r)), 'overflow-hidden rounded-xl bg-surface'),
     openings.length ? openingsCard(openings) : null,
   ])

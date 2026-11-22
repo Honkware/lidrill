@@ -66,6 +66,9 @@ export const loading = () => el('p', 'p-4 text-dim', { attrs: { role: 'status' }
 // A grey block in the shape of what is loading
 export const loadingBlock = (extra: string) => el('div', `animate-pulse rounded-xl bg-surface ${extra}`)
 
+// A card that says there is nothing to show yet
+export const empty = (text: string) => card([el('p', 'text-dim', text)])
+
 export const label = (text: string) => el('p', 'text-xs font-medium uppercase tracking-wide text-dim', text)
 
 export const pct = (x?: number) => (x === undefined ? '–' : `${Math.round(x * 100)}%`)

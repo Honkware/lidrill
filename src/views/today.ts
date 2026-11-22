@@ -1,7 +1,7 @@
 import type { VNode } from 'snabbdom'
 import type { Ctrl } from '../ctrl'
 import { el } from '../el'
-import { btnClass, button, card, label, loadingBlock, plural, weekBars } from './ui'
+import { btnClass, button, card, empty, label, loadingBlock, plural, weekBars } from './ui'
 import { thresholdWords } from '../server/surface'
 
 // Home IA: one hero (streak), one primary action (due), then at most three
@@ -14,7 +14,7 @@ export function todayView(ctrl: Ctrl): VNode {
   if (!t || !p)
     return ctrl.ready
       ? el('div', 'space-y-4', [
-          card([el('p', 'text-dim', ctrl.syncing ? 'Fetching games…' : 'No games yet.')]),
+          empty(ctrl.syncing ? 'Fetching games…' : 'No games yet.'),
           ctrl.error ? el('p', 'text-sm text-bad', ctrl.error) : null,
         ])
       : skeleton()
