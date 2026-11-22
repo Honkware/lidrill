@@ -12,6 +12,11 @@ The server tier's loopback backend (`docs/server-tier.md`).
   games with an exact port of the client's `analyze.ts`/`judge.ts`, writes
   the analyzed game back through the rows table, and clients pick it up on
   the next pull.
+- `maia.py` - Maia-3 as an opponent: `POST /maia/move` takes a game as UCI
+  moves and a level, and answers with one move sampled at the dial and
+  temperature `maia-calibrate` gives for that level. torch and maia3
+  (`requirements-maia.txt`) are loaded on the first move, so the sync store
+  runs without them.
 - `systemd/` - the three VM units (`lidrill-server`, `lidrill-tunnel`,
   `lidrill-analysis`).
 

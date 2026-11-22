@@ -18,6 +18,7 @@ The moves in the final text are filled in from the engine's lines by the rendere
 
 - Turning Points replays one of your games and stops at the moves where it turned.
 - Conversion and defense drills let you play out your own positions against Stockfish.
+- Play Maia is a whole game against [Maia-3](https://github.com/CSSLab/maia3), a model that plays like a person of a given rating. The level follows your results and stays a little above you, and the mistakes you make in the game become puzzles like those from any other game.
 - Signed-in accounts sync between devices. Otherwise everything stays in your browser.
 
 ## Development
@@ -32,10 +33,12 @@ bun run test
 
 `bun run dev` starts the app without explanations, because those need the Worker. To try them locally, run `bun run build` and then `wrangler dev`, with your OpenRouter key in `.dev.vars` (there is a `.dev.vars.example` to copy).
 
+Maia's levels are the ratings at which [LevelRL](https://github.com/Honkware/levelrl) measured Maia-3's strength, from 600 to 2300, so each one is an approximate Lichess blitz rating. The model runs in the sync service. To play locally, install `server/requirements.txt` and `server/requirements-maia.txt`, start `server/app.py` as its README shows, and add `BACKEND_URL` and `LIDRILL_KEY` to `.dev.vars`. The weights (about 300 MB) are downloaded from Hugging Face the first time Maia moves.
+
 If you want to host your own copy, change the route in `wrangler.jsonc` and the allowed origins in `worker/index.ts`, create a `PACKETS` KV namespace, and set the `OPENROUTER_API_KEY` and `POW_SECRET` secrets. The sync service lives in `server/` and is described in `docs/server-tier.md`.
 
 ## Licence and credits
 
-lidrill is AGPL-3.0-or-later because the move labels and the pattern rules are ported from [lila](https://github.com/lichess-org/lila) and [lichess-puzzler](https://github.com/ornicar/lichess-puzzler). The board is [chessground](https://github.com/lichess-org/chessground), the rules come from [chessops](https://github.com/niklasf/chessops), and the engine is [Stockfish](https://stockfishchess.org) 19 through [stockfish.js](https://github.com/nmrugg/stockfish.js). Licences for the piece sets and fonts are in `public/`.
+lidrill is AGPL-3.0-or-later because the move labels and the pattern rules are ported from [lila](https://github.com/lichess-org/lila) and [lichess-puzzler](https://github.com/ornicar/lichess-puzzler). The board is [chessground](https://github.com/lichess-org/chessground), the rules come from [chessops](https://github.com/niklasf/chessops), and the engine is [Stockfish](https://stockfishchess.org) 19 through [stockfish.js](https://github.com/nmrugg/stockfish.js). Maia-3 is by the CSSLab at the University of Toronto, and both its code and its weights are AGPL-3.0. The weights are not in this repo. Licences for the piece sets and fonts are in `public/`.
 
-This is an independent project and has no connection to Lichess or Chess.com beyond using their public APIs.
+This is an independent project. It has no connection to Lichess or Chess.com beyond using their public APIs, and none to the CSSLab.

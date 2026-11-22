@@ -34,6 +34,8 @@ public/engine/
 !.env.example
 
 # keys, sessions, caches and local data
+__pycache__/
+.pytest_cache/
 *.pem
 *.key
 *.session
