@@ -127,7 +127,7 @@ function notice(ctrl: Ctrl, tabs: boolean): VNode {
   return el(
     'div',
     'fixed inset-x-4 z-30 mx-auto flex max-w-md items-center gap-3 rounded-xl bg-raised py-1 pl-4 pr-1 shadow-lg',
-    { class: { 'bottom-notice-tabs': tabs, 'bottom-notice': !tabs } },
+    { attrs: { role: 'status' }, class: { 'bottom-notice-tabs': tabs, 'bottom-notice': !tabs } },
     [
       el('p', 'flex-1 py-2 text-sm', n.text),
       n.href ? el('a', 'text-sm font-medium text-accent', { attrs: { href: n.href, target: '_blank', rel: 'noopener' } }, 'Open') : null,

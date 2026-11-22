@@ -78,6 +78,9 @@ export const dots = (marks: ('good' | 'warn' | 'bad' | undefined)[], current: nu
     ),
   )
 
+// role=alert has a screen reader read it out when it appears
+export const errorLine = (text: string | undefined, extra = '') => el('p', `text-sm text-bad ${extra}`, { attrs: { role: 'alert' } }, text)
+
 // A card that says there is nothing to show yet
 export const empty = (text: string) => card([el('p', 'text-dim', text)])
 

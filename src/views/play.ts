@@ -7,7 +7,7 @@ import type { Game } from '../db'
 import { material, type PlayRun } from '../play'
 import { el } from '../el'
 import { moveTable, score } from './moves'
-import { board, button, judgColor, loading, plural, topBar } from './ui'
+import { board, button, errorLine, judgColor, loading, plural, topBar } from './ui'
 
 const RESULT = { win: 'You won', loss: 'You lost', draw: 'Draw' } as const
 
@@ -89,7 +89,7 @@ function live(ctrl: Ctrl): VNode {
   const run = ctrl.play!
   return el('div', 'space-y-3', [
     run.state === 'failed'
-      ? el('div', 'space-y-2', [el('p', 'text-sm text-bad', run.error), button('Try again', () => run.retry(), 'plain')])
+      ? el('div', 'space-y-2', [errorLine(run.error), button('Try again', () => run.retry(), 'plain')])
       : el('p', 'text-sm text-dim', run.state === 'thinking' ? 'Maia is thinking…' : run.offering ? 'You offered a draw.' : run.note ? `${run.note} Your move.` : 'Your move.'),
     el('div', 'flex flex-wrap gap-2', [
       run.live ? null : button('Back to the game', () => run.go(run.moves.length), 'plain'),

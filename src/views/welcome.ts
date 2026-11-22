@@ -1,7 +1,7 @@
 import type { VNode } from 'snabbdom'
 import type { Ctrl } from '../ctrl'
 import { el } from '../el'
-import { btnClass, button } from './ui'
+import { btnClass, button, errorLine } from './ui'
 
 export const chesscomField = (ctrl: Ctrl, label: string) =>
   el(
@@ -25,7 +25,7 @@ export function welcomeView(ctrl: Ctrl): VNode {
       'lidrill goes through your Lichess games with Stockfish, finds the moves that cost you, and gives them back as a few puzzles a day.',
     ),
     el('div', 'grid', [button('Sign in with Lichess', () => ctrl.signIn())]),
-    ctrl.status ? el('p', 'text-sm text-bad', ctrl.status) : null,
+    ctrl.status ? errorLine(ctrl.status) : null,
     el('p', 'text-sm text-dim', 'Your games and puzzles stay in this browser. lidrill has no account of its own.'),
     el('details', 'text-sm', [
       el('summary', 'cursor-pointer py-2 text-dim', 'Chess.com only'),

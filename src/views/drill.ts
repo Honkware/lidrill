@@ -3,7 +3,7 @@ import type { Ctrl } from '../ctrl'
 import type { Drill } from '../drill'
 import { el } from '../el'
 import type { BoardLink, Segment } from '../server/render'
-import { board, btnClass, button, dots, icon, loading, moveInput, topBar } from './ui'
+import { board, btnClass, button, dots, errorLine, icon, loading, moveInput, topBar } from './ui'
 import { drillGameLine } from '../server/surface'
 
 export function drillView(ctrl: Ctrl): VNode {
@@ -208,7 +208,7 @@ function whyPart(d: Drill): VNode | null {
     const [done, total] = w.progress ?? [0, 0]
     return el('p', 'mt-3 animate-pulse text-sm text-dim', total ? `Checking with Stockfish, ${done} of ${total}…` : 'Explaining…')
   }
-  if (w.error) return el('p', 'mt-3 text-sm text-bad', w.error)
+  if (w.error) return errorLine(w.error, 'mt-3')
   const slot = (name: string) => w.slots?.find(s => s.slot === name)?.segments ?? []
   const nextTime = slot('nextTime')
   return el('div', 'mt-3 space-y-2 border-t border-raised pt-3 text-sm', [
