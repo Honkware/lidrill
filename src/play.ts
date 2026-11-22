@@ -124,7 +124,7 @@ export async function offerDraw(moves: string[], level: number, fetchFn: typeof 
   const res = await fetchFn('/api/maia/draw', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ moves, level }) })
   if (res.status === 404) return false
   const body = (await res.json().catch(() => ({}))) as { accept?: boolean; error?: string }
-  if (!res.ok) throw new Error(body.error ?? 'Maia isn’t available right now.')
+  if (!res.ok) throw new Error(body.error ?? `Maia returned HTTP ${res.status} for the draw offer.`)
   return body.accept === true
 }
 
@@ -351,7 +351,7 @@ export class PlayRun {
   private push(uci: string): boolean {
     // Castling is stored king-takes-rook, as in imported games
     const move = normalizeMove(this.pos, parseUci(uci)!)
-    if (!this.pos.isLegal(move)) throw new Error(`Maia answered with ${uci}, which isn’t legal here.`)
+    if (!this.pos.isLegal(move)) throw new Error(`Maia returned ${uci}, which is not a legal move here.`)
     const capture = this.pos.board.get(move.to) !== undefined || move.to === this.pos.epSquare
     const mover = this.pos.turn
     const timed = this.since !== undefined
@@ -454,7 +454,7 @@ export class PlayRun {
       if (this.gone || this.state !== 'your-move' || this.moves.length !== ply) return
       if (yes) return this.end('draw', 'Draw agreed')
       this.drawAfter = this.playerMoves + DRAW_WAIT
-      this.note = 'Maia declined.'
+      this.note = 'Draw declined.'
       this.save()
     } catch (e) {
       this.note = (e as Error).message

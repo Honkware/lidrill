@@ -12,7 +12,7 @@ function scripted(replies: string[]) {
   const fetchFn = (async (_url: string, init: RequestInit) => {
     asked.push((JSON.parse(String(init.body)) as { moves: string[] }).moves)
     const move = replies.shift()
-    return move ? new Response(JSON.stringify({ move })) : new Response(JSON.stringify({ error: 'Maia isn’t available right now.' }), { status: 502 })
+    return move ? new Response(JSON.stringify({ move })) : new Response(JSON.stringify({ error: 'Maia returned HTTP 502.' }), { status: 502 })
   }) as typeof fetch
   return { asked, fetchFn }
 }
@@ -74,7 +74,7 @@ describe('PlayRun', () => {
     const { asked, fetchFn } = scripted([])
     const run = new PlayRun(opts, () => {}, () => {}, fetchFn)
     await play(run, ['e2e4'])
-    expect([run.state, run.error]).toEqual(['failed', 'Maia isn’t available right now.'])
+    expect([run.state, run.error]).toEqual(['failed', 'Maia returned HTTP 502.'])
     await run.move('d2d4')
     expect(run.moves).toHaveLength(1)
     run.retry()
@@ -178,7 +178,7 @@ describe('PlayRun clocks', () => {
       sent.push(JSON.parse(String(init.body)))
       t += took
       const r = replies.shift()
-      return r ? ok(r) : ({ ok: false, json: async () => ({ error: 'Maia isn’t available right now.' }) } as Response)
+      return r ? ok(r) : ({ ok: false, json: async () => ({ error: 'Maia returned HTTP 502.' }) } as Response)
     }) as typeof fetch
     return { sent, fetchFn }
   }
@@ -441,10 +441,10 @@ describe('Maia resigning and draw offers', () => {
     expect([run.state, run.result, run.ending]).toEqual(['over', 'draw', 'Draw agreed'])
   })
 
-  it('says Maia declined and waits ten of the player\'s moves before another offer', async () => {
+  it('says the draw was declined and waits ten of the player\'s moves before another offer', async () => {
     const run = new PlayRun(opts, () => {}, () => {}, server(black.map(move => ({ move })), [false]).fetchFn)
     await run.offerDraw()
-    expect([run.state, run.note, run.canOfferDraw]).toEqual(['your-move', 'Maia declined.', false])
+    expect([run.state, run.note, run.canOfferDraw]).toEqual(['your-move', 'Draw declined.', false])
     await play(run, white.slice(0, 9))
     expect([run.note, run.canOfferDraw]).toEqual([undefined, false])
     await play(run, white.slice(9))
@@ -455,7 +455,7 @@ describe('Maia resigning and draw offers', () => {
   it('counts a server without the draw route as a decline', async () => {
     const run = new PlayRun(opts, () => {}, () => {}, server([], [404]).fetchFn)
     await run.offerDraw()
-    expect([run.state, run.note, run.canOfferDraw]).toEqual(['your-move', 'Maia declined.', false])
+    expect([run.state, run.note, run.canOfferDraw]).toEqual(['your-move', 'Draw declined.', false])
   })
 
   it('keeps the wait for the next offer over a reload, and the game still ends when Maia resigns', async () => {

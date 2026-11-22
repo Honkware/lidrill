@@ -9,7 +9,7 @@ import { el } from '../el'
 import { moveTable, score } from './moves'
 import { board, button, errorLine, judgColor, loading, plural, topBar } from './ui'
 
-const RESULT = { win: 'You won', loss: 'You lost', draw: 'Draw' } as const
+const RESULT = { win: 'Won', loss: 'Lost', draw: 'Draw' } as const
 
 export function playView(ctrl: Ctrl): VNode {
   const run = ctrl.play
@@ -32,7 +32,7 @@ export function playView(ctrl: Ctrl): VNode {
         ? [over(ctrl), moves]
         : [
             run.promoting ? promotion(run) : null,
-            el('p', 'text-sm', start ? `From move ${Math.floor(start.moves.length / 2) + 1} of one of your games${start.opening ? `, ${start.opening.split(':')[0]}` : ''}.` : 'A game from the first move.'),
+            el('p', 'text-sm', start ? `From move ${Math.floor(start.moves.length / 2) + 1} of an earlier game${start.opening ? `, ${start.opening.split(':')[0]}` : ''}.` : 'A game from the first move.'),
             el('div', 'flex gap-6 text-sm', [
               el('div', [el('p', 'text-xs text-dim', 'You play'), el('p', 'font-medium', color)]),
               run.last ? el('div', [el('p', 'text-xs text-dim', 'Maia played'), el('p', 'font-medium', run.last)]) : null,
@@ -90,7 +90,7 @@ function live(ctrl: Ctrl): VNode {
   return el('div', 'space-y-3', [
     run.state === 'failed'
       ? el('div', 'space-y-2', [errorLine(run.error), button('Try again', () => run.retry(), 'plain')])
-      : el('p', 'text-sm text-dim', run.state === 'thinking' ? 'Maia is thinking…' : run.offering ? 'You offered a draw.' : run.note ? `${run.note} Your move.` : 'Your move.'),
+      : el('p', 'text-sm text-dim', run.state === 'thinking' ? 'Maia is thinking…' : run.offering ? 'Draw offered…' : run.note ? `${run.note} Your move.` : 'Your move.'),
     el('div', 'flex flex-wrap gap-2', [
       run.live ? null : button('Back to the game', () => run.go(run.moves.length), 'plain'),
       ...(run.resigning
@@ -111,11 +111,11 @@ function over(ctrl: Ctrl): VNode {
       el('p', 'text-sm text-dim', `${run.ending}.`),
     ]),
     run.tooShort
-      ? el('p', 'text-sm text-dim', 'Too short to count.')
+      ? el('p', 'text-sm text-dim', 'Resigned in under 5 moves, so not saved.')
       : game
-        ? el('p', 'text-sm', ['Your level against Maia: ', el('span', 'font-medium tabular-nums', `${run.opts.rating} → ${ctrl.maiaRatingAt(game.speed)}`)])
+        ? el('p', 'text-sm', ['Estimate against Maia: ', el('span', 'font-medium tabular-nums', `${run.opts.rating} → ${ctrl.maiaRatingAt(game.speed)}`)])
         : null,
-    !game ? null : ids ? analysis(game, run.opts.color, ids, ctrl) : el('p', 'text-sm text-dim', ctrl.syncing ? 'Analyzing the game…' : 'The game is analyzed with your next sync.'),
+    !game ? null : ids ? analysis(game, run.opts.color, ids, ctrl) : el('p', 'text-sm text-dim', ctrl.syncing ? 'Analyzing the game…' : 'Not analyzed yet. The next sync analyzes it.'),
     el('div', 'flex flex-wrap gap-2', [
       button('Rematch', () => ctrl.rematch(), solve ? 'plain' : 'primary'),
       game ? button('Review the game', () => ctrl.go('game', game.id), 'plain') : null,
@@ -134,9 +134,9 @@ function analysis(game: Game, color: Color, ids: string[], ctrl: Ctrl): VNode {
   return el('div', 'space-y-3', [
     a
       ? el('p', 'text-sm', [
-          'Accuracy: you ',
+          'Accuracy ',
           el('span', 'font-medium tabular-nums', `${Math.round(a[color])}%`),
-          ', Maia ',
+          ' vs Maia ',
           el('span', 'font-medium tabular-nums', `${Math.round(a[opposite(color)])}%`),
         ])
       : null,
@@ -150,8 +150,8 @@ function analysis(game: Game, color: Color, ids: string[], ctrl: Ctrl): VNode {
     ),
     ids.length
       ? el('div', 'space-y-2', [
-          el('p', 'text-sm', `${plural(ids.length, 'mistake')} from this game ${ids.length === 1 ? 'is now a puzzle' : 'are now puzzles'}.`),
-          button(ids.length === 1 ? 'Solve it now' : 'Solve them now', () => ctrl.solvePuzzles(ids)),
+          el('p', 'text-sm', `${plural(ids.length, 'puzzle')} from this game.`),
+          button(ids.length === 1 ? 'Solve it' : 'Solve them', () => ctrl.solvePuzzles(ids)),
         ])
       : el('p', 'text-sm text-dim', 'No puzzles from this game.'),
   ])
