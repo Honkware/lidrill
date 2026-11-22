@@ -2,7 +2,7 @@ import type { Progress } from './analysis/queue'
 import { finishSignIn, signOut, startSignIn } from './auth'
 import { backfillPackets } from './backfill'
 import { deleteAllData, exportData, importData, sameUser } from './backup'
-import { db, type Auth, type Game, type JournalEntry, type MaiaSpeed, type Practice, type Profile } from './db'
+import { db, type Auth, type Game, type JournalEntry, type MaiaSpeed, type Opening, type Practice, type Profile } from './db'
 import { Drill, SessionReview, type Outcome } from './drill'
 import { GameView } from './gameview'
 import { fetchLook, PREFERENCE_SCOPE } from './lichess/api'
@@ -11,6 +11,12 @@ import { STUDY_SCOPE, sendToStudy } from './lichess/study'
 import { applyLook, BOARDS, PIECE_SETS } from './look'
 import { clampLevel, estimateFor, estimates, levelFor, ownStarts, speedOf, startEstimate, updateEstimate, type Start } from './maia'
 import { compliance, openingTable, repertoireTargets, streak, type OpeningRow, type Streak } from './metrics'
+import { addCards, dueCards, saveTreeCards } from './openings/cards'
+import { cachedPolicy, treeLevel } from './openings/policy'
+import { gamesOpenings, rebuildRepertoire } from './openings/repertoire'
+import { OpeningSession } from './openings/session'
+import { SparRun } from './openings/spar'
+import { buildTree, gameCards, wentWrong } from './openings/tree'
 import { analyzePending, forgetLichessAccount, getEngine, precertifyDue, saveProfile, syncAndAnalyze, warmEngine } from './pipeline'
 import { clearGame, clockOf, PlayRun, readChoices, readGame, rematch, writeChoices, type Choices } from './play'
 import { PracticeRun } from './practice'
@@ -22,7 +28,16 @@ import { SignInExpired } from './sync/lichess'
 import { serverSync as syncWithServer } from './sync/server'
 import { dueQueue, dueToday, saveWhyMissed, type DayQueue } from './train'
 
-export type Screen = 'welcome' | 'today' | 'drill' | 'replay' | 'review' | 'game' | 'games' | 'drills' | 'practice' | 'play' | 'settings' | 'precision'
+export type Screen = 'welcome' | 'today' | 'drill' | 'replay' | 'review' | 'game' | 'games' | 'drills' | 'practice' | 'play' | 'settings' | 'precision' | 'opening' | 'spar'
+
+// A trained opening on the Drills card: coverage is filled in once its
+// tree is counted
+export interface OpeningStat {
+  opening: Opening
+  coverage?: number
+  due: number
+  error?: string
+}
 
 export interface Counts {
   games: number
@@ -42,6 +57,7 @@ export interface TodayData {
   puzzlePerf?: { now: number; delta?: number }
   targets: string[]
   compliance?: number
+  openingDue: number
 }
 
 export interface ReviewRow {
@@ -90,6 +106,15 @@ export class Ctrl {
   private maiaStart = 1000
   studies?: StudyInfo[]
   playedFamilies: string[] = []
+  openingStats: OpeningStat[] = []
+  openingDue = 0
+  openingPicking = false
+  gamesOpenings: Opening[] = [] // the player's most played openings, offered beside the built-in ones
+  openingSet?: OpeningSession
+  spar?: SparRun
+  sparRound = 0
+  private counting?: Promise<void>
+  private countAgain?: Game[]
   // The human precision pass: claim index and the reviewer's marks
   precisionIndex = 0
   precisionMarks?: import('./precision').Marks
@@ -151,6 +176,8 @@ export class Ctrl {
     else if (name === 'practice' && arg) await this.openPractice(arg)
     else if (name === 'drill') await this.openDrill()
     else if (name === 'play') await this.openPlay()
+    else if (name === 'opening') await this.openOpenings()
+    else if (name === 'spar' && arg) await this.openSpar(arg)
     else this.screen = ROUTED.includes(name as Screen) ? (name as Screen) : 'today'
     if (this.screen === 'precision' && this.precisionMarks === undefined) this.precisionMarks = loadMarks()
     this.redraw()
@@ -184,6 +211,10 @@ export class Ctrl {
     this.run = undefined
     this.play?.destroy()
     this.play = undefined
+    this.openingSet?.board.destroy()
+    this.openingSet = undefined
+    this.spar?.destroy()
+    this.spar = undefined
   }
 
   // Cheap enough to run often, but analysis reports progress per game, so
@@ -201,16 +232,18 @@ export class Ctrl {
   // switching tabs during a long analysis stays instant.
   private async load() {
     this.profile = await db.profile.get('me')
-    const [games, analyzed, puzzles, reviews, journal, practice] = await Promise.all([
+    const [games, analyzed, puzzles, reviews, journal, practice, repertoire] = await Promise.all([
       db.games.count(),
       db.games.where('analyzedAt').above(0).count(),
       db.puzzles.count(),
       db.reviews.count(),
       db.journal.count(),
       db.practice.count(),
+      db.repertoire.count(),
     ])
     this.counts = { games, analyzed, puzzles }
-    const version = [games, analyzed, puzzles, reviews, journal, practice, this.profile?.band, this.profile?.repertoire?.join(), this.profile?.repertoireStudy?.id, new Date().toDateString()].join('|')
+    const openings = this.profile?.openings?.map(o => `${o.color}:${o.name}`).join()
+    const version = [games, analyzed, puzzles, reviews, journal, practice, repertoire, openings, this.profile?.band, this.profile?.repertoire?.join(), this.profile?.repertoireStudy?.id, new Date().toDateString()].join('|')
     const key = `${this.screen}:${version}`
     if (key !== this.loadedKey) {
       const all = ['today', 'review', 'settings', 'drills'].includes(this.screen) ? await db.games.toArray() : []
@@ -221,6 +254,8 @@ export class Ctrl {
         this.playStarts = ownStarts(all)
         this.maiaGames = all.filter(g => g.site === 'maia')
         this.maiaStart = startEstimate(this.profile?.ratings, all)
+        this.gamesOpenings = gamesOpenings(all)
+        void this.countOpenings(all)
       }
       if (this.screen === 'settings')
         this.playedFamilies = openingTable(all.filter(g => g.site !== 'maia'))
@@ -263,7 +298,97 @@ export class Ctrl {
       puzzlePerf: last && { now: last.global.performance, delta: prev && last.global.performance - prev.global.performance },
       targets,
       compliance: profile.repertoireStudy ? studyCompliance(games, profile.repertoireStudy.lines) : compliance(games, targets),
+      openingDue: (await dueCards(this.openingNames, now)).length,
     }
+  }
+
+  // --- openings ---
+
+  get openingNames(): string[] {
+    return (this.profile?.openings ?? []).map(o => o.name)
+  }
+
+  // The trees are built against Maia at the player's rapid estimate, else
+  // their estimate at any speed
+  get openingLevel(): number {
+    return treeLevel(estimateFor(estimates(this.profile?.maia), 'rapid', this.maiaStart).rating)
+  }
+
+  // Rebuilds the repertoire, makes cards from the player's games and counts
+  // each opening's tree. Maia's answers are cached, so after the first time
+  // this is mostly local; the card fills in one opening at a time.
+  private async countOpenings(games: Game[]): Promise<void> {
+    // A change while counting (an opening added) is counted straight after
+    if (this.counting) return void (this.countAgain = games)
+    this.counting = (async () => {
+      const openings = this.profile?.openings ?? []
+      const rep = await rebuildRepertoire(openings, this.profile?.repertoireStudy?.lines ?? [], games.filter(g => g.site !== 'maia'))
+      const analyzed = games.filter(g => g.analyzedAt !== undefined)
+      const wrong = wentWrong(analyzed)
+      await addCards(analyzed.flatMap(g => gameCards(g, rep, openings, wrong)))
+      const policy = cachedPolicy(this.openingLevel)
+      this.openingStats = openings.map(opening => ({ opening, due: 0 }))
+      for (const row of this.openingStats) {
+        try {
+          const tree = await buildTree(row.opening, rep, policy)
+          await saveTreeCards(tree.nodes, row.opening.name, wrong)
+          row.coverage = tree.coverage
+        } catch (e) {
+          row.error = (e as Error).message
+        }
+        row.due = (await dueCards([row.opening.name])).length
+        this.redraw()
+      }
+      this.openingDue = (await dueCards(this.openingNames)).length
+      this.redraw()
+    })().finally(() => {
+      this.counting = undefined
+      const again = this.countAgain
+      this.countAgain = undefined
+      if (again) void this.countOpenings(again)
+    })
+  }
+
+  toggleOpeningPicking() {
+    this.openingPicking = !this.openingPicking
+    this.redraw()
+  }
+
+  async toggleOpening(o: Opening) {
+    const now = this.profile?.openings ?? []
+    const has = now.some(x => x.name === o.name && x.color === o.color)
+    const openings = has ? now.filter(x => x.name !== o.name || x.color !== o.color) : [...now, o]
+    this.profile = await saveProfile({ openings })
+    this.refresh(true)
+  }
+
+  private async repertoireMap(): Promise<Map<string, string>> {
+    return new Map((await db.repertoire.toArray()).map(r => [r.fen, r.uci]))
+  }
+
+  private async openOpenings() {
+    this.screen = 'opening'
+    this.openingSet = new OpeningSession(await dueCards(this.openingNames), await this.repertoireMap(), getEngine(), this.redraw)
+  }
+
+  // arg is 'white:Italian Game': an opening's name can come up for both colours
+  private async openSpar(arg: string) {
+    const opening = this.profile?.openings?.find(o => `${o.color}:${o.name}` === arg)
+    if (!opening) return void (this.screen = 'drills')
+    if (!this.profile?.maia) this.maiaStart = startEstimate(this.profile?.ratings, await db.games.toArray())
+    this.screen = 'spar'
+    const cards = await db.openingCards.where('opening').equals(opening.name).toArray()
+    this.spar = new SparRun(opening, await this.repertoireMap(), cards, cachedPolicy(this.openingLevel), getEngine(), this.redraw)
+  }
+
+  // A new game on a new board: the round is part of the board's key
+  async sparAgain() {
+    const o = this.spar?.opening
+    this.spar?.destroy()
+    this.spar = undefined
+    this.sparRound++
+    if (o) await this.openSpar(`${o.color}:${o.name}`)
+    this.redraw()
   }
 
   private async loadReview(analyzed: Game[]) {

@@ -1,0 +1,167 @@
+import type { VNode } from 'snabbdom'
+import { Rating } from 'ts-fsrs'
+import type { Ctrl, OpeningStat } from '../ctrl'
+import type { Opening, OpeningCard } from '../db'
+import { el } from '../el'
+import { BUILTIN, DEPTH } from '../openings/repertoire'
+import { lineSan, type OpeningSession } from '../openings/session'
+import type { SparStep } from '../openings/spar'
+import { board, button, card, icon, pct, plural, topBar } from './ui'
+
+const side = (o: Opening) => (o.color === 'white' ? 'White' : 'Black')
+const sparArg = (o: Opening) => `${o.color}:${o.name}`
+
+// The Openings card at the top of Drills
+export function openingsCard(ctrl: Ctrl): VNode {
+  const rows = ctrl.openingStats
+  const study = ctrl.profile?.repertoireStudy
+  return card([
+    el('h2', 'font-display text-lg', 'Openings'),
+    el(
+      'p',
+      'mt-1 text-sm text-dim',
+      `Your openings against what Maia plays at about ${ctrl.openingLevel}. Coverage is the share of its likely replies you have a move for, through move ${DEPTH}.`,
+    ),
+    rows.length ? el('ul', 'mt-3 divide-y divide-raised', rows.map(r => openingRow(ctrl, r))) : el('p', 'mt-3 text-sm text-dim', 'No openings chosen yet.'),
+    study ? el('p', 'mt-2 text-xs text-dim', `Where your Lichess study "${study.name}" has a move, its move is the one trained.`) : null,
+    el('div', 'mt-4 flex flex-wrap gap-2', [
+      ctrl.openingDue ? button(`Train ${plural(ctrl.openingDue, 'card')}`, () => ctrl.go('opening')) : null,
+      button(ctrl.openingPicking ? 'Close the list' : 'Add or remove openings', () => ctrl.toggleOpeningPicking(), 'plain'),
+    ]),
+    ctrl.openingPicking ? picker(ctrl) : null,
+  ])
+}
+
+function openingRow(ctrl: Ctrl, r: OpeningStat): VNode {
+  const coverage = r.coverage !== undefined ? `${pct(r.coverage)} covered` : r.error ? 'not counted' : 'counting…'
+  return el('li', 'flex items-center gap-3 py-3', [
+    el('div', 'min-w-0 flex-1', [
+      el('p', 'truncate font-medium', r.opening.name),
+      el('p', 'text-xs text-dim', `${side(r.opening)}, ${coverage}, ${r.due} due`),
+      r.error ? el('p', 'text-xs text-bad', r.error) : null,
+    ]),
+    button('Spar', () => ctrl.go('spar', sparArg(r.opening)), 'plain'),
+  ])
+}
+
+// The built-in openings, then the ones the player plays most in their games
+function picker(ctrl: Ctrl): VNode {
+  const chosen = ctrl.profile?.openings ?? []
+  const same = (a: Opening, b: Opening) => a.name === b.name && a.color === b.color
+  // A chosen opening stays on the list to be removed, even once it has
+  // dropped out of the player's most played
+  const options = [...BUILTIN, ...ctrl.gamesOpenings, ...chosen].filter((o, i, all) => all.findIndex(x => same(x, o)) === i)
+  const group = (color: Opening['color']) =>
+    el('div', 'mt-3', [
+      el('p', 'text-xs text-dim', `As ${color === 'white' ? 'White' : 'Black'}`),
+      el(
+        'div',
+        'mt-1 flex flex-wrap gap-2',
+        options
+          .filter(o => o.color === color)
+          .map(o => {
+            const on = chosen.some(c => same(c, o))
+            return el(
+              'button',
+              'min-h-9 rounded-md px-3 text-sm',
+              { attrs: { type: 'button', 'aria-pressed': String(on) }, class: { 'bg-accent': on, 'text-bg': on, 'bg-raised': !on }, on: { click: () => ctrl.toggleOpening(o) } },
+              o.name,
+            )
+          }),
+      ),
+    ])
+  return el('div', [
+    group('white'),
+    group('black'),
+    ctrl.gamesOpenings.length ? el('p', 'mt-2 text-xs text-dim', 'The list also has the openings you play most in your games.') : null,
+  ])
+}
+
+const TONE: Record<number, ['good' | 'warn' | 'bad', string]> = {
+  [Rating.Good]: ['good', 'Good'],
+  [Rating.Hard]: ['warn', 'Playable'],
+  [Rating.Again]: ['bad', 'Missed'],
+}
+
+// A set of due opening cards, one move each
+export function openingView(ctrl: Ctrl): VNode {
+  const s = ctrl.openingSet
+  if (!s) return el('p', 'p-4 text-dim', 'Loading…')
+  const top = topBar('Openings', () => ctrl.back('drills'))
+  const c = s.card
+  return el('div', 'md:grid md:grid-cols-[auto_minmax(0,1fr)] md:gap-6 md:pt-4', [
+    el('div', [el('div', 'md:hidden', [top]), board('opening-set', e => s.mount(e))]),
+    el('aside', 'space-y-4 px-4 pb-8 pt-3 md:px-0 md:pt-0', [el('div', 'hidden md:block', [top]), c ? cardSide(s, c) : setDone(ctrl, s)]),
+  ])
+}
+
+function cardSide(s: OpeningSession, c: OpeningCard): VNode {
+  const v = s.verdict
+  const last = s.index === s.cards.length - 1
+  return el('div', 'space-y-3', [
+    el('p', 'text-xs text-dim', `Card ${s.index + 1} of ${s.cards.length}, ${c.opening}`),
+    el('p', 'text-sm', lineSan(c.moves)),
+    s.state === 'your-move'
+      ? el('p', 'text-sm', s.recall ? 'Play your repertoire move.' : 'No repertoire move here yet. Find a good one.')
+      : s.state === 'judging'
+        ? el('p', 'animate-pulse text-sm text-dim', 'Stockfish is checking…')
+        : null,
+    v
+      ? el('div', 'rounded-xl bg-surface p-4 border-l-4', { class: { 'border-accent': TONE[v.rating][0] === 'good', 'border-warn': TONE[v.rating][0] === 'warn', 'border-bad': TONE[v.rating][0] === 'bad' } }, [
+          el('p', 'font-display text-xl', { class: { 'text-accent': TONE[v.rating][0] === 'good', 'text-warn': TONE[v.rating][0] === 'warn', 'text-bad': TONE[v.rating][0] === 'bad' } }, TONE[v.rating][1]),
+          el('p', 'mt-1 text-sm text-dim', v.text),
+        ])
+      : null,
+    v?.offer
+      ? s.added
+        ? el('p', 'flex items-center gap-1 text-sm text-accent', [icon('check', 16), `${s.offerSan} added to your repertoire`])
+        : el('div', 'grid', [button(`Add ${s.offerSan} to your repertoire`, () => void s.add(), 'plain')])
+      : null,
+    s.state === 'judged' ? el('div', 'grid', [button(last ? 'Finish' : 'Next', () => s.next())]) : null,
+  ])
+}
+
+function setDone(ctrl: Ctrl, s: OpeningSession): VNode {
+  const n = (r: Rating) => s.grades.filter(g => g === r).length
+  return el('div', 'space-y-3', [
+    el('p', 'font-display text-xl', s.cards.length ? 'Set done' : 'No opening cards due'),
+    s.cards.length ? el('p', 'text-sm text-dim', `${n(Rating.Good)} good, ${n(Rating.Hard)} playable, ${n(Rating.Again)} missed`) : null,
+    el('div', 'grid', [button('Back to drills', () => ctrl.go('drills'))]),
+  ])
+}
+
+// "5." for White's move, "5..." for Black's, from the position it was played in
+const moveNo = (fen: string) => `${fen.split(' ')[5]}${fen.split(' ')[1] === 'w' ? '.' : '...'}`
+
+function stepLine(s: SparStep): VNode {
+  const what = s.known ? 'your repertoire move' : s.answer ? `your repertoire plays ${s.answer}` : 'no repertoire move here'
+  return el('li', 'flex items-start gap-2 py-2 text-sm', [
+    el('span', 'shrink-0 font-medium tabular-nums', { class: { 'text-accent': s.known, 'text-bad': !s.known } }, `${moveNo(s.fen)} ${s.san}`),
+    el('span', 'text-dim', what),
+  ])
+}
+
+// One sparring game from move 1, over after the player's DEPTH-th move
+export function sparView(ctrl: Ctrl): VNode {
+  const r = ctrl.spar
+  if (!r) return el('p', 'p-4 text-dim', 'Loading…')
+  const top = topBar(`Spar: ${r.opening.name}`, () => ctrl.back('drills'))
+  const miss = r.steps.find(s => !s.known)
+  return el('div', 'md:grid md:grid-cols-[auto_minmax(0,1fr)] md:gap-6 md:pt-4', [
+    el('div', [el('div', 'md:hidden', [top]), board(`spar:${sparArg(r.opening)}:${ctrl.sparRound}`, e => r.mount(e))]),
+    el('aside', 'space-y-4 px-4 pb-8 pt-3 md:px-0 md:pt-0', [
+      el('div', 'hidden md:block', [top]),
+      el('p', 'text-xs text-dim', `${side(r.opening)} against Maia at about ${ctrl.openingLevel}, through move ${DEPTH}`),
+      r.line.length ? el('p', 'text-sm', lineSan(r.line)) : null,
+      r.state === 'done'
+        ? el('div', 'space-y-3', [
+            r.error ? el('p', 'text-sm text-bad', r.error) : null,
+            el('ul', 'divide-y divide-raised', r.steps.map(stepLine)),
+            miss ? el('p', 'text-sm text-dim', `${moveNo(miss.fen)} ${miss.san} is now a card to train.`) : el('p', 'text-sm text-dim', 'Every move was from your repertoire.'),
+            r.evalText ? el('p', 'text-sm', [el('span', 'text-dim', 'Stockfish at the end: '), el('span', 'font-medium tabular-nums', r.evalText)]) : null,
+            el('div', 'flex flex-wrap gap-2', [button('Spar again', () => ctrl.sparAgain()), button('Back to drills', () => ctrl.go('drills'), 'plain')]),
+          ])
+        : el('p', 'text-sm text-dim', r.state === 'thinking' ? 'Maia is thinking…' : 'Your move.'),
+    ]),
+  ])
+}

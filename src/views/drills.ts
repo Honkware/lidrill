@@ -5,6 +5,7 @@ import { el } from '../el'
 import { history, MAX_LEVEL, MIN_LEVEL, startLabel } from '../maia'
 import { readGame, TIMES, type SavedGame } from '../play'
 import { CLEAR_AFTER } from '../practice'
+import { openingsCard } from './openings'
 import { board, btnClass, button, card, dateLabel, icon, listRow, loading, moveInput, pawns, rowList, segmented, topBar } from './ui'
 
 const ABOUT: Record<PracticeKind, { title: string; text: string }> = {
@@ -23,6 +24,7 @@ export function drillsView(ctrl: Ctrl): VNode {
   const band = ctrl.profile?.band
   return el('div', 'mx-auto max-w-2xl space-y-4', [
     el('h1', 'font-display text-2xl', 'Drills'),
+    openingsCard(ctrl),
     maiaCard(ctrl),
     section('conversion', list),
     band === 'beginner'

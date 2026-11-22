@@ -72,10 +72,6 @@ export class SparRun {
     if (opening.color === 'white') this.state = 'your-move'
   }
 
-  get lastSan(): string | undefined {
-    return this.steps.at(-1)?.san
-  }
-
   get line(): string[] {
     return this.moves
   }
