@@ -19,6 +19,7 @@ The moves in the final text are filled in from the engine's lines by the rendere
 - Turning Points replays one of your games and stops at the moves where it turned.
 - Conversion and defense drills let you play out your own positions against Maia at about your level, with Stockfish judging the result.
 - Play Maia is a whole game against [Maia-3](https://github.com/CSSLab/maia3), a model that plays like a person of a given rating. The level follows your results and stays a little above you, and the mistakes you make in the game become puzzles like those from any other game. You pick a time control and a colour, and Maia can take about as long over each move as a person would.
+- Openings trains the openings you pick, from a short built-in list or your own games, against what people at your level actually play: Maia-3's probabilities at your rating give the replies you will meet through move 8, and the card shows the share you have an answer for. Positions you don't know yet, or got wrong in your games, become cards on the same schedule as the puzzles, and you can spar an opening from move 1 against a Maia that leans towards the replies you know least. A Lichess study you use as your repertoire decides the moves where it has one.
 - Signed-in accounts sync between devices. Otherwise everything stays in your browser.
 
 ## Development
