@@ -44,7 +44,7 @@ export const kept = (replies: Reply[]) => replies.filter(r => r.p >= THRESHOLD)
 
 // The opponent is to move and every position the player could reach after
 // its reply is past the depth
-const pastDepth = (pos: Chess) => pos.fullmoves + (pos.turn === 'black' ? 1 : 0) > DEPTH
+export const pastDepth = (pos: Chess) => pos.fullmoves + (pos.turn === 'black' ? 1 : 0) > DEPTH
 
 export async function buildTree(opening: Opening, rep: Map<string, string>, policy: Policy): Promise<Tree> {
   const nodes: TreeNode[] = []
