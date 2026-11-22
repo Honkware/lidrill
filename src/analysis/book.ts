@@ -1,4 +1,4 @@
-import { db, type Move } from '../db'
+import { db, type Game, type Move } from '../db'
 import { SignInExpired } from '../sync/lichess'
 
 // Opening book from the Lichess masters database. A move is book
@@ -47,4 +47,24 @@ export async function bookLength(moves: Move[], token: string, fetchFn: typeof f
     if ((known[moves[ply].uci] ?? 0) < MIN_GAMES) return ply
   }
   return limit
+}
+
+// Book length per game for one analysis run. A game against Maia gets no
+// fixed book: Maia plays like a person at its level, so a blunder on move 3
+// is as much the player's own as one on move 30. Signed in, it uses the
+// explorer like any other game.
+export function bookFor(token?: string, fetchFn: typeof fetch = fetch): (game: Game) => Promise<number> {
+  let explorerDown = false
+  const fallback = (game: Game) => (game.site === 'maia' ? 0 : FALLBACK_BOOK_PLIES)
+  return async game => {
+    if (!token || explorerDown) return fallback(game)
+    try {
+      return await bookLength(game.moves, token, fetchFn)
+    } catch (e) {
+      if (e instanceof SignInExpired) throw e
+      // Rate limited or offline: finish this run with the fixed count
+      explorerDown = true
+      return fallback(game)
+    }
+  }
 }

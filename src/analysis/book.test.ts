@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { db } from '../db'
+import { db, type Game } from '../db'
 import { pgnMoves } from '../sync/pgn'
-import { bookLength } from './book'
+import { bookFor, bookLength, FALLBACK_BOOK_PLIES } from './book'
 
 // Masters counts for the lines below, trimmed from real explorer answers
 const masters: Record<string, Record<string, number>> = {
@@ -28,6 +28,14 @@ describe('bookLength', () => {
     // 4...Nf6?? is the Scholar's Mate blunder: never book
     const moves = pgnMoves('1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7#')!
     expect(await bookLength(moves, 'tok', fetchFn)).toBe(5)
+  })
+
+  it('gives a game against Maia no book when signed out, and the explorer book when signed in', async () => {
+    const moves = pgnMoves('1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7#')!
+    const game = (site: Game['site']) => ({ site, moves }) as Game
+    expect(await bookFor()(game('maia'))).toBe(0)
+    expect(await bookFor()(game('lichess'))).toBe(FALLBACK_BOOK_PLIES)
+    expect(await bookFor('tok', fetchFn)(game('maia'))).toBe(5)
   })
 
   it('answers repeats from the cache', async () => {

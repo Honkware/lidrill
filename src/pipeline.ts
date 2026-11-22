@@ -1,4 +1,4 @@
-import { bookLength, FALLBACK_BOOK_PLIES } from './analysis/book'
+import { bookFor } from './analysis/book'
 import { Engine, workerEngine } from './analysis/engine'
 import { eachWithEngine, runQueue, type Progress } from './analysis/queue'
 import { db, type Game, type Profile } from './db'
@@ -145,21 +145,6 @@ async function addPractice(games: Game[]): Promise<void> {
   const found = games.flatMap(findPractice)
   const known = new Set(await db.practice.where('id').anyOf(found.map(p => p.id)).primaryKeys())
   await db.practice.bulkAdd(found.filter(p => !known.has(p.id)))
-}
-
-function bookFor(token?: string): (game: Game) => Promise<number> {
-  let explorerDown = false
-  return async game => {
-    if (!token || explorerDown) return FALLBACK_BOOK_PLIES
-    try {
-      return await bookLength(game.moves, token)
-    } catch (e) {
-      if (e instanceof SignInExpired) throw e
-      // Rate limited or offline: finish this run with the fixed count
-      explorerDown = true
-      return FALLBACK_BOOK_PLIES
-    }
-  }
 }
 
 const genOptsFor = (profile: Profile) => ({ swingThresholdCp: profile.swingThresholdCp, marginCp: profile.marginCp, depth: 16, maxSolutionMoves: 3, band: profile.band })
