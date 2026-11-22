@@ -40,6 +40,7 @@ const kv = new Map<string, string>()
 const puts: { key: string; ttl?: number }[] = []
 let packetLimitOk = true
 let maiaLimitOk = true
+let policyLimitOk = true
 
 const env = {
   ASSETS: { fetch: async () => new Response('assets') },
@@ -49,6 +50,7 @@ const env = {
   PACKET_LIMIT: { limit: async () => ({ success: packetLimitOk }) },
   SYNC_LIMIT: { limit: async () => ({ success: true }) },
   MAIA_LIMIT: { limit: async () => ({ success: maiaLimitOk }) },
+  POLICY_LIMIT: { limit: async () => ({ success: policyLimitOk }) },
   BACKEND_URL: 'https://backend.example',
   LIDRILL_KEY: 'backend-secret',
   PACKETS: {
@@ -84,6 +86,7 @@ beforeEach(() => {
   puts.length = 0
   packetLimitOk = true
   maiaLimitOk = true
+  policyLimitOk = true
   vi.stubGlobal('caches', { default: { match: async () => null, put: async () => {} } })
 })
 afterEach(() => vi.unstubAllGlobals())
@@ -347,7 +350,7 @@ describe('POST /api/maia/move', () => {
 describe('POST /api/maia/policy', () => {
   const position = { moves: ['e2e4'], level: 1500 }
 
-  it('goes the way a move does, to the policy route and under the same guards', async () => {
+  it('goes the way a move does, to the policy route, with a rate limit of its own', async () => {
     const calls: string[] = []
     vi.stubGlobal('fetch', async (url: string) => {
       calls.push(url)
@@ -357,7 +360,9 @@ describe('POST /api/maia/policy', () => {
     expect(calls).toEqual(['https://backend.example/maia/policy'])
     expect((await post('/api/maia/policy', position, { origin: 'https://evil.example', proof: null })).status).toBe(403)
     maiaLimitOk = false
+    expect((await post('/api/maia/policy', position, { proof: null })).status).toBe(200)
+    policyLimitOk = false
     expect((await post('/api/maia/policy', position, { proof: null })).status).toBe(429)
-    expect(calls).toHaveLength(1)
+    expect(calls).toHaveLength(2)
   })
 })

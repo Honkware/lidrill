@@ -20,7 +20,10 @@
     // covers several devices syncing at once
     { "name": "SYNC_LIMIT", "namespace_id": "1003", "simple": { "limit": 240, "period": 60 } },
     // One request per Maia move; a fast game is well under one a second
-    { "name": "MAIA_LIMIT", "namespace_id": "1004", "simple": { "limit": 60, "period": 60 } }
+    { "name": "MAIA_LIMIT", "namespace_id": "1004", "simple": { "limit": 60, "period": 60 } },
+    // Building an opening tree asks for one position after another; a first
+    // tree to 8 moves can need a few hundred, so it gets its own budget
+    { "name": "POLICY_LIMIT", "namespace_id": "1005", "simple": { "limit": 300, "period": 60 } }
   ],
   // Packet store: key = packetHash, value = packet
   // JSON, TTL 30 days. Real namespace ids (created 2026-10-06 with
