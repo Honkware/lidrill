@@ -34,6 +34,30 @@ const ROW = 'flex min-h-11 w-full items-center gap-3 px-4 py-3 text-left transit
 export const listRow = (to: string | (() => void), children: VNodeChildren) =>
   el('li', [typeof to === 'string' ? el('a', ROW, { attrs: { href: to } }, children) : el('button', ROW, { attrs: { type: 'button' }, on: { click: to } }, children)])
 
+// One of a few exclusive choices, the options sharing one track as in lila's
+// radio group. Each option is [value, text, a spoken name when the text is a
+// symbol].
+export function segmented<T extends string>(name: string, opts: [T, string, string?][], current: T | undefined, pick: (v: T) => void): VNode {
+  return el(
+    'div',
+    'grid auto-cols-fr grid-flow-col gap-[3px] rounded-lg bg-raised p-[3px]',
+    { attrs: { role: 'group', 'aria-label': name } },
+    opts.map(([v, text, spoken]) => {
+      const on = v === current
+      return el(
+        'button',
+        'h-9 rounded-md text-xs font-medium tabular-nums transition-colors focus-visible:-outline-offset-2',
+        {
+          attrs: { type: 'button', 'aria-pressed': String(on), ...(spoken && { 'aria-label': spoken, title: spoken }) },
+          class: { 'bg-accent': on, 'text-bg': on, 'hover:bg-hover': !on, 'active:bg-press': !on },
+          on: { click: () => pick(v) },
+        },
+        text,
+      )
+    }),
+  )
+}
+
 export const card = (children: VNodeChildren, extra = '') => el('section', `rounded-xl bg-surface p-4 sm:p-5 ${extra}`, children)
 
 export const label = (text: string) => el('p', 'text-xs font-medium uppercase tracking-wide text-dim', text)

@@ -5,7 +5,7 @@ import { el } from '../el'
 import { history, MAX_LEVEL, MIN_LEVEL, startLabel } from '../maia'
 import { readGame, TIMES, type SavedGame } from '../play'
 import { CLEAR_AFTER } from '../practice'
-import { board, btnClass, button, card, dateLabel, icon, listRow, moveInput, pawns, rowList, topBar } from './ui'
+import { board, btnClass, button, card, dateLabel, icon, listRow, moveInput, pawns, rowList, segmented, topBar } from './ui'
 
 const ABOUT: Record<PracticeKind, { title: string; text: string }> = {
   conversion: {
@@ -124,26 +124,7 @@ function savedText({ opts, moves }: SavedGame): string {
 
 // [value, text, a spoken name when the text is a symbol]
 function segments<T extends string>(name: string, opts: [T, string, string?][], current: T, pick: (v: T) => void): VNode {
-  return el('div', 'mt-3', [
-    el('p', 'text-xs text-dim', name),
-    el(
-      'div',
-      'mt-1 grid auto-cols-fr grid-flow-col gap-1',
-      opts.map(([v, text, spoken]) => {
-        const on = v === current
-        return el(
-          'button',
-          'h-9 rounded-md text-xs font-medium tabular-nums',
-          {
-            attrs: { type: 'button', 'aria-pressed': String(on), ...(spoken && { 'aria-label': spoken, title: spoken }) },
-            class: { 'bg-accent': on, 'text-bg': on, 'bg-raised': !on },
-            on: { click: () => pick(v) },
-          },
-          text,
-        )
-      }),
-    ),
-  ])
+  return el('div', 'mt-3 space-y-1', [el('p', 'text-xs text-dim', name), segmented(name, opts, current, pick)])
 }
 
 function section(kind: PracticeKind, list?: Practice[]): VNode {

@@ -7,7 +7,7 @@ import { STUDY_READ_SCOPE } from '../lichess/repertoire'
 import { STUDY_SCOPE } from '../lichess/study'
 import { BOARDS, DEFAULT_BOARD, DEFAULT_PIECES, PIECE_SETS } from '../look'
 import { setSound, soundOn } from '../sound'
-import { btnClass, button, card, HANG_RULE, label, listRow, rowList } from './ui'
+import { btnClass, button, card, HANG_RULE, label, listRow, rowList, segmented } from './ui'
 import { chesscomField } from './welcome'
 
 // What each Lichess permission is used for
@@ -50,10 +50,7 @@ export function settingsView(ctrl: Ctrl): VNode {
     card(
       [
         label('Look'),
-        el('div', 'grid grid-cols-2 gap-2', [
-          choice(theme === 'dark', () => ctrl.setLook({ theme: 'dark' }), ['Dark']),
-          choice(theme === 'light', () => ctrl.setLook({ theme: 'light' }), ['Light']),
-        ]),
+        segmented('Theme', [['dark', 'Dark'], ['light', 'Light']], theme, t => ctrl.setLook({ theme: t })),
         el('p', 'text-sm text-dim', 'Pieces'),
         el(
           'div',

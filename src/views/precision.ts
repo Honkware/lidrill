@@ -7,7 +7,7 @@ import type { Ctrl } from '../ctrl'
 import { el } from '../el'
 import { corpus, summarize, type Mark, type PrecisionClaim } from '../precision'
 import { checkColor } from '../checkColor'
-import { button, card, label, pct } from './ui'
+import { button, card, label, pct, segmented } from './ui'
 
 // The human precision pass: the reviewer reads each claim from
 // the gate corpus over its position and marks it right, wrong, or "cannot
@@ -43,10 +43,10 @@ function snapshot(claim: PrecisionClaim): VNode {
   )
 }
 
-const MARKS: { mark: Mark; label: string; title: string }[] = [
-  { mark: 'right', label: 'Right', title: 'The claim is true in this position' },
-  { mark: 'wrong', label: 'Wrong', title: 'The claim is false in this position' },
-  { mark: 'unknown', label: "Can't tell", title: 'Not enough context to judge' },
+const MARKS: [Mark, string][] = [
+  ['right', 'Right'],
+  ['wrong', 'Wrong'],
+  ['unknown', "Can't tell"],
 ]
 
 const SLOT_LABEL: Record<string, string> = {
@@ -95,26 +95,10 @@ function claimCard(ctrl: Ctrl): VNode {
       el('div', 'min-w-0 flex-1', [
         el('p', 'text-xs text-dim', `${SLOT_LABEL[claim.slot] ?? claim.slot} · ${claim.band} band · claim ${i + 1} of ${corpus.claims.length}`),
         el('p', 'mt-2 text-base leading-relaxed', claim.text),
-        el('div', 'mt-3 flex flex-wrap gap-2', [
-          ...MARKS.map(m =>
-            el(
-              'button',
-              'min-h-11 rounded-lg border-2 px-4 text-sm font-medium',
-              {
-                attrs: { type: 'button', 'aria-pressed': mark === m.mark, title: m.title },
-                class: {
-                  'border-accent': mark === m.mark,
-                  'border-transparent': mark !== m.mark,
-                  'bg-raised': true,
-                },
-                on: { click: () => ctrl.precisionMark(claim.id, m.mark) },
-              },
-              m.label,
-            ),
-          ),
-        ]),
       ]),
     ]),
+    // Under the snapshot, where a phone has the width for all three
+    el('div', 'mt-3', [segmented('Mark', MARKS, mark, m => ctrl.precisionMark(claim.id, m))]),
     el('div', 'mt-4 flex items-center justify-between border-t border-raised pt-3', [
       button('← Previous', () => go(-1), 'quiet', i === 0),
       el('div', 'flex gap-1', corpus.claims.map((c, j) => el('span', 'size-2 rounded-sm', { class: { 'bg-accent': marks[c.id] === 'right', 'bg-bad': marks[c.id] === 'wrong', 'bg-warn': marks[c.id] === 'unknown', 'bg-raised': !marks[c.id], 'ring-1': j === i, 'ring-fg': j === i } }))),
