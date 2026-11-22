@@ -43,6 +43,8 @@ html { color-scheme: dark; }
   :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
   /* Inside the box where the box fills its row, so neighbours don't cover it */
   input:focus-visible, textarea:focus-visible, .moves .mv:focus-visible { outline-offset: -2px; }
+  /* An accent ring inside an accent fill would not show */
+  .moves .mv.active:focus-visible { outline-color: var(--color-bg); }
 }
 
 @media (prefers-reduced-motion: reduce) {

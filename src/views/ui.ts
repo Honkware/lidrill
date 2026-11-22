@@ -46,7 +46,7 @@ export function segmented<T extends string>(name: string, opts: [T, string, stri
       const on = v === current
       return el(
         'button',
-        'h-9 rounded-md text-xs font-medium tabular-nums transition-colors focus-visible:-outline-offset-2',
+        'h-9 rounded-md text-xs font-medium tabular-nums transition-colors focus-visible:-outline-offset-2 focus-visible:outline-fg',
         {
           attrs: { type: 'button', 'aria-pressed': String(on), ...(spoken && { 'aria-label': spoken, title: spoken }) },
           class: { 'bg-accent': on, 'text-bg': on, 'hover:bg-hover': !on, 'active:bg-press': !on },
