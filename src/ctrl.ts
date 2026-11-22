@@ -9,8 +9,10 @@ import { fetchLook, PREFERENCE_SCOPE } from './lichess/api'
 import { fetchStudyLines, listStudies, STUDY_READ_SCOPE, studyCompliance, type StudyInfo } from './lichess/repertoire'
 import { STUDY_SCOPE, sendToStudy } from './lichess/study'
 import { applyLook, BOARDS, PIECE_SETS } from './look'
+import { levelFor, LEVELS, ownStarts, startEstimate, updateEstimate, type Start } from './maia'
 import { compliance, openingTable, repertoireTargets, streak, type OpeningRow, type Streak } from './metrics'
-import { forgetLichessAccount, getEngine, precertifyDue, saveProfile, syncAndAnalyze, warmEngine } from './pipeline'
+import { analyzePending, forgetLichessAccount, getEngine, precertifyDue, saveProfile, syncAndAnalyze, warmEngine } from './pipeline'
+import { PlayRun } from './play'
 import { PracticeRun } from './practice'
 import { Replay } from './replay'
 import { weekReport, weeklyZeroHang, type WeekReport } from './report'
@@ -20,7 +22,7 @@ import { SignInExpired } from './sync/lichess'
 import { serverSync as syncWithServer } from './sync/server'
 import { dueQueue, dueToday, saveWhyMissed, type DayQueue } from './train'
 
-export type Screen = 'welcome' | 'today' | 'drill' | 'replay' | 'review' | 'game' | 'games' | 'drills' | 'practice' | 'settings' | 'precision'
+export type Screen = 'welcome' | 'today' | 'drill' | 'replay' | 'review' | 'game' | 'games' | 'drills' | 'practice' | 'play' | 'settings' | 'precision'
 
 export interface Counts {
   games: number
@@ -77,6 +79,12 @@ export class Ctrl {
   replay?: Replay
   gameView?: GameView
   run?: PracticeRun
+  play?: PlayRun
+  playStarts: Start[] = [] // positions from the player's own games a Maia game can start from
+  playLevel?: number // a level picked by hand; undefined follows the estimate
+  playPuzzles?: number // puzzles the last finished Maia game produced, once analyzed
+  private playOwn = false
+  private maiaStart = 1000
   studies?: StudyInfo[]
   playedFamilies: string[] = []
   // The human precision pass: claim index and the reviewer's marks
@@ -129,7 +137,7 @@ export class Ctrl {
     return !this.auth && !this.profile?.chesscomUser
   }
 
-  // #/review, #/game/<id>, #/replay/<id>, #/practice/<id>, #/drill
+  // #/review, #/game/<id>, #/replay/<id>, #/practice/<id>, #/drill, #/play
   private async route() {
     const [name, ...rest] = location.hash.replace(/^#\/?/, '').split('/')
     const arg = decodeURIComponent(rest.join('/'))
@@ -139,6 +147,7 @@ export class Ctrl {
     else if (name === 'replay' && arg) await this.openReplay(arg)
     else if (name === 'practice' && arg) await this.openPractice(arg)
     else if (name === 'drill') await this.openDrill()
+    else if (name === 'play') await this.openPlay()
     else this.screen = ROUTED.includes(name as Screen) ? (name as Screen) : 'today'
     if (this.screen === 'precision' && this.precisionMarks === undefined) this.precisionMarks = loadMarks()
     this.redraw()
@@ -170,6 +179,8 @@ export class Ctrl {
     this.gameView = undefined
     this.run?.destroy()
     this.run = undefined
+    this.play?.destroy()
+    this.play = undefined
   }
 
   // Cheap enough to run often, but analysis reports progress per game, so
@@ -199,12 +210,16 @@ export class Ctrl {
     const version = [games, analyzed, puzzles, reviews, journal, practice, this.profile?.band, this.profile?.repertoire?.join(), this.profile?.repertoireStudy?.id, new Date().toDateString()].join('|')
     const key = `${this.screen}:${version}`
     if (key !== this.loadedKey) {
-      const all = this.screen === 'today' || this.screen === 'review' || this.screen === 'settings' ? await db.games.toArray() : []
+      const all = ['today', 'review', 'settings', 'drills'].includes(this.screen) ? await db.games.toArray() : []
       const done = all.filter(g => g.analyzedAt !== undefined)
       if (this.screen === 'today' && this.profile) await this.loadToday(all, done, this.profile)
       if (this.screen === 'review') await this.loadReview(done)
+      if (this.screen === 'drills') {
+        this.playStarts = ownStarts(all)
+        this.maiaStart = startEstimate(this.profile?.ratings, all)
+      }
       if (this.screen === 'settings')
-        this.playedFamilies = openingTable(all)
+        this.playedFamilies = openingTable(all.filter(g => g.site !== 'maia'))
           .filter(r => r.family !== 'Unknown')
           .slice(0, 10)
           .map(r => r.family)
@@ -216,7 +231,10 @@ export class Ctrl {
     this.redraw()
   }
 
-  private async loadToday(games: Game[], analyzed: Game[], profile: Profile) {
+  // Games against Maia can be replayed from here but stay out of the
+  // opening table, the weekly report and the repertoire numbers
+  private async loadToday(all: Game[], analyzed: Game[], profile: Profile) {
+    const games = all.filter(g => g.site !== 'maia')
     const now = new Date()
     const journal = await db.journal.toArray()
     const reviews = await db.reviews.toArray()
@@ -505,6 +523,72 @@ export class Ctrl {
       await this.openPractice(id)
       this.redraw()
     }
+  }
+
+  // --- games against Maia ---
+
+  get maiaRating(): number {
+    return this.profile?.maia?.rating ?? this.maiaStart
+  }
+
+  get maiaLevel(): number {
+    return this.playLevel ?? levelFor(this.maiaRating)
+  }
+
+  // One level up or down by hand; 0 goes back to following the estimate
+  stepMaiaLevel(by: -1 | 0 | 1) {
+    const i = LEVELS.indexOf(this.maiaLevel) + by
+    this.playLevel = by === 0 ? undefined : LEVELS[Math.max(0, Math.min(LEVELS.length - 1, i))]
+    this.redraw()
+  }
+
+  startPlay(own: boolean) {
+    this.playOwn = own
+    this.go('play')
+  }
+
+  private async openPlay() {
+    this.screen = 'play'
+    this.playPuzzles = undefined
+    if (!this.profile?.maia) this.maiaStart = startEstimate(this.profile?.ratings, await db.games.toArray())
+    const start = this.playOwn ? this.playStarts[Math.floor(Math.random() * this.playStarts.length)] : undefined
+    // Colours alternate from move 1; a position from an own game keeps its side
+    const color = start?.color ?? ((this.profile?.maia?.games ?? 0) % 2 ? 'black' : 'white')
+    this.play = new PlayRun({ level: this.maiaLevel, color, rating: this.maiaRating, start }, this.redraw, run => void this.finishPlay(run))
+  }
+
+  // A game given up in the first few moves is thrown away. Any other is
+  // stored, moves the estimate, and goes through the same analysis as an
+  // imported game, which is where its puzzles come from.
+  private async finishPlay(run: PlayRun) {
+    if (run.ending === 'Resigned' && run.playerMoves < 5) return
+    const game = run.toGame(Date.now())
+    await db.games.add(game)
+    run.saved = game
+    const score = run.result === 'win' ? 1 : run.result === 'draw' ? 0.5 : 0
+    const maia = { rating: updateEstimate(run.opts.rating, run.opts.level, score), games: (this.profile?.maia?.games ?? 0) + 1 }
+    this.profile = await saveProfile({ maia })
+    this.redraw()
+    await this.analyzeNow()
+    if (this.play !== run) return
+    if ((await db.games.get(game.id))?.analyzedAt) this.playPuzzles = await db.puzzles.where('gameId').equals(game.id).count()
+    this.redraw()
+  }
+
+  // Analysis without a sync, which would first have to reach Lichess or
+  // Chess.com. While a sync is running the game waits for the next one.
+  private async analyzeNow() {
+    if (this.syncing || !this.profile) return
+    this.syncing = true
+    this.abort = new AbortController()
+    try {
+      await analyzePending(this.profile, this.auth?.token, p => ((this.progress = p), this.refresh()), this.abort.signal)
+    } catch (e) {
+      await this.signInExpired(e)
+      console.warn(e)
+    }
+    this.syncing = false
+    await this.refresh(true)
   }
 
   // --- Lichess extras that need one more scope ---

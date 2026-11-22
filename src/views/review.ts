@@ -98,10 +98,12 @@ export function gameView(ctrl: Ctrl): VNode {
       el('div', 'flex flex-wrap gap-2', [
         v.puzzles.length ? button(`Replay ${plural(v.puzzles.length, 'turning point')}`, () => ctrl.go('replay', g.id)) : null,
         v.puzzles.length && ctrl.auth && g.site === 'lichess' ? button('Send to Lichess study', () => ctrl.sendStudy(g.id), 'plain') : null,
-        el('a', 'inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-dim', { attrs: { href: g.url, target: '_blank', rel: 'noopener' } }, [
-          `Open on ${g.site === 'lichess' ? 'Lichess' : 'Chess.com'}`,
-          icon('external', 16),
-        ]),
+        g.url
+          ? el('a', 'inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-dim', { attrs: { href: g.url, target: '_blank', rel: 'noopener' } }, [
+              `Open on ${g.site === 'lichess' ? 'Lichess' : 'Chess.com'}`,
+              icon('external', 16),
+            ])
+          : null,
       ]),
     ]),
   ])

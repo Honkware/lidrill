@@ -2,6 +2,7 @@ import type { VNode } from 'snabbdom'
 import type { Ctrl } from '../ctrl'
 import type { Practice, PracticeKind } from '../db'
 import { el } from '../el'
+import { LEVELS } from '../maia'
 import { CLEAR_AFTER } from '../practice'
 import { board, button, card, icon, moveInput, pawns, topBar } from './ui'
 
@@ -21,6 +22,7 @@ export function drillsView(ctrl: Ctrl): VNode {
   const band = ctrl.profile?.band
   return el('div', 'mx-auto max-w-2xl space-y-4', [
     el('h1', 'font-display text-2xl', 'Drills'),
+    maiaCard(ctrl),
     section('conversion', list),
     band === 'beginner'
       ? card([
@@ -28,6 +30,47 @@ export function drillsView(ctrl: Ctrl): VNode {
           el('p', 'mt-1 text-sm text-dim', 'Unlocks at club level (rated 1000+). Until then, conversion is the one that wins games.'),
         ])
       : section('defense', list),
+  ])
+}
+
+// Whole games against Maia-3. The level is one of the ratings its strength
+// was measured at, so the card says "about" and never promises a rating.
+function maiaCard(ctrl: Ctrl): VNode {
+  const level = ctrl.maiaLevel
+  const games = ctrl.profile?.maia?.games ?? 0
+  const step = (text: string, by: -1 | 1, name: string) =>
+    el(
+      'button',
+      'grid size-11 place-items-center rounded-lg bg-raised text-lg font-medium disabled:opacity-40',
+      { attrs: { type: 'button', 'aria-label': name, disabled: level === LEVELS[by < 0 ? 0 : LEVELS.length - 1] }, on: { click: () => ctrl.stepMaiaLevel(by) } },
+      text,
+    )
+  return card([
+    el('h2', 'font-display text-lg', 'Play Maia'),
+    el(
+      'p',
+      'mt-1 text-sm text-dim',
+      'A whole game against Maia-3, a model that plays like a person of a given rating. The level follows your results and stays a little above you. Afterwards your mistakes become puzzles.',
+    ),
+    el('div', 'mt-4 flex items-center gap-3', [
+      step('−', -1, 'Easier'),
+      el('div', 'min-w-0 flex-1 text-center', [
+        el('p', 'font-display text-2xl tabular-nums', `about ${level}`),
+        el('p', 'text-xs text-dim', 'approximate Lichess blitz rating'),
+      ]),
+      step('+', 1, 'Harder'),
+    ]),
+    el('p', 'mt-2 text-center text-xs text-dim', [
+      ctrl.playLevel === undefined
+        ? games
+          ? `Set from your ${games === 1 ? 'game' : `${games} games`} against Maia.`
+          : 'Set from your rating until you have played a game.'
+        : el('button', 'underline', { attrs: { type: 'button' }, on: { click: () => ctrl.stepMaiaLevel(0) } }, 'Back to the level that follows your results'),
+    ]),
+    el('div', 'mt-4 flex flex-wrap gap-2', [
+      button('New game', () => ctrl.startPlay(false)),
+      ctrl.playStarts.length ? button('From one of your games', () => ctrl.startPlay(true), 'plain') : null,
+    ]),
   ])
 }
 
