@@ -98,8 +98,8 @@ export async function* fetchLichessGames(
     headers: { Accept: 'application/x-ndjson', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
   })
   if (res.status === 401) throw new SignInExpired()
-  if (res.status === 404) throw new Error(`Lichess couldn't find the account "${user}".`)
-  if (!res.ok || !res.body) throw new Error(`Lichess export failed (HTTP ${res.status}). Try again in a minute.`)
+  if (res.status === 404) throw new Error(`Lichess has no account "${user}".`)
+  if (!res.ok || !res.body) throw new Error(`Lichess returned HTTP ${res.status} for the game export of ${user}.`)
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
   let buffer = ''
   for (;;) {

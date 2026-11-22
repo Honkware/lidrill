@@ -116,7 +116,7 @@ export async function certifyReport(p: Puzzle, engines: Engine[], ctx: ExplainCo
 // The proof of work for the request, in slices so the page stays responsive
 async function proof(body: string): Promise<string> {
   const res = await fetch('/api/challenge')
-  if (!res.ok) throw new Error('No explanation right now. Try again later.')
+  if (!res.ok) throw new Error(`Failed to explain: the challenge returned HTTP ${res.status}.`)
   const c = (await res.json()) as { nonce: string; exp: number; bits: number; sig: string }
   const hash = sha256Hex(body)
   for (let start = 0; start < 1 << 24; start += 4096) {
@@ -124,7 +124,7 @@ async function proof(body: string): Promise<string> {
     if (found !== undefined) return `${c.nonce}.${c.exp}.${c.bits}.${c.sig}.${found}`
     await new Promise(r => setTimeout(r, 0))
   }
-  throw new Error('No explanation right now. Try again later.')
+  throw new Error('Failed to explain: no proof of work found for the challenge.')
 }
 
 // Fire-and-forget packet upload: after a certification the
@@ -235,13 +235,13 @@ export async function explain(p: Puzzle, engines: Engine[], ctx: ExplainContext,
   if (slim) return storeRow(id, p, ctx, tried, slim)
 
   // Fail closed to the certify-and-POST path on a packet-miss or any failure
-  if (!engines.length) throw new Error('Stockfish isn’t ready yet.')
+  if (!engines.length) throw new Error("Failed to explain: Stockfish isn't loaded yet.")
   const report = await certifyReport(p, engines, ctx, tried, recent, progress)
   void uploadPacket(report)
   const body = JSON.stringify({ ...report, ...(solved ? { solved } : {}) })
   const res = await fetch('/api/explain', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-lidrill-proof': await proof(body) }, body })
   const data = (await res.json().catch(() => ({}))) as ExplainResponse
-  if (!res.ok || !data.slots || !data.packet) throw new Error(data.error ?? 'No explanation right now. Try again later.')
+  if (!res.ok || !data.slots || !data.packet) throw new Error(data.error ?? `Failed to explain: the server returned HTTP ${res.status}${res.ok ? ' with no explanation' : ''}.`)
   return storeRow(id, p, ctx, tried, data)
 }
 

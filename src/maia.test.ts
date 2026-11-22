@@ -181,6 +181,6 @@ describe('fetchMove', () => {
     const limited = (async () => new Response(JSON.stringify({ error: 'Too many moves at once. Try again in a minute.' }), { status: 429 })) as typeof fetch
     await expect(fetchMove([], 1500, undefined, limited)).rejects.toThrow('Too many moves')
     const down = (async () => new Response('<html>', { status: 404 })) as typeof fetch
-    await expect(fetchMove([], 1500, undefined, down)).rejects.toThrow('Maia isn’t available')
+    await expect(fetchMove([], 1500, undefined, down)).rejects.toThrow('Maia returned HTTP 404')
   })
 })

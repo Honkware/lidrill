@@ -55,7 +55,7 @@ export async function finishSignIn(fetchFn: typeof fetch = fetch): Promise<(Auth
   sessionStorage.removeItem(KEY)
   if (params.get('error')) throw new Error('Lichess sign-in was cancelled.')
   const code = params.get('code')
-  if (!code || !saved || params.get('state') !== saved.state) throw new Error('Sign-in failed. Please try again.')
+  if (!code || !saved || params.get('state') !== saved.state) throw new Error('Sign-in failed: the reply from Lichess did not match the request.')
 
   const tokenRes = await fetchFn('https://lichess.org/api/token', {
     method: 'POST',
@@ -68,11 +68,11 @@ export async function finishSignIn(fetchFn: typeof fetch = fetch): Promise<(Auth
       client_id: CLIENT_ID,
     }),
   })
-  if (!tokenRes.ok) throw new Error('Lichess refused the sign-in. Please try again.')
+  if (!tokenRes.ok) throw new Error(`Lichess refused the sign-in (HTTP ${tokenRes.status}).`)
   const { access_token: token } = (await tokenRes.json()) as { access_token: string }
 
   const accountRes = await fetchFn('https://lichess.org/api/account', { headers: { Authorization: `Bearer ${token}` } })
-  if (!accountRes.ok) throw new Error('Signed in, but Lichess wouldn\'t return the account. Please try again.')
+  if (!accountRes.ok) throw new Error(`Lichess returned HTTP ${accountRes.status} for the account after sign-in.`)
   const { username } = (await accountRes.json()) as { username: string }
 
   // Lichess's token response doesn't list scopes; these are the ones asked for

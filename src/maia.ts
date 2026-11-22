@@ -131,6 +131,6 @@ export async function fetchMove(
 ): Promise<{ move?: string; think: number; resign?: boolean }> {
   const res = await fetchFn('/api/maia/move', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ moves, level, clock }) })
   const body = (await res.json().catch(() => ({}))) as { move?: string; think?: number; resign?: boolean; error?: string }
-  if (!res.ok || !(body.move || body.resign)) throw new Error(body.error ?? 'Maia isn’t available right now.')
+  if (!res.ok || !(body.move || body.resign)) throw new Error(body.error ?? `Maia returned HTTP ${res.status}${res.ok ? ' with no move' : ''}.`)
   return { move: body.move, think: body.think ?? 0, resign: body.resign }
 }

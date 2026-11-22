@@ -21,7 +21,7 @@ export interface StudyInfo {
 async function get(url: string, token: string, accept: string, fetchFn: typeof fetch): Promise<string> {
   const res = await fetchFn(url, { headers: { Authorization: `Bearer ${token}`, Accept: accept } })
   if (res.status === 401) throw new SignInExpired()
-  if (!res.ok) throw new Error(`Lichess said HTTP ${res.status} for your studies.`)
+  if (!res.ok) throw new Error(`Lichess returned HTTP ${res.status} for the studies.`)
   return res.text()
 }
 

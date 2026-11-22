@@ -51,7 +51,7 @@ export async function backfillPackets(onStatus: (s: string) => void, signal: Abo
       console.warn(e)
       return // try again next app open
     }
-    onStatus(`Sharing explanations with the server (${i + 1}/${todo.length})…`)
+    onStatus(`Uploading explanations, ${i + 1} of ${todo.length}…`)
     if (i + 1 < todo.length) await new Promise(r => setTimeout(r, delayMs))
   }
   onStatus('')

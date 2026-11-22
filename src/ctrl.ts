@@ -384,7 +384,7 @@ export class Ctrl {
   stopSync() {
     if (!this.syncing) return
     this.abort?.abort()
-    this.status = 'Stopped. Analysis picks up where it left off next time.'
+    this.status = 'Stopped. The next sync resumes the analysis.'
     this.redraw()
   }
 
@@ -694,7 +694,7 @@ export class Ctrl {
       const pieces = PIECE_SETS.find(p => p.key === look.pieceSet)?.key
       const board = look.theme?.startsWith('wood') ? 'walnut' : BOARDS.find(b => look.theme?.startsWith(b.key))?.key
       await this.setLook({ pieces, board, theme: look.dark === false ? 'light' : 'dark' })
-      const missing = !pieces && look.pieceSet ? ` lidrill doesn't have "${look.pieceSet}", so the pieces stay as they are.` : ''
+      const missing = !pieces && look.pieceSet ? ` Piece set "${look.pieceSet}" is not in lidrill, so the pieces are unchanged.` : ''
       this.notice = { text: `Using your Lichess look.${missing}` }
     } catch (e) {
       await this.signInExpired(e)
@@ -708,7 +708,7 @@ export class Ctrl {
     if (!this.hasScope(STUDY_READ_SCOPE)) return void startSignIn([...this.auth.scopes, STUDY_READ_SCOPE], 'studies')
     try {
       this.studies = await listStudies(this.auth.username, this.auth.token)
-      if (!this.studies.length) this.notice = { text: "You don't have any studies on Lichess yet." }
+      if (!this.studies.length) this.notice = { text: 'No studies on Lichess.' }
     } catch (e) {
       await this.signInExpired(e)
       this.notice = { text: (e as Error).message }
@@ -779,7 +779,7 @@ export class Ctrl {
   }
 
   async deleteEverything() {
-    if (!confirm('Delete all games, puzzles and history from this browser? This can’t be undone.')) return
+    if (!confirm("Delete all games, puzzles and history from this browser? This can't be undone.")) return
     this.stopSync()
     await deleteAllData()
     this.profile = undefined

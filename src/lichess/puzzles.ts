@@ -110,7 +110,7 @@ export async function fetchActivity(token: string, since: number, fetchFn: typeo
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/x-ndjson' },
   })
   if (res.status === 401) throw new SignInExpired()
-  if (!res.ok) throw new Error(`puzzle activity HTTP ${res.status}`)
+  if (!res.ok) throw new Error(`Lichess returned HTTP ${res.status} for the puzzle activity.`)
   return (await res.text())
     .split('\n')
     .filter(l => l.trim())

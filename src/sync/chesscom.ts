@@ -64,8 +64,8 @@ export async function fetchChesscomGames(
 ): Promise<{ games: Game[]; doneMonths: string[] }> {
   const base = `https://api.chess.com/pub/player/${encodeURIComponent(user.toLowerCase())}/games`
   const res = await fetchFn(`${base}/archives`, { cache: 'no-cache' })
-  if (res.status === 404) throw new Error(`Chess.com has no player "${user}". Check the spelling.`)
-  if (!res.ok) throw new Error(`Chess.com didn't answer (HTTP ${res.status}). Try again in a minute.`)
+  if (res.status === 404) throw new Error(`Chess.com has no player "${user}".`)
+  if (!res.ok) throw new Error(`Chess.com returned HTTP ${res.status} for the game archives of ${user}.`)
   const { archives } = (await res.json()) as { archives: string[] }
   const current = `${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}`
   const done = new Set(doneMonths)
@@ -81,7 +81,7 @@ export async function fetchChesscomGames(
       continue
     }
     const monthRes = await fetchFn(url, { cache: 'no-cache' })
-    if (!monthRes.ok) throw new Error(`chess.com ${month}: HTTP ${monthRes.status}`)
+    if (!monthRes.ok) throw new Error(`Chess.com returned HTTP ${monthRes.status} for the games of ${user} in ${month}.`)
     const data = (await monthRes.json()) as { games: ChesscomGame[] }
     for (const g of data.games) {
       const game = fromChesscom(g, user)

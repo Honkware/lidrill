@@ -46,8 +46,8 @@ async function post(url: string, token: string, body: Record<string, string>, fe
     body: new URLSearchParams(body),
   })
   if (res.status === 401) throw new SignInExpired()
-  if (res.status === 403) throw new Error('Lichess needs permission to create studies. Grant it and try again.')
-  if (!res.ok) throw new Error(`Lichess couldn't create the study (HTTP ${res.status}).`)
+  if (res.status === 403) throw new Error('Lichess refused to create the study: no study:write permission.')
+  if (!res.ok) throw new Error(`Lichess returned HTTP ${res.status} when creating the study.`)
   return res.json() as Promise<{ id?: string }>
 }
 
@@ -61,7 +61,7 @@ export async function sendToStudy(game: Game, stops: Puzzle[], token: string, fe
     { name, visibility: 'private', computer: 'owner', explorer: 'owner', cloneable: 'owner', shareable: 'owner', chat: 'nobody' },
     fetchFn,
   )
-  if (!study.id) throw new Error("Lichess didn't return the new study.")
+  if (!study.id) throw new Error('Lichess returned no id for the new study.')
   const pgn = stops.slice(0, 63).map((p, i) => chapterPgn(game, p, i)).join('\n\n\n')
   await post(`https://lichess.org/api/study/${study.id}/import-pgn`, token, { pgn, mode: 'conceal', orientation: game.color }, fetchFn)
   return `https://lichess.org/study/${study.id}`

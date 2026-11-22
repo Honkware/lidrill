@@ -224,7 +224,7 @@ export async function syncAndAnalyze(
     stale,
     getPool(),
     async (game, eng) => {
-      onStatus(`Looking for more puzzles in games you've already played (${++rechecked}/${stale.length})…`)
+      onStatus(`Rechecking analyzed games for puzzles, ${++rechecked} of ${stale.length}…`)
       const found = await generatePuzzles(game, eng, genOpts)
       const known = new Set(await db.puzzles.where('gameId').equals(game.id).primaryKeys())
       await db.puzzles.bulkAdd(found.filter(p => !known.has(p.id)))
@@ -233,7 +233,7 @@ export async function syncAndAnalyze(
     signal,
   )
   if (signal.aborted) return
-  onStatus('Done.')
+  onStatus('Synced.')
 }
 
 // "Why?" waits for nobody: background certification pauses while one runs

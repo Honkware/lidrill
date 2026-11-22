@@ -19,7 +19,7 @@ export interface Account {
 export async function lichessJson<T>(url: string, token: string, fetchFn: typeof fetch = fetch): Promise<T> {
   const res = await fetchFn(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } })
   if (res.status === 401) throw new SignInExpired()
-  if (!res.ok) throw new Error(`Lichess said HTTP ${res.status} for ${new URL(url).pathname}`)
+  if (!res.ok) throw new Error(`Lichess returned HTTP ${res.status} for ${new URL(url).pathname}.`)
   return res.json() as Promise<T>
 }
 
