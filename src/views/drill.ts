@@ -31,7 +31,7 @@ function sessionRow(ctrl: Ctrl): VNode {
       [icon(name, 16)],
     )
   return el('div', 'flex items-center gap-1', [
-    step('prev', 'Review previous puzzle', () => ctrl.sessionBack(), ctrl.review.canBack),
+    step('prev', 'Previous puzzle', () => ctrl.sessionBack(), ctrl.review.canBack),
     el(
       'div',
       'flex flex-wrap gap-1',
@@ -50,7 +50,7 @@ function sessionRow(ctrl: Ctrl): VNode {
         })
       }),
     ),
-    step('next', 'Forward to the next puzzle', () => ctrl.sessionForward(), ctrl.review.canForward),
+    step('next', 'Next puzzle', () => ctrl.sessionForward(), ctrl.review.canForward),
   ])
 }
 
@@ -101,7 +101,7 @@ function playing(d: Drill): VNode {
     d.feedback === 'fail'
       ? feedbackBox('bad', '✗ Not the move', `${d.misses.length > 1 ? `Tried ${d.misses.join(', ')}. ` : ''}Try something else.`)
       : d.feedback === 'good'
-        ? feedbackBox('good', '✓ Best move', 'Keep going…')
+        ? feedbackBox('good', '✓ Best move')
         : feedbackBox(
             'plain',
             hold ? `Find a move that holds for ${d.color}` : `Find the best move for ${d.color}`,
@@ -137,8 +137,8 @@ const TITLES = {
   clean: ['good', 'Solved'],
   hinted: ['good', 'Solved with the hint'],
   // missed and shown end the same way: the answer line carries the difference
-  missed: ['bad', 'Puzzle complete'],
-  shown: ['bad', 'Puzzle complete'],
+  missed: ['bad', 'Not solved'],
+  shown: ['bad', 'Not solved'],
 } as const
 
 // The line from the puzzle position on: ✓ for moves the player found,
@@ -218,7 +218,7 @@ function whyPart(d: Drill): VNode | null {
   if (!w) return null
   if (w.loading) {
     const [done, total] = w.progress ?? [0, 0]
-    return el('p', 'mt-3 animate-pulse text-sm text-dim', total ? `Checking with Stockfish… ${done} of ${total}` : 'Working it out…')
+    return el('p', 'mt-3 animate-pulse text-sm text-dim', total ? `Checking with Stockfish, ${done} of ${total}…` : 'Explaining…')
   }
   if (w.error) return el('p', 'mt-3 text-sm text-bad', w.error)
   const slot = (name: string) => w.slots?.find(s => s.slot === name)?.segments ?? []
@@ -277,7 +277,7 @@ function side(ctrl: Ctrl, d: Drill): VNode {
     el('div', 'grid', [button(reviewing ? 'Next' : ctrl.queueLeft ? 'Continue' : 'Done', reviewing ? () => ctrl.sessionForward() : () => ctrl.next())]),
     el('div', 'flex flex-wrap items-center justify-between gap-2', [
       reviewing
-        ? el('p', 'text-sm text-dim', 'Reviewing an earlier puzzle. Grades are set; stepping back changes nothing.')
+        ? el('p', 'text-sm text-dim', 'Earlier puzzle, already graded.')
         : el('label', 'flex items-center gap-2 text-sm text-dim', [
             el('input', 'size-4 accent-accent', { attrs: { type: 'checkbox' }, props: { checked: ctrl.autoNext }, on: { change: e => ctrl.setAutoNext((e.target as HTMLInputElement).checked) } }),
             'Auto-continue after a solve',

@@ -28,7 +28,7 @@ export function drillsView(ctrl: Ctrl): VNode {
     band === 'beginner'
       ? card([
           el('h2', 'font-display text-lg', ABOUT.defense.title),
-          el('p', 'mt-1 text-sm text-dim', 'Unlocks at club level (rated 1000+). Until then, conversion is the one that wins games.'),
+          el('p', 'mt-1 text-sm text-dim', 'Unlocks at club level (rated 1000+).'),
         ])
       : section('defense', list),
   ])
@@ -77,9 +77,9 @@ function maiaCard(ctrl: Ctrl): VNode {
     segments('Pace', [['human', 'Human'], ['instant', 'Instant']], pace, p => ctrl.setPlayChoice({ pace: p })),
     el('p', 'mt-1 text-xs text-dim', 'Maia takes about as long over a move as a person would.'),
     el('div', 'mt-4 flex flex-wrap gap-2', [
-      saved ? button('Continue your game', () => ctrl.go('play')) : null,
+      saved ? button('Continue game', () => ctrl.go('play')) : null,
       button('New game', () => ctrl.startPlay(false), saved ? 'plain' : 'primary'),
-      ctrl.playStarts.length ? button('From one of your games', () => ctrl.togglePlayPicking(), 'plain') : null,
+      ctrl.playStarts.length ? button('Start from a game', () => ctrl.togglePlayPicking(), 'plain') : null,
     ]),
     saved ? el('p', 'mt-2 text-xs text-dim', savedText(saved)) : null,
     ctrl.playPicking
@@ -122,7 +122,7 @@ function levelLine(ctrl: Ctrl, speed: MaiaSpeed): VNode | null {
       ]),
       el('span', String(pts.at(-1))),
     ]),
-    el('p', 'text-center text-xs text-dim', `Your ${speed} estimate over the last ${n} games`),
+    el('p', 'text-center text-xs text-dim', `Estimate over the last ${n} ${speed} games`),
   ])
 }
 
@@ -169,7 +169,7 @@ function section(kind: PracticeKind, list?: Practice[]): VNode {
               el('a', 'flex items-center gap-3 py-3', { attrs: { href: `#/practice/${encodeURIComponent(p.id)}` } }, [
                 el('div', 'min-w-0 flex-1', [
                   el('p', 'font-medium', `Move ${Math.ceil(p.ply / 2)}, ${pawns(p.startCp)}`),
-                  el('p', 'text-xs text-dim', p.attempts ? `${p.attempts} tries` : 'Not tried yet'),
+                  el('p', 'text-xs text-dim', p.attempts ? `${p.attempts} ${p.attempts === 1 ? 'try' : 'tries'}` : 'Not tried yet'),
                 ]),
                 p.cleared
                   ? el('span', 'flex items-center gap-1 text-sm text-accent', [icon('check', 16), 'Cleared'])
@@ -182,7 +182,7 @@ function section(kind: PracticeKind, list?: Practice[]): VNode {
             ]),
           ),
         )
-      : el('p', 'mt-3 text-sm text-dim', 'None in your analyzed games yet.'),
+      : el('p', 'mt-3 text-sm text-dim', 'None in analyzed games yet.'),
   ])
 }
 
@@ -210,7 +210,7 @@ export function practiceView(ctrl: Ctrl): VNode {
       ]),
       done
         ? el('div', 'space-y-3', [
-            el('p', 'font-display text-xl', { class: { 'text-accent': run.state === 'won', 'text-bad': run.state === 'lost' } }, run.state === 'won' ? (p.kind === 'conversion' ? 'Converted' : 'Held') : 'Not this time'),
+            el('p', 'font-display text-xl', { class: { 'text-accent': run.state === 'won', 'text-bad': run.state === 'lost' } }, p.kind === 'conversion' ? (run.state === 'won' ? 'Converted' : 'Not converted') : run.state === 'won' ? 'Held' : 'Not held'),
             el('div', 'flex gap-2', [button('Try again', () => ctrl.retryPractice()), button('All drills', () => ctrl.go('drills'), 'plain')]),
           ])
         : el('div', 'space-y-2', [

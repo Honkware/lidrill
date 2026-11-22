@@ -14,7 +14,7 @@ export function todayView(ctrl: Ctrl): VNode {
   if (!t || !p)
     return ctrl.ready
       ? el('div', 'space-y-4', [
-          card([el('p', 'text-dim', ctrl.syncing ? 'Fetching your games…' : 'No games yet.')]),
+          card([el('p', 'text-dim', ctrl.syncing ? 'Fetching games…' : 'No games yet.')]),
           ctrl.error ? el('p', 'text-sm text-bad', ctrl.error) : null,
         ])
       : skeleton()
@@ -47,12 +47,10 @@ function streakCard(ctrl: Ctrl): VNode {
   const { streak, weeks } = ctrl.today!
   const played = weeks.some(w => w.games)
   const line = streak.current
-    ? streak.best > streak.current
-      ? `Best ${streak.best}.`
-      : 'Your best yet.'
+    ? `Best ${Math.max(streak.best, streak.current)}.`
     : streak.best
-      ? `Your best is ${streak.best}. The next clean game starts a new run.`
-      : 'Your first clean game starts it.'
+      ? `Best ${streak.best}. A clean game starts a new run.`
+      : 'A clean game starts the streak.'
   return card(
     [
       el('div', 'flex items-end justify-between gap-4', [
@@ -75,19 +73,19 @@ function dueCard(ctrl: Ctrl): VNode {
   return card([
     label('Due today'),
     el('p', 'mt-1 font-display text-3xl', plural(remaining, 'puzzle')),
-    queue.recovery ? el('p', 'mt-1 text-sm text-dim', 'Welcome back. A short set to get going again.') : null,
-    external ? el('p', 'mt-1 text-sm text-dim', `${external} of them from Lichess: your weak themes and puzzles you missed there.`) : null,
+    queue.recovery ? el('p', 'mt-1 text-sm text-dim', 'A shorter set after more than two days away.') : null,
+    external ? el('p', 'mt-1 text-sm text-dim', `${external} from Lichess: weak themes and puzzles missed there.`) : null,
     remaining
       ? el('div', 'mt-4 grid', [button('Start', () => ctrl.startDrill())])
       : el(
           'p',
           'mt-2 text-sm text-dim',
           doneToday
-            ? 'All done for today. Come back tomorrow.'
+            ? 'Done for today.'
             : ctrl.counts.puzzles
-              ? 'Nothing due. Come back tomorrow.'
+              ? 'Nothing due today.'
               : ctrl.syncing
-                ? 'Going through your games now. The first puzzles show up here within a few minutes.'
+                ? 'Analyzing games. The first puzzles appear here within a few minutes.'
                 : 'No puzzles yet. Sync your games first.',
         ),
   ])
@@ -98,11 +96,7 @@ function replayCard(ctrl: Ctrl): VNode | null {
   if (!pick) return null
   return card([
     label('Turning points'),
-    el('p', 'mt-1', [
-      `Your last game${pick.game.opponent ? ` vs ${pick.game.opponent}` : ''} had `,
-      el('strong', '', plural(pick.stops, 'turning point')),
-      '.',
-    ]),
+    el('p', 'mt-1', [`Last game${pick.game.opponent ? ` vs ${pick.game.opponent}` : ''}: `, el('strong', '', plural(pick.stops, 'turning point'))]),
     el('div', 'mt-4 grid', [button('Replay', () => ctrl.go('replay', pick.game.id), 'plain')]),
   ])
 }
@@ -115,7 +109,7 @@ function focusCard(ctrl: Ctrl): VNode {
   const d = ctrl.today!.practice
   const open = d.conversion + (ctrl.profile!.band === 'beginner' ? 0 : d.defense)
   return card([
-    label(r.leak ? 'Keeps happening' : 'This week'),
+    label(r.leak ? 'Recurring' : 'This week'),
     el('p', 'mt-2', r.focus),
     r.leak
       ? el('a', 'mt-3 inline-block text-sm text-accent', { attrs: { href: '#/review' } }, 'See the games')
@@ -133,7 +127,7 @@ function drillsCard(ctrl: Ctrl): VNode | null {
   return card([
     label('Drills'),
     el('p', 'mt-2', open ? `${plural(open, 'position')} to play out against Maia.` : 'All cleared. New ones come from your next games.'),
-    d.cleared ? el('p', 'mt-1 text-sm text-dim', `${d.cleared} cleared so far.`) : null,
+    d.cleared ? el('p', 'mt-1 text-sm text-dim', `${d.cleared} cleared.`) : null,
     open ? el('div', 'mt-4 grid', [button('Open drills', () => ctrl.go('drills'), 'plain')]) : null,
   ])
 }
@@ -148,11 +142,11 @@ function bandNote(ctrl: Ctrl): VNode | null {
   if (localStorage.getItem(seenKey)) return null
   const order = ['beginner', 'club', 'advanced']
   const up = order.indexOf(last.band) > order.indexOf(hist.at(-2)!.band)
-  const extra = up && last.band === 'club' ? ' Defense drills are unlocked.' : ''
+  const extra = up && last.band === 'club' ? ' Defense drills unlocked.' : ''
   return card(
     [
       el('div', 'flex items-start justify-between gap-3', [
-        el('p', 'text-sm', [`lidrill now sees you as a ${last.band} player, from your Lichess rating. Puzzles come from moves that gave away ${thresholdWords(ctrl.profile!.swingThresholdCp) ?? 'material'} or more.${extra} `, whatCountsLink()]),
+        el('p', 'text-sm', [`Level changed to ${last.band}, from your Lichess rating. Puzzles come from moves that gave away ${thresholdWords(ctrl.profile!.swingThresholdCp) ?? 'material'} or more.${extra} `, whatCountsLink()]),
         el(
           'button',
           'shrink-0 rounded-lg px-2 py-1 text-dim active:bg-raised',
