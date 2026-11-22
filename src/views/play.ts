@@ -2,10 +2,12 @@ import type { Color } from 'chessops/types'
 import { opposite } from 'chessops/util'
 import type { VNode } from 'snabbdom'
 import type { Ctrl } from '../ctrl'
+import { accuracy } from '../analysis/accuracy'
+import type { Game } from '../db'
 import { material, type PlayRun } from '../play'
 import { el } from '../el'
 import { moveTable, score } from './moves'
-import { board, button, plural, topBar } from './ui'
+import { board, button, judgColor, plural, topBar } from './ui'
 
 const RESULT = { win: 'You won', loss: 'You lost', draw: 'Draw' } as const
 
@@ -15,6 +17,7 @@ export function playView(ctrl: Ctrl): VNode {
   const { level, start, color } = run.opts
   const bar = () => topBar('Play Maia', () => ctrl.back('drills'))
   const m = material(run.fen)
+  const moves = run.moves.length ? moveTable(run.moves, run.viewPly, ply => run.go(ply), run.result && score(run.result, color)) : null
   return el('div', 'md:grid md:grid-cols-[auto_minmax(0,1fr)] md:gap-6 md:pt-4', [
     el('div', 'play-board', [
       el('div', 'md:hidden', [bar()]),
@@ -24,14 +27,19 @@ export function playView(ctrl: Ctrl): VNode {
     ]),
     el('aside', 'space-y-4 px-4 pb-8 pt-3 md:px-0 md:pt-0', [
       el('div', 'hidden md:block', [bar()]),
-      run.promoting ? promotion(run) : null,
-      el('p', 'text-sm', start ? `From move ${Math.floor(start.moves.length / 2) + 1} of one of your games${start.opening ? `, ${start.opening.split(':')[0]}` : ''}.` : 'A game from the first move.'),
-      el('div', 'flex gap-6 text-sm', [
-        el('div', [el('p', 'text-xs text-dim', 'You play'), el('p', 'font-medium', color)]),
-        run.last ? el('div', [el('p', 'text-xs text-dim', 'Maia played'), el('p', 'font-medium', run.last)]) : null,
-      ]),
-      run.moves.length ? moveTable(run.moves, run.viewPly, ply => run.go(ply), run.result && score(run.result, color)) : null,
-      run.state === 'over' ? over(ctrl) : live(ctrl),
+      // Once it is over the summary comes first, in view under the board on a phone
+      ...(run.state === 'over'
+        ? [over(ctrl), moves]
+        : [
+            run.promoting ? promotion(run) : null,
+            el('p', 'text-sm', start ? `From move ${Math.floor(start.moves.length / 2) + 1} of one of your games${start.opening ? `, ${start.opening.split(':')[0]}` : ''}.` : 'A game from the first move.'),
+            el('div', 'flex gap-6 text-sm', [
+              el('div', [el('p', 'text-xs text-dim', 'You play'), el('p', 'font-medium', color)]),
+              run.last ? el('div', [el('p', 'text-xs text-dim', 'Maia played'), el('p', 'font-medium', run.last)]) : null,
+            ]),
+            moves,
+            live(ctrl),
+          ]),
     ]),
   ])
 }
@@ -94,24 +102,56 @@ function live(ctrl: Ctrl): VNode {
 function over(ctrl: Ctrl): VNode {
   const run = ctrl.play!
   const game = run.saved
-  const next =
-    !game
-      ? 'Too short to count.'
-      : ctrl.playPuzzles !== undefined
-        ? ctrl.playPuzzles
-          ? `${plural(ctrl.playPuzzles, 'puzzle')} from this game ${ctrl.playPuzzles === 1 ? 'is' : 'are'} in your queue.`
-          : 'No puzzles from this game.'
-        : ctrl.syncing
-          ? 'Analyzing the game for puzzles…'
-          : 'The game is analyzed with your next sync.'
-  return el('div', 'space-y-3', [
-    el('p', 'font-display text-xl', { class: { 'text-accent': run.result === 'win', 'text-bad': run.result === 'loss' } }, RESULT[run.result!]),
-    el('p', 'text-sm text-dim', `${run.ending}. ${next}`),
-    game ? el('p', 'text-sm text-dim', `Next opponent: about ${ctrl.maiaLevel}.`) : null,
+  const ids = ctrl.playPuzzles
+  const solve = !!ids?.length
+  return el('div', 'space-y-4', [
+    el('div', [
+      el('p', 'font-display text-xl', { class: { 'text-accent': run.result === 'win', 'text-bad': run.result === 'loss' } }, RESULT[run.result!]),
+      el('p', 'text-sm text-dim', `${run.ending}.`),
+    ]),
+    run.tooShort
+      ? el('p', 'text-sm text-dim', 'Too short to count.')
+      : game
+        ? el('p', 'text-sm', ['Your level against Maia: ', el('span', 'font-medium tabular-nums', `${run.opts.rating} → ${ctrl.maiaRatingAt(game.speed)}`)])
+        : null,
+    !game ? null : ids ? analysis(game, run.opts.color, ids, ctrl) : el('p', 'text-sm text-dim', ctrl.syncing ? 'Analyzing the game…' : 'The game is analyzed with your next sync.'),
     el('div', 'flex flex-wrap gap-2', [
-      button('Play again', () => ctrl.startPlay(!!run.opts.start)),
-      game && ctrl.playPuzzles !== undefined ? button('Review the game', () => ctrl.go('game', game.id), 'plain') : null,
+      button('Rematch', () => ctrl.rematch(), solve ? 'plain' : 'primary'),
+      game ? button('Review the game', () => ctrl.go('game', game.id), 'plain') : null,
       button('All drills', () => ctrl.go('drills'), 'plain'),
     ]),
+  ])
+}
+
+const JUDGED = [['inaccuracy', 'inaccuracies'], ['mistake', 'mistakes'], ['blunder', 'blunders']] as const
+
+// Once the game is analyzed: both accuracies, the player's slips, and the
+// puzzles made from them
+function analysis(game: Game, color: Color, ids: string[], ctrl: Ctrl): VNode {
+  const a = accuracy(game.moves)
+  const mine = game.moves.filter((_, i) => (i % 2 === 0) === (color === 'white'))
+  return el('div', 'space-y-3', [
+    a
+      ? el('p', 'text-sm', [
+          'Accuracy: you ',
+          el('span', 'font-medium tabular-nums', `${Math.round(a[color])}%`),
+          ', Maia ',
+          el('span', 'font-medium tabular-nums', `${Math.round(a[opposite(color)])}%`),
+        ])
+      : null,
+    el(
+      'p',
+      'flex flex-wrap gap-x-4 text-sm',
+      JUDGED.map(([j, many]) => {
+        const n = mine.filter(m => m.judg === j).length
+        return el('span', { class: { [judgColor[j]]: n > 0, 'text-dim': !n } }, [el('strong', 'tabular-nums', String(n)), ` ${n === 1 ? j : many}`])
+      }),
+    ),
+    ids.length
+      ? el('div', 'space-y-2', [
+          el('p', 'text-sm', `${plural(ids.length, 'mistake')} from this game ${ids.length === 1 ? 'is now a puzzle' : 'are now puzzles'}.`),
+          button(ids.length === 1 ? 'Solve it now' : 'Solve them now', () => ctrl.solvePuzzles(ids)),
+        ])
+      : el('p', 'text-sm text-dim', 'No puzzles from this game.'),
   ])
 }

@@ -12,7 +12,7 @@ import { applyLook, BOARDS, PIECE_SETS } from './look'
 import { clampLevel, estimateFor, estimates, levelFor, ownStarts, speedOf, startEstimate, updateEstimate, type Start } from './maia'
 import { compliance, openingTable, repertoireTargets, streak, type OpeningRow, type Streak } from './metrics'
 import { analyzePending, forgetLichessAccount, getEngine, precertifyDue, saveProfile, syncAndAnalyze, warmEngine } from './pipeline'
-import { clearGame, clockOf, PlayRun, readChoices, readGame, writeChoices, type Choices } from './play'
+import { clearGame, clockOf, PlayRun, readChoices, readGame, rematch, writeChoices, type Choices } from './play'
 import { PracticeRun } from './practice'
 import { Replay } from './replay'
 import { weekReport, weeklyZeroHang, type WeekReport } from './report'
@@ -84,7 +84,7 @@ export class Ctrl {
   maiaGames: Game[] = [] // for the level history on the card
   playLevel?: number // a level picked by hand; undefined follows the estimate
   playChoices = readChoices()
-  playPuzzles?: number // puzzles the last finished Maia game produced, once analyzed
+  playPuzzles?: string[] // ids of the puzzles the last finished Maia game produced, once analyzed
   playPicking = false // the list of own-game starts is open on the card
   private playFrom: Start | boolean = false
   private maiaStart = 1000
@@ -548,6 +548,12 @@ export class Ctrl {
     return this.maiaEstimate.rating
   }
 
+  // The estimate at the speed of a given time control ("10+0", "untimed"),
+  // which after a game can differ from the one picked on the card
+  maiaRatingAt(time: string): number {
+    return estimateFor(estimates(this.profile?.maia), speedOf(time), this.maiaStart).rating
+  }
+
   get maiaLevel(): number {
     return this.playLevel ?? levelFor(this.maiaRating)
   }
@@ -598,21 +604,46 @@ export class Ctrl {
   // stored, moves the estimate, and goes through the same analysis as an
   // imported game, which is where its puzzles come from.
   private async finishPlay(run: PlayRun) {
-    if (run.ending === 'Resigned' && run.playerMoves < 5) return
+    if (run.tooShort) return
     const game = run.toGame(Date.now())
     await db.games.add(game)
-    run.saved = game
     const score = run.result === 'win' ? 1 : run.result === 'draw' ? 0.5 : 0
     const all = estimates(this.profile?.maia)
     const speed = speedOf(game.speed)
     const games = all[speed]?.games ?? 0
     const next = { rating: updateEstimate(run.opts.rating, run.opts.level, score, games), games: games + 1 }
     this.profile = await saveProfile({ maia: { ...all, [speed]: next } })
+    // Set once the profile has the new estimate, which the screen shows
+    run.saved = game
     this.redraw()
     await this.analyzeNow()
     if (this.play !== run) return
-    if ((await db.games.get(game.id))?.analyzedAt) this.playPuzzles = await db.puzzles.where('gameId').equals(game.id).count()
+    const done = await db.games.get(game.id)
+    if (done?.analyzedAt) {
+      run.saved = done
+      this.playPuzzles = (await db.puzzles.where('gameId').equals(game.id).sortBy('ply')).map(p => p.id)
+    }
     this.redraw()
+  }
+
+  // Straight from the finished game, without going back to the Drills card
+  rematch() {
+    const o = this.play!.opts
+    const opts = rematch(o, this.maiaRatingAt(o.clock ? `${o.clock.base / 60}+${o.clock.inc}` : 'untimed'))
+    this.play!.destroy()
+    this.playPuzzles = undefined
+    this.play = new PlayRun(opts, this.redraw, run => void this.finishPlay(run))
+    this.redraw()
+    window.scrollTo(0, 0)
+  }
+
+  // A session of just these puzzles on the daily drill screen
+  solvePuzzles(ids: string[]) {
+    this.queue = [...ids]
+    this.session = []
+    this.drills = []
+    this.review.reset()
+    this.go('drill')
   }
 
   // Analysis without a sync, which would first have to reach Lichess or
