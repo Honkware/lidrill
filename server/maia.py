@@ -84,8 +84,9 @@ class Maia:
             out[square, self.pieces[piece.piece_type] + (0 if color == chess.WHITE else 6) - 1] = 1
         return out
 
-    def logits(self, board: chess.Board, dial: int) -> dict[str, float]:
-        """Logit of every legal move, keyed by UCI. The dial is the rating given for both players."""
+    def evaluate(self, board: chess.Board, dial: int) -> tuple[dict[str, float], float]:
+        """Logit of every legal move, keyed by UCI, and the side to move's expected score (a win plus half
+        a draw). The dial is the rating given for both players."""
         replay, undone = board.copy(), []
         while replay.move_stack and len(undone) < self.cfg.history - 1:
             undone.append(replay.pop())
@@ -96,9 +97,15 @@ class Maia:
         x = self.to_tokens(history, self.cfg, base=0.0, inc=0.0, clk_left_before=0.0, clk_ponder=0.0)
         elo = self.torch.tensor([dial], dtype=self.torch.long)
         with self.torch.no_grad():
-            out = self.model(x.unsqueeze(0), elo, elo)[0][0].float()
+            out, value, _ = self.model(x.unsqueeze(0), elo, elo)
+        out = out[0].float()
+        # The value head is [loss, draw, win] for the side to move (maia3.uci.wdl_from_value_logits)
+        _, draw, win = self.torch.softmax(value[0].float(), dim=-1).tolist()
         white = board.turn == chess.WHITE
-        return {m.uci(): float(out[self.index[m.uci() if white else self.mirror(m.uci())]]) for m in board.legal_moves}
+        return {m.uci(): float(out[self.index[m.uci() if white else self.mirror(m.uci())]]) for m in board.legal_moves}, win + draw / 2
+
+    def logits(self, board: chess.Board, dial: int) -> dict[str, float]:
+        return self.evaluate(board, dial)[0]
 
 
 @lru_cache(maxsize=1)
@@ -131,9 +138,15 @@ def setting_for(level: int, rng: random.Random):
     return stronger if rng.random() < (level - lo) / (hi - lo) else weaker
 
 
+def log_p(logits: dict[str, float], uci: str, temp: float) -> float:
+    top = max(logits.values())
+    return (logits[uci] - top) / temp - math.log(sum(math.exp((v - top) / temp) for v in logits.values()))
+
+
 def think_features(board: chess.Board, logits: dict[str, float], uci: str, temp: float, rating: float,
-                   clock: dict[str, float]) -> dict[str, float]:
-    """Everything the think-time fit may use, for the move uci about to be played on board."""
+                   clock: dict[str, float], prev_log_p: float = 0.0) -> dict[str, float]:
+    """Everything the think-time fit may use, for the move uci about to be played on board. prev_log_p is
+    how likely the mover's Maia found the opponent's last move."""
     top = max(logits.values())
     w = {m: math.exp((v - top) / temp) for m, v in logits.items()}
     z = sum(w.values())
@@ -145,7 +158,8 @@ def think_features(board: chess.Board, logits: dict[str, float], uci: str, temp:
     ply = len(board.move_stack)
     f = {
         "spread": -sum(x / z * math.log(x / z) for x in w.values() if x > 0),
-        "log_p": (logits[uci] - top) / temp - math.log(z),
+        "log_p": log_p(logits, uci, temp),
+        "prev_log_p": prev_log_p,
         "recapture": float(recap),
         "check": float(board.is_check()),
         "log_legal": math.log(len(logits)),
@@ -170,9 +184,9 @@ def cap(clock: dict[str, float] | None) -> float:
 
 
 def think(board: chess.Board, logits: dict[str, float], uci: str, temp: float, level: int, rng: random.Random,
-          clock: dict[str, float] | None = None) -> float:
+          clock: dict[str, float] | None = None, prev_log_p: float = 0.0) -> float:
     fit = think_fit()
-    f = think_features(board, logits, uci, temp, level, clock or UNHURRIED)
+    f = think_features(board, logits, uci, temp, level, clock or UNHURRIED, prev_log_p)
     mu = fit["coef"]["const"] + sum(c * f[k] for k, c in fit["coef"].items() if k != "const")
     hi = cap(clock)
     return min(max(math.exp(rng.gauss(mu, fit["sigma"])), min(fit["floor"], hi)), hi)
@@ -187,15 +201,27 @@ def check_clock(clock: dict[str, float] | None) -> None:
         raise ValueError("clock base must be positive, inc and left not negative")
 
 
+def check_level(level: int) -> None:
+    if not MIN_LEVEL <= level <= MAX_LEVEL:
+        raise ValueError(f"level {level} is outside {MIN_LEVEL} to {MAX_LEVEL}")
+
+
 def move(maia, moves: list[str], level: int, rng: random.Random = random,
          clock: dict[str, float] | None = None) -> dict[str, str | float]:
     """Maia's move and how long a player at that level would take over it, in seconds."""
-    if not MIN_LEVEL <= level <= MAX_LEVEL:
-        raise ValueError(f"level {level} is outside {MIN_LEVEL} to {MAX_LEVEL}")
+    check_level(level)
     check_clock(clock)
     board = replay(moves)
     setting = setting_for(level, rng)
-    logits = maia.logits(board, setting.dial)
+    logits = maia.evaluate(board, setting.dial)[0]
     uci = sample(logits, setting.temp, rng)
+    # How surprised Maia is by the move it is answering. The first move of a
+    # game answers nothing, so it counts as no surprise.
+    prev = 0.0
+    if board.move_stack:
+        before = board.copy()
+        last = before.pop().uci()
+        prev = log_p(maia.evaluate(before, setting.dial)[0], last, setting.temp)
     # Down to a tenth, so a time at the cap stays under it
-    return {"move": uci, "think": math.floor(think(board, logits, uci, setting.temp, level, rng, clock) * 10) / 10}
+    t = think(board, logits, uci, setting.temp, level, rng, clock, prev)
+    return {"move": uci, "think": math.floor(t * 10) / 10}

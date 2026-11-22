@@ -9,8 +9,9 @@ maia.py reads at play time, and think_fit.md with the tables behind it.
 
     python fit_think.py lichess_db_standard_rated_2025-10.pgn.zst [--rows cache.jsonl]
 
---rows keeps the per-move features, so a refit skips the forward passes (one
-per move, about 40 ms each on a laptop CPU). numpy and zstandard are needed
+--rows keeps the per-move features, so a refit skips the forward passes (two
+per move, one for the move and one for the opponent's move before it, about
+40 ms each on a laptop CPU). numpy and zstandard are needed
 here only, not by the server.
 """
 
@@ -52,6 +53,7 @@ CLK = re.compile(r"\[%clk (\d+):(\d+):(\d+)\]")
 DESC = {
     "spread": "entropy in nats of Maia's move distribution at the level's temperature, log of the number of plausible moves",
     "log_p": "log of the probability Maia gave the move played",
+    "prev_log_p": "log of the probability Maia, at the mover's level, gave the opponent's move just before",
     "recapture": "1 if the move captures on the square the last move captured on",
     "check": "1 if the mover is in check",
     "log_legal": "log of the number of legal moves",
@@ -137,8 +139,12 @@ def featurize(rows: list[dict]) -> list[dict]:
         setting = calibration.lookup(level).setting
         board = maia.replay(r.pop("moves"))
         logits = m.logits(board, setting.dial)
+        # A sampled move is never a side's first, so there is always an opponent's move before it
+        before = board.copy()
+        prev = before.pop().uci()
+        prev_log_p = maia.log_p(m.logits(before, setting.dial), prev, setting.temp)
         clock = {"base": r["base"], "inc": r["inc"], "left": r["left"]}
-        r["f"] = maia.think_features(board, logits, r.pop("move"), setting.temp, r["elo"], clock)
+        r["f"] = maia.think_features(board, logits, r.pop("move"), setting.temp, r["elo"], clock, prev_log_p)
         if n % 2000 == 0:
             print(f"featurized {n} of {len(rows)}")
     return rows
@@ -168,6 +174,7 @@ def groups(r: dict) -> dict[str, str]:
         "recapture": "yes" if r["f"]["recapture"] else "no",
         "in check": "yes" if r["f"]["check"] else "no",
         "plausible moves": next((f"<{e}" for e in (1.5, 3, 6) if math.exp(r["f"]["spread"]) < e), ">=6"),
+        "Maia's p of the opponent's move": next((f"<{e}" for e in (0.05, 0.2, 0.5) if math.exp(r["f"]["prev_log_p"]) < e), ">=0.5"),
     }
 
 
@@ -258,7 +265,7 @@ def main() -> None:
         "## Held-out games", "",
         "Data against one draw per move from the model, capped by each move's own clock.", "",
     ]
-    for key in ("ply", "rating", "time control", "clock left / base", "recapture", "plausible moves"):
+    for key in ("ply", "rating", "time control", "clock left / base", "recapture", "plausible moves", "Maia's p of the opponent's move"):
         md += table(test, key, sim)
 
     out = Path(__file__).parent

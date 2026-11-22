@@ -23,15 +23,17 @@ CLIENT = TestClient(app)
 
 
 class FakeMaia:
-    """Returns fixed logits and records what it was asked."""
+    """Returns fixed logits, -30 for any other legal move, and a score from a function of the board, and
+    records what it was asked."""
 
-    def __init__(self, logits):
+    def __init__(self, logits, score=lambda board: 0.5):
         self.fixed = logits
+        self.score = score
         self.asked = []
 
-    def logits(self, board, dial):
+    def evaluate(self, board, dial):
         self.asked.append((board.fen(), dial))
-        return self.fixed
+        return {m.uci(): self.fixed.get(m.uci(), -30.0) for m in board.legal_moves}, self.score(board)
 
 
 def test_the_settings_in_use_get_stronger_and_cover_the_levels_offered():
@@ -137,7 +139,7 @@ def test_a_recapture_changes_the_time_by_the_fitted_factor():
 def test_less_time_on_the_clock_means_a_shorter_think():
     logits, uci = spread(4), sorted(m.uci() for m in OPEN.legal_moves)[0]
     lots = times(OPEN, logits, uci, {"base": 300, "inc": 0, "left": 280})
-    little = times(OPEN, logits, uci, {"base": 300, "inc": 0, "left": 8})
+    little = times(OPEN, logits, uci, {"base": 300, "inc": 0, "left": 4})
     assert statistics.median(little) < statistics.median(lots)
 
 
@@ -169,3 +171,10 @@ def test_starting_the_service_loads_the_model_and_a_missing_torch_does_not_stop_
     monkeypatch.setattr(maia, "model", missing)
     with TestClient(app) as client:
         assert client.get("/health", **KEY).json() == {"ok": True}
+
+
+def test_a_surprising_move_to_answer_lengthens_the_typical_think():
+    def thinks(fake):
+        return [maia.move(fake, ["e2e4"], 1500, random.Random(s))["think"] for s in range(300)]
+    expected, surprised = FakeMaia({"e2e4": 0.0}), FakeMaia({"d2d4": 0.0, "e2e4": -3.0})
+    assert statistics.median(thinks(surprised)) > statistics.median(thinks(expected))
