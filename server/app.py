@@ -104,14 +104,15 @@ def health(x_lidrill_key: str | None = Header(default=None)) -> dict[str, bool]:
 class MoveBody(BaseModel):
     moves: list[str]
     level: int
+    clock: dict[str, float] | None = None  # base, inc and Maia's time left, in seconds
 
 
 @app.post("/maia/move")
-def maia_move(body: MoveBody, x_lidrill_key: str | None = Header(default=None)) -> dict[str, str]:
-    """Maia-3's reply to a game given as UCI moves from the start position."""
+def maia_move(body: MoveBody, x_lidrill_key: str | None = Header(default=None)) -> dict[str, str | float]:
+    """Maia-3's reply to a game given as UCI moves from the start position, and its think time."""
     guard(x_lidrill_key)
     try:
-        return {"move": maia.move(maia.model(), body.moves, body.level)}
+        return maia.move(maia.model(), body.moves, body.level, clock=body.clock)
     except ValueError as e:
         raise HTTPException(400, str(e))
 

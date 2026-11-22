@@ -12,13 +12,19 @@ The model sees the last 8 positions, as it did in the calibration games, so
 the caller sends the whole game and it is replayed here. torch and maia3 are
 only imported when the first move is asked for, which keeps the sync service
 and its tests free of them.
+
+Each move also comes with a think time, drawn from a lognormal around a
+linear fit of log seconds on what the position, Maia's own move distribution
+and the clock give (think.json, from fit_think.py).
 """
 
 import bisect
+import json
 import math
 import random
 from collections import deque
 from functools import lru_cache
+from pathlib import Path
 
 import chess
 from maia_calibrate import maia3_79m
@@ -34,6 +40,18 @@ MAX_PLIES = 600
 # the targets from 2400 up because the model can't reach them.
 TARGETS = [600, 700, 800, *range(1000, 2400, 100)]
 ANCHORS = sorted(((m.measured_elo, m.setting) for m in maia3_79m().measurements if m.target in TARGETS), key=lambda a: a[0])
+
+# Maia-3 has a think-time head (the third output of its forward), but in the
+# released 79M checkpoint it is untrained: it reads about -0.15, which is -15 s
+# once the label's /100 scaling is undone, for every position, rating and
+# clock tried. The time comes from a fit to human clocks instead, made by
+# fit_think.py and kept in think.json.
+THINK = Path(__file__).with_name("think.json")
+PLY_EDGES = [10, 20, 40, 60]
+
+# A game without a clock is timed as 10+0 with the whole base left at every
+# move, and capped by the fit's ceiling instead of by a clock
+UNHURRIED = {"base": 600.0, "inc": 0.0, "left": 600.0}
 
 
 class Maia:
@@ -113,9 +131,71 @@ def setting_for(level: int, rng: random.Random):
     return stronger if rng.random() < (level - lo) / (hi - lo) else weaker
 
 
-def move(maia, moves: list[str], level: int, rng: random.Random = random) -> str:
+def think_features(board: chess.Board, logits: dict[str, float], uci: str, temp: float, rating: float,
+                   clock: dict[str, float]) -> dict[str, float]:
+    """Everything the think-time fit may use, for the move uci about to be played on board."""
+    top = max(logits.values())
+    w = {m: math.exp((v - top) / temp) for m, v in logits.items()}
+    z = sum(w.values())
+    move = chess.Move.from_uci(uci)
+    recap = False
+    if board.move_stack and board.is_capture(move) and move.to_square == board.peek().to_square:
+        before = board.copy()
+        recap = before.is_capture(before.pop())
+    ply = len(board.move_stack)
+    f = {
+        "spread": -sum(x / z * math.log(x / z) for x in w.values() if x > 0),
+        "log_p": (logits[uci] - top) / temp - math.log(z),
+        "recapture": float(recap),
+        "check": float(board.is_check()),
+        "log_legal": math.log(len(logits)),
+        "rating": (rating - 1500) / 100,
+        "log_left": math.log(max(clock["left"], 1.0)),
+        "log_base": math.log(clock["base"]),
+        "inc": clock["inc"],
+    }
+    for lo, hi in zip(PLY_EDGES, PLY_EDGES[1:] + [MAX_PLIES + 1]):
+        f[f"ply_{lo}"] = float(lo <= ply < hi)
+    return f
+
+
+@lru_cache(maxsize=1)
+def think_fit() -> dict:
+    return json.loads(THINK.read_text())
+
+
+def cap(clock: dict[str, float] | None) -> float:
+    """Longest think allowed. On a clock Maia keeps at least three quarters of what it had."""
+    return think_fit()["ceiling"] if clock is None else clock["left"] / 4 + clock["inc"]
+
+
+def think(board: chess.Board, logits: dict[str, float], uci: str, temp: float, level: int, rng: random.Random,
+          clock: dict[str, float] | None = None) -> float:
+    fit = think_fit()
+    f = think_features(board, logits, uci, temp, level, clock or UNHURRIED)
+    mu = fit["coef"]["const"] + sum(c * f[k] for k, c in fit["coef"].items() if k != "const")
+    hi = cap(clock)
+    return min(max(math.exp(rng.gauss(mu, fit["sigma"])), min(fit["floor"], hi)), hi)
+
+
+def check_clock(clock: dict[str, float] | None) -> None:
+    if clock is None:
+        return
+    if set(clock) != {"base", "inc", "left"}:
+        raise ValueError("clock needs base, inc and left")
+    if clock["base"] <= 0 or clock["inc"] < 0 or clock["left"] < 0:
+        raise ValueError("clock base must be positive, inc and left not negative")
+
+
+def move(maia, moves: list[str], level: int, rng: random.Random = random,
+         clock: dict[str, float] | None = None) -> dict[str, str | float]:
+    """Maia's move and how long a player at that level would take over it, in seconds."""
     if not MIN_LEVEL <= level <= MAX_LEVEL:
         raise ValueError(f"level {level} is outside {MIN_LEVEL} to {MAX_LEVEL}")
+    check_clock(clock)
     board = replay(moves)
     setting = setting_for(level, rng)
-    return sample(maia.logits(board, setting.dial), setting.temp, rng)
+    logits = maia.logits(board, setting.dial)
+    uci = sample(logits, setting.temp, rng)
+    # Down to a tenth, so a time at the cap stays under it
+    return {"move": uci, "think": math.floor(think(board, logits, uci, setting.temp, level, rng, clock) * 10) / 10}

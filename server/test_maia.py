@@ -1,9 +1,12 @@
 """Maia moves come from settings whose strength was measured, never from the
-level passed straight to the model. The model is scripted, so these run
-without torch or the weights."""
+level passed straight to the model, and its think times follow the fit in
+think.json without ever running its clock out. The model is scripted, so
+these run without torch or the weights."""
 
+import math
 import os
 import random
+import statistics
 
 import pytest
 from fastapi.testclient import TestClient
@@ -81,9 +84,73 @@ def test_an_illegal_move_or_a_finished_game_is_refused():
         maia.replay("f2f3 e7e5 g2g4 d8h4".split())
 
 
-def test_the_endpoint_needs_the_key_and_returns_one_move(monkeypatch):
+def test_the_endpoint_needs_the_key_and_returns_one_move_and_its_think_time(monkeypatch):
     monkeypatch.setattr(maia, "model", lambda: FakeMaia({"g8f6": 0.0}))
     body = {"moves": ["d2d4"], "level": 1500}
     assert CLIENT.post("/maia/move", json=body).status_code == 401
-    assert CLIENT.post("/maia/move", json=body, **KEY).json() == {"move": "g8f6"}
+    out = CLIENT.post("/maia/move", json=body, **KEY).json()
+    assert set(out) == {"move", "think"} and out["move"] == "g8f6"
+    assert maia.think_fit()["floor"] <= out["think"] <= maia.think_fit()["ceiling"]
     assert CLIENT.post("/maia/move", json={"moves": ["d2d5"], "level": 1500}, **KEY).status_code == 400
+
+
+def test_the_endpoint_takes_a_clock_and_refuses_a_malformed_one(monkeypatch):
+    monkeypatch.setattr(maia, "model", lambda: FakeMaia({"g8f6": 0.0}))
+    body = {"moves": ["d2d4"], "level": 1500}
+    clock = {"base": 180, "inc": 2, "left": 8}
+    out = CLIENT.post("/maia/move", json={**body, "clock": clock}, **KEY).json()
+    assert out["move"] == "g8f6" and out["think"] <= 8 / 4 + 2
+    for bad in ({"base": 180, "inc": 2}, {"base": 180, "inc": 2, "left": -1}, {"base": 0, "inc": 0, "left": 5}):
+        assert CLIENT.post("/maia/move", json={**body, "clock": bad}, **KEY).status_code == 400
+
+
+# Every legal move after 1. e4 e5 2. Nf3 Nc6 3. Bc4 Nf6 4. d3, so the count
+# of legal moves is real and only Maia's spread over them changes
+OPEN = maia.replay("e2e4 e7e5 g1f3 b8c6 f1c4 g8f6 d2d3".split())
+
+
+def spread(n: int) -> dict[str, float]:
+    ucis = sorted(m.uci() for m in OPEN.legal_moves)
+    return {u: 0.0 if i < n else -30.0 for i, u in enumerate(ucis)}
+
+
+def times(board, logits, uci, clock=None, n=400) -> list[float]:
+    rng = random.Random(7)
+    return [maia.think(board, logits, uci, 1.0, 1500, rng, clock) for _ in range(n)]
+
+
+def test_one_plausible_move_is_played_faster_than_a_choice_of_four():
+    one, four = spread(1), spread(4)
+    uci = next(u for u, v in one.items() if v == 0.0)
+    assert statistics.median(times(OPEN, one, uci)) < statistics.median(times(OPEN, four, uci))
+
+
+def test_a_recapture_changes_the_time_by_the_fitted_factor():
+    # 1. e4 d5 2. exd5, where Qxd5 takes back and Nf6 does not
+    board = maia.replay("e2e4 d7d5 e4d5".split())
+    logits = {m.uci(): 0.0 for m in board.legal_moves}
+    back, other = times(board, logits, "d8d5", n=1)[0], times(board, logits, "g8f6", n=1)[0]
+    assert back / other == pytest.approx(math.exp(maia.think_fit()["coef"].get("recapture", 0.0)))
+
+
+def test_less_time_on_the_clock_means_a_shorter_think():
+    logits, uci = spread(4), sorted(m.uci() for m in OPEN.legal_moves)[0]
+    lots = times(OPEN, logits, uci, {"base": 300, "inc": 0, "left": 280})
+    little = times(OPEN, logits, uci, {"base": 300, "inc": 0, "left": 8})
+    assert statistics.median(little) < statistics.median(lots)
+
+
+def test_a_think_stays_between_the_floor_and_the_cap():
+    fit, uci = maia.think_fit(), sorted(m.uci() for m in OPEN.legal_moves)[0]
+    for logits in (spread(1), spread(30)):
+        t = times(OPEN, logits, uci, n=2000)
+        assert fit["floor"] <= min(t) and max(t) <= fit["ceiling"]
+        for left in (0.2, 3, 40):
+            clock = {"base": 180, "inc": 0, "left": left}
+            t = times(OPEN, logits, uci, clock, n=500)
+            assert min(t) >= min(fit["floor"], left / 4) and max(t) <= left / 4
+
+
+def test_the_same_seed_gives_the_same_move_and_time():
+    fake, moves = FakeMaia(spread(4)), [m.uci() for m in OPEN.move_stack]
+    assert maia.move(fake, moves, 1500, random.Random(3)) == maia.move(fake, moves, 1500, random.Random(3))

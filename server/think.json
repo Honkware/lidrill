@@ -1,0 +1,48 @@
+{
+  "source": "lichess_db_standard_rated_2025-10.pgn.zst",
+  "month": "2025-10",
+  "time_controls": [
+    "180+0",
+    "180+2",
+    "300+0",
+    "300+3",
+    "600+0",
+    "600+5",
+    "900+10"
+  ],
+  "revision": "a107d6ceb7b298cb04ae1da4edffe2939858b894",
+  "games": 6988,
+  "moves": 24967,
+  "features": {
+    "check": "1 if the mover is in check",
+    "inc": "increment in seconds",
+    "log_base": "log of the base time in seconds",
+    "log_legal": "log of the number of legal moves",
+    "log_p": "log of the probability Maia gave the move played",
+    "ply_10": "1 if the ply is in [10, 20)",
+    "ply_20": "1 if the ply is in [20, 40)",
+    "ply_40": "1 if the ply is in [40, 60)",
+    "ply_60": "1 if the ply is in [60, 601)",
+    "rating": "(mover's rating - 1500) / 100",
+    "recapture": "1 if the move captures on the square the last move captured on",
+    "spread": "entropy in nats of Maia's move distribution at the level's temperature, log of the number of plausible moves"
+  },
+  "coef": {
+    "const": -3.6443,
+    "check": 0.7226,
+    "inc": 0.0611,
+    "log_base": 0.4682,
+    "log_legal": 0.3175,
+    "log_p": -0.1097,
+    "ply_10": 0.5598,
+    "ply_20": 0.9346,
+    "ply_40": 0.9592,
+    "ply_60": 0.5211,
+    "rating": 0.005,
+    "recapture": -0.4308,
+    "spread": 0.283
+  },
+  "sigma": 0.9259,
+  "floor": 0.5,
+  "ceiling": 38.0
+}

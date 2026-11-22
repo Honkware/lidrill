@@ -16,7 +16,17 @@ The server tier's loopback backend (`docs/server-tier.md`).
   moves and a level, and answers with one move sampled at the dial and
   temperature `maia-calibrate` gives for that level. torch and maia3
   (`requirements-maia.txt`) are loaded on the first move, so the sync store
-  runs without them.
+  runs without them. The answer also carries `think`, the seconds a player at
+  that level would take, drawn around a fit to human clocks held in
+  `think.json`. An optional `clock` (`{base, inc, left}` in seconds, `left`
+  being Maia's own) sets the pace from its base and increment and caps the
+  time at a quarter of `left` plus the increment, so Maia never flags by
+  itself. Without one the game is timed as 10+0 and capped at the
+  `ceiling` in `think.json`.
+- `fit_think.py` - rebuilds `think.json` and `think_fit.md` (the tables behind
+  the fit) from a Lichess monthly dump, one Maia forward pass per sampled
+  move. It also needs numpy and zstandard:
+  `python fit_think.py lichess_db_standard_rated_2025-10.pgn.zst`.
 - `systemd/` - the three VM units (`lidrill-server`, `lidrill-tunnel`,
   `lidrill-analysis`).
 
