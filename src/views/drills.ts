@@ -2,10 +2,10 @@ import type { VNode } from 'snabbdom'
 import type { Ctrl } from '../ctrl'
 import type { Practice, PracticeKind } from '../db'
 import { el } from '../el'
-import { MAX_LEVEL, MIN_LEVEL } from '../maia'
+import { MAX_LEVEL, MIN_LEVEL, startLabel } from '../maia'
 import { readGame, TIMES, type SavedGame } from '../play'
 import { CLEAR_AFTER } from '../practice'
-import { board, button, card, icon, moveInput, pawns, topBar } from './ui'
+import { board, button, card, dateLabel, icon, moveInput, pawns, topBar } from './ui'
 
 const ABOUT: Record<PracticeKind, { title: string; text: string }> = {
   conversion: {
@@ -78,9 +78,25 @@ function maiaCard(ctrl: Ctrl): VNode {
     el('div', 'mt-4 flex flex-wrap gap-2', [
       saved ? button('Continue your game', () => ctrl.go('play')) : null,
       button('New game', () => ctrl.startPlay(false), saved ? 'plain' : 'primary'),
-      ctrl.playStarts.length ? button('From one of your games', () => ctrl.startPlay(true), 'plain') : null,
+      ctrl.playStarts.length ? button('From one of your games', () => ctrl.togglePlayPicking(), 'plain') : null,
     ]),
     saved ? el('p', 'mt-2 text-xs text-dim', savedText(saved)) : null,
+    ctrl.playPicking
+      ? el(
+          'ul',
+          'mt-2 divide-y divide-raised',
+          ctrl.playStarts.slice(0, 5).map(s =>
+            el('li', [
+              el(
+                'button',
+                'block min-h-11 w-full truncate text-left text-sm',
+                { attrs: { type: 'button' }, on: { click: () => ctrl.startPlay(s) } },
+                `${startLabel(s)}, ${dateLabel(s.playedAt)}`,
+              ),
+            ]),
+          ),
+        )
+      : null,
   ])
 }
 

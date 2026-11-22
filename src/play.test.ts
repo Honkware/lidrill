@@ -90,7 +90,7 @@ describe('PlayRun', () => {
   })
 
   it('continues from a position out of an own game and counts only the new moves', async () => {
-    const start = { gameId: 'lichess:g', color: 'black' as const, opening: 'Sicilian Defense', moves: [{ san: 'e4', uci: 'e2e4' }] }
+    const start = { gameId: 'lichess:g', color: 'black' as const, opening: 'Sicilian Defense', playedAt: 1, moves: [{ san: 'e4', uci: 'e2e4' }] }
     const { asked, fetchFn } = scripted(['g1f3'])
     const run = new PlayRun({ ...opts, color: 'black', start }, () => {}, () => {}, fetchFn)
     await play(run, ['c7c5'])
@@ -118,7 +118,7 @@ describe('PlayRun', () => {
   it('waits for the promotion piece and plays the one chosen', async () => {
     const line = ['a2a4', 'h7h5', 'a4a5', 'h5h4', 'a5a6', 'h4h3', 'a6b7', 'h3g2'].map(uci => ({ san: '', uci }))
     const { asked, fetchFn } = scripted(['g2h1q'])
-    const run = new PlayRun({ ...opts, start: { gameId: 'lichess:g', color: 'white', opening: '', moves: line } }, () => {}, () => {}, fetchFn)
+    const run = new PlayRun({ ...opts, start: { gameId: 'lichess:g', color: 'white', opening: '', playedAt: 1, moves: line } }, () => {}, () => {}, fetchFn)
     await run.move('b7a8')
     expect([run.promoting, run.moves.length, asked.length]).toEqual(['b7a8', 8, 0])
     await run.promote('n')
@@ -168,7 +168,7 @@ describe('PlayRun clocks', () => {
   }
   const ok = (body: object) => ({ ok: true, json: async () => body }) as Response
   const timed = { ...opts, clock: { base: 300, inc: 3 } }
-  const start = { gameId: 'lichess:g', color: 'black' as const, opening: '', moves: [{ san: 'e4', uci: 'e2e4' }] }
+  const start = { gameId: 'lichess:g', color: 'black' as const, opening: '', playedAt: 1, moves: [{ san: 'e4', uci: 'e2e4' }] }
 
   // Answers from a list after `took` ms, failing on a null or an empty list
   function maia(replies: (object | null)[], took = 0) {

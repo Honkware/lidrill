@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Game } from './db'
-import { clampLevel, estimateFor, estimates, expectedScore, fetchMove, levelFor, MAX_LEVEL, MIN_LEVEL, ownStarts, speedOf, startEstimate, updateEstimate } from './maia'
+import { clampLevel, estimateFor, estimates, expectedScore, fetchMove, levelFor, MAX_LEVEL, MIN_LEVEL, ownStarts, speedOf, startEstimate, startLabel, updateEstimate, type Start } from './maia'
 import { pgnMoves } from './sync/pgn'
 
 const game = (over: Partial<Game> = {}): Game => ({
@@ -123,6 +123,18 @@ describe('ownStarts', () => {
     expect(ownStarts([analyzed(8, 0, { analyzedAt: undefined })])).toEqual([])
     expect(ownStarts([analyzed(8, 0, { site: 'maia' })])).toEqual([])
     expect(ownStarts([analyzed(14, 0)])).toEqual([])
+  })
+})
+
+describe('startLabel', () => {
+  const start = (over: Partial<Start> = {}): Start => ({ gameId: 'g', color: 'white', opening: 'Italian Game: Giuoco Piano', playedAt: 1, moves: Array(10).fill({ san: 'e4', uci: 'e2e4' }), ...over })
+
+  it('names the opening family, the move about to be played and the side', () => {
+    expect(startLabel(start())).toBe('Italian Game, move 6, you were White')
+    expect(startLabel(start({ color: 'black', moves: start().moves.slice(1) }))).toBe('Italian Game, move 5, you were Black')
+  })
+  it('says your game when the opening has no name', () => {
+    expect(startLabel(start({ opening: '' }))).toBe('Your game, move 6, you were White')
   })
 })
 

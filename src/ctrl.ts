@@ -84,7 +84,8 @@ export class Ctrl {
   playLevel?: number // a level picked by hand; undefined follows the estimate
   playChoices = readChoices()
   playPuzzles?: number // puzzles the last finished Maia game produced, once analyzed
-  private playOwn = false
+  playPicking = false // the list of own-game starts is open on the card
+  private playFrom: Start | boolean = false
   private maiaStart = 1000
   studies?: StudyInfo[]
   playedFamilies: string[] = []
@@ -561,11 +562,18 @@ export class Ctrl {
     this.redraw()
   }
 
-  // A new game from the Drills card replaces one left unfinished
-  startPlay(own: boolean) {
+  // A new game from the Drills card replaces one left unfinished. from is a
+  // start from the player's games, true for any of them, false for move 1.
+  startPlay(from: Start | boolean) {
     clearGame()
-    this.playOwn = own
+    this.playFrom = from
+    this.playPicking = false
     this.go('play')
+  }
+
+  togglePlayPicking() {
+    this.playPicking = !this.playPicking
+    this.redraw()
   }
 
   private async openPlay() {
@@ -577,7 +585,7 @@ export class Ctrl {
       this.play = new PlayRun(saved.opts, this.redraw, run => void this.finishPlay(run), fetch, Date.now, saved)
       return
     }
-    const start = this.playOwn ? this.playStarts[Math.floor(Math.random() * this.playStarts.length)] : undefined
+    const start = this.playFrom === true ? this.playStarts[Math.floor(Math.random() * this.playStarts.length)] : this.playFrom || undefined
     const { time, color: side, pace } = this.playChoices
     // A position from an own game keeps its side whatever was chosen
     const color = start?.color ?? (side === 'random' ? (Math.random() < 0.5 ? 'white' : 'black') : side)

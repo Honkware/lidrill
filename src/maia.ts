@@ -80,6 +80,7 @@ export interface Start {
   gameId: string
   color: 'white' | 'black'
   opening: string
+  playedAt: number
   moves: { san: string; uci: string }[]
 }
 
@@ -98,9 +99,16 @@ export function ownStarts(games: Game[]): Start[] {
     const last = g.moves[plies - 1]
     if (plies < 2 || plies > g.moves.length - 10 || !last?.eval || last.eval.mate !== undefined) continue
     if (Math.abs(povCp(last.eval, 'white')) > 100) continue
-    out.push({ gameId: g.id, color: g.color, opening: g.opening, moves: g.moves.slice(0, plies).map(m => ({ san: m.san, uci: m.uci })) })
+    out.push({ gameId: g.id, color: g.color, opening: g.opening, playedAt: g.playedAt, moves: g.moves.slice(0, plies).map(m => ({ san: m.san, uci: m.uci })) })
   }
   return out
+}
+
+// One line for a start in the chooser, 'Italian Game, move 6, you were
+// White'; the move is the one the player is about to make
+export function startLabel(s: Start): string {
+  const name = s.opening.split(':')[0].trim() || 'Your game'
+  return `${name}, move ${Math.floor(s.moves.length / 2) + 1}, you were ${s.color === 'white' ? 'White' : 'Black'}`
 }
 
 // clock is in seconds, with `left` Maia's own time, and is left out of an
