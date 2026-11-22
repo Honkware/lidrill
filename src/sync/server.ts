@@ -72,8 +72,8 @@ async function push(token: string, fetchFn: typeof fetch): Promise<number> {
 
 // JSON turns the FSRS card dates into strings; revive them like an import does
 function revive(table: SyncTable, data: unknown): unknown {
-  if (table !== 'puzzles') return data
-  const p = data as Puzzle
+  if (table !== 'puzzles' && table !== 'openingCards') return data
+  const p = data as Pick<Puzzle, 'card'>
   const card = { ...p.card, due: new Date(p.card.due) }
   if (card.last_review) card.last_review = new Date(card.last_review)
   return { ...p, card }

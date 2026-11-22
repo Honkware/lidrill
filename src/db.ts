@@ -146,6 +146,7 @@ export interface Profile {
   thresholdHistory?: { cp: number; at: number; solveRate: number }[] // calibration audit
   repertoire?: string[] // opening families the plan aims for, editable in Settings
   repertoireStudy?: { id: string; name: string; lines: string[][] } // or a Lichess study's chapters
+  openings?: Opening[] // trained in the opening trainer, see openings/
   ratings?: Partial<Record<Speed | 'puzzle', Perf>> // from /api/account when signed in
   weakThemes?: WeakTheme[] // from the Lichess puzzle dashboard
   puzzleActivityAt?: number // newest Lichess puzzle activity already read
@@ -220,6 +221,43 @@ export interface ReplaySession {
   scoreM: number
 }
 
+// An opening the player trains, by its defining moves (UCI from the start)
+export interface Opening {
+  name: string
+  color: 'white' | 'black'
+  moves: string[]
+}
+
+// Highest rank wins a position: a Lichess study the player keeps, then a
+// move they added here, then a built-in opening's moves, then what they
+// most often play in their games
+export type RepSource = 'games' | 'builtin' | 'own' | 'study'
+
+// The player's move in a position on their own side. fen has no move
+// counters, so a position reached by two move orders is one entry.
+export interface RepMove {
+  fen: string
+  uci: string
+  source: RepSource
+}
+
+// A position in an opening tree with the player to move: recall when the
+// repertoire has a move there, "they played this instead" when it doesn't
+export interface OpeningCard {
+  id: string // the position, as RepMove.fen
+  opening: string
+  moves: string[] // UCI from the start
+  reach: number // chance of getting here from the end of the opening's moves against Maia
+  wrong?: boolean // one of the player's games went wrong here
+  card: Card
+}
+
+// Maia's move probabilities by level and position, a cache
+export interface PolicyRow {
+  key: string // `${level}|${fen without counters}`
+  moves: { uci: string; p: number }[]
+}
+
 // Never exported, never logged
 export interface Auth {
   id: 'lichess'
@@ -232,7 +270,7 @@ export interface Auth {
 // Tables replicated to the lidrill server: everything
 // the export carries except explanations (those live in the packet KV) and
 // caches. `auth` (the token) is never synced.
-export const SYNC_TABLES = ['games', 'puzzles', 'reviews', 'profile', 'syncState', 'journal', 'liPuzzle', 'practice', 'replaySessions'] as const
+export const SYNC_TABLES = ['games', 'puzzles', 'reviews', 'profile', 'syncState', 'journal', 'liPuzzle', 'practice', 'replaySessions', 'repertoire', 'openingCards'] as const
 export type SyncTable = (typeof SYNC_TABLES)[number]
 
 // Auto-increment keys don't exist at hook time (Dexie assigns them after the
@@ -250,6 +288,8 @@ export const SYNC_ID: Record<SyncTable, string> = {
   liPuzzle: 'week',
   practice: 'id',
   replaySessions: 'id',
+  repertoire: 'fen',
+  openingCards: 'id',
 }
 
 // A row was written locally and hasn't reached the server yet. `at` is the
@@ -282,6 +322,9 @@ class LidrillDb extends Dexie {
   certs!: EntityTable<CertRow, 'puzzleId'>
   syncQueue!: Table<SyncQueueEntry, [string, string]>
   serverMeta!: EntityTable<ServerMetaEntry, 'key'>
+  repertoire!: EntityTable<RepMove, 'fen'>
+  openingCards!: EntityTable<OpeningCard, 'id'>
+  policy!: EntityTable<PolicyRow, 'key'>
 
   constructor() {
     super('lidrill')
@@ -313,6 +356,11 @@ class LidrillDb extends Dexie {
     this.version(7).stores({
       syncQueue: '[table+key], table',
       serverMeta: 'key',
+    })
+    this.version(8).stores({
+      repertoire: 'fen',
+      openingCards: 'id, card.due, opening',
+      policy: 'key',
     })
   }
 }

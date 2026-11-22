@@ -30,7 +30,7 @@ LIDRILL_KEY = os.environ.get("LIDRILL_KEY", "")
 
 # Mirrors client SYNC_TABLES (src/db.ts): everything the export carries
 # except explanations (packet KV) and caches. `auth` never arrives here.
-TABLES = {"games", "puzzles", "reviews", "profile", "syncState", "journal", "liPuzzle", "practice", "replaySessions"}
+TABLES = {"games", "puzzles", "reviews", "profile", "syncState", "journal", "liPuzzle", "practice", "replaySessions", "repertoire", "openingCards"}
 
 MAX_ROWS_PER_PUSH = 5000
 MAX_ROW_BYTES = 2_000_000

@@ -3,7 +3,7 @@ import { db, queueSyncRow, SYNC_AUTO_ID, type Puzzle } from './db'
 // One-file export of everything lidrill knows. The Lichess token
 // is never in it, and the explorer cache is left out because it's only a
 // cache.
-const TABLES = ['games', 'puzzles', 'reviews', 'profile', 'syncState', 'journal', 'liPuzzle', 'practice', 'explanations', 'replaySessions'] as const
+const TABLES = ['games', 'puzzles', 'reviews', 'profile', 'syncState', 'journal', 'liPuzzle', 'practice', 'explanations', 'replaySessions', 'repertoire', 'openingCards'] as const
 type TableName = (typeof TABLES)[number]
 
 export interface Backup {
@@ -22,7 +22,7 @@ export async function exportData(): Promise<Backup> {
 }
 
 // JSON turns the FSRS card dates into strings
-function reviveCard(p: Puzzle): Puzzle {
+function reviveCard<T extends Pick<Puzzle, 'card'>>(p: T): T {
   const card = { ...p.card, due: new Date(p.card.due) }
   if (card.last_review) card.last_review = new Date(card.last_review)
   return { ...p, card }
@@ -47,7 +47,7 @@ export async function importData(text: string, signedInAs?: string): Promise<voi
     for (const name of TABLES) {
       const rows = (data.tables[name] ?? []) as unknown[]
       await db.table(name).clear()
-      await db.table(name).bulkAdd(name === 'puzzles' ? (rows as Puzzle[]).map(reviveCard) : rows)
+      await db.table(name).bulkAdd(name === 'puzzles' || name === 'openingCards' ? (rows as Pick<Puzzle, 'card'>[]).map(reviveCard) : rows)
       if ((SYNC_AUTO_ID as readonly string[]).includes(name)) for (const row of rows as { id?: number }[]) if (row.id !== undefined) void queueSyncRow(name as (typeof SYNC_AUTO_ID)[number], row.id)
     }
   })
@@ -57,8 +57,8 @@ export async function importData(text: string, signedInAs?: string): Promise<voi
 // goes too (the next server pass sends the wipe), otherwise a pull would
 // resurrect everything here and on every other device.
 export async function deleteAllData(): Promise<void> {
-  await db.transaction('rw', [...TABLES, 'explorer', 'certs', 'syncQueue', 'serverMeta'].map(t => db.table(t)), async () => {
-    for (const name of [...TABLES, 'explorer', 'certs']) await db.table(name).clear()
+  await db.transaction('rw', [...TABLES, 'explorer', 'certs', 'policy', 'syncQueue', 'serverMeta'].map(t => db.table(t)), async () => {
+    for (const name of [...TABLES, 'explorer', 'certs', 'policy']) await db.table(name).clear()
     await db.syncQueue.clear()
     await db.serverMeta.put({ key: 'wipe', value: 1 })
     await db.serverMeta.delete('pullSince')

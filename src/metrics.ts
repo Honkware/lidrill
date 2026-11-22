@@ -99,7 +99,7 @@ export function journalFor(game: Game, band: Band, cutoff: number, old?: Journal
   }
 }
 
-const familyOf = (g: Game) => (g.opening || g.eco || 'Unknown').split(':')[0].trim()
+export const familyOf = (g: Game) => (g.opening || g.eco || 'Unknown').split(':')[0].trim()
 
 export interface OpeningRow {
   family: string
