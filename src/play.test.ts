@@ -115,6 +115,20 @@ describe('PlayRun', () => {
     expect([run.state, run.result, run.ending]).toEqual(['over', 'loss', 'Resigned'])
   })
 
+  it('waits for the promotion piece and plays the one chosen', async () => {
+    const line = ['a2a4', 'h7h5', 'a4a5', 'h5h4', 'a5a6', 'h4h3', 'a6b7', 'h3g2'].map(uci => ({ san: '', uci }))
+    const { asked, fetchFn } = scripted(['g2h1q'])
+    const run = new PlayRun({ ...opts, start: { gameId: 'lichess:g', color: 'white', opening: '', moves: line } }, () => {}, () => {}, fetchFn)
+    await run.move('b7a8')
+    expect([run.promoting, run.moves.length, asked.length]).toEqual(['b7a8', 8, 0])
+    await run.promote('n')
+    expect(run.moves.slice(8)).toEqual([
+      { san: 'bxa8=N', uci: 'b7a8n' },
+      { san: 'gxh1=Q', uci: 'g2h1q' },
+    ])
+    expect(run.promoting).toBeUndefined()
+  })
+
   it('steps back through the game read-only and refuses a move until it is back at the end', async () => {
     const { asked, fetchFn } = scripted(['e7e5', 'b8c6'])
     const run = new PlayRun(opts, () => {}, () => {}, fetchFn)

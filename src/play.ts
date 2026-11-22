@@ -132,6 +132,7 @@ export class PlayRun {
   error?: string
   last?: string // SAN of Maia's last move
   resigning = false // Resign was tapped once and waits for a second tap
+  promoting?: string // the player's pawn move to the last rank, waiting for a piece
   saved?: Game
   readonly opts: PlayOptions
   readonly moves: { san: string; uci: string }[]
@@ -256,6 +257,7 @@ export class PlayRun {
   }
 
   go(ply: number) {
+    this.promoting = undefined
     this.viewPly = Math.max(0, Math.min(this.moves.length, ply))
     this.sync()
     this.redraw()
@@ -283,9 +285,7 @@ export class PlayRun {
   }
 
   private onMove(orig: Key, dest: Key) {
-    let uci = orig + dest
-    if (this.pos.board.get(parseSquare(orig)!)?.role === 'pawn' && /[18]$/.test(dest)) uci += 'q'
-    void this.move(uci)
+    void this.move(orig + dest)
   }
 
   // Plays a move for whoever's turn it is; true when the game goes on
@@ -316,8 +316,27 @@ export class PlayRun {
   async move(uci: string) {
     if (this.state !== 'your-move' || !this.live || this.flag()) return
     this.resigning = false
+    // The pawn stays where it was dropped while the player picks a piece,
+    // and the clock keeps running
+    if (uci.length === 4 && /[18]$/.test(uci) && this.pos.board.get(parseSquare(uci.slice(0, 2))!)?.role === 'pawn') {
+      this.promoting = uci
+      this.cg?.set({ movable: { color: undefined, dests: new Map() } })
+      this.redraw()
+      return
+    }
+    this.promoting = undefined
     if (!this.push(uci)) return
     await this.reply()
+  }
+
+  // No piece puts the pawn back
+  async promote(piece?: 'q' | 'r' | 'b' | 'n') {
+    const uci = this.promoting
+    if (!uci) return
+    this.promoting = undefined
+    if (piece) return this.move(uci + piece)
+    this.sync()
+    this.redraw()
   }
 
   private async reply() {
@@ -372,6 +391,7 @@ export class PlayRun {
   private end(result: Result, ending: string) {
     this.stop()
     clearGame()
+    this.promoting = undefined
     clearInterval(this.timer)
     this.state = 'over'
     this.result = result

@@ -17,6 +17,7 @@ export function playView(ctrl: Ctrl): VNode {
     el('aside', 'space-y-4 px-4 pb-8 pt-3 md:px-0 md:pt-0', [
       el('div', 'hidden md:block', [bar()]),
       clocks(run),
+      run.promoting ? promotion(run) : null,
       el('p', 'text-sm', start ? `From move ${Math.floor(start.moves.length / 2) + 1} of one of your games${start.opening ? `, ${start.opening.split(':')[0]}` : ''}.` : 'A game from the first move.'),
       el('div', 'flex gap-6 text-sm', [
         el('div', [el('p', 'text-xs text-dim', 'Maia'), el('p', 'font-medium tabular-nums', { attrs: { title: 'Approximate Lichess blitz rating' } }, `about ${level}`)]),
@@ -45,6 +46,23 @@ function clocks(run: PlayRun): VNode | null {
     ])
   }
   return el('div', 'max-w-xs space-y-1', [row('Maia', run.opts.color === 'white' ? 'black' : 'white'), row('You', run.opts.color)])
+}
+
+const PIECES = [['q', 'queen'], ['r', 'rook'], ['b', 'bishop'], ['n', 'knight']] as const
+
+// Right under the clocks, so it is in view below the board on a phone
+function promotion(run: PlayRun): VNode {
+  return el('div', 'flex items-center gap-2', [
+    ...PIECES.map(([piece, role]) =>
+      el(
+        'button',
+        'grid size-14 place-items-center rounded-lg bg-raised',
+        { attrs: { type: 'button', 'aria-label': `Promote to ${role}`, title: `Promote to ${role}` }, on: { click: () => void run.promote(piece) } },
+        [el('span', `piece-preview ${run.opts.color} ${role}`)],
+      ),
+    ),
+    button('Cancel', () => void run.promote(), 'quiet'),
+  ])
 }
 
 function live(ctrl: Ctrl): VNode {
