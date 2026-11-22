@@ -62,6 +62,15 @@ export function estimateFor(all: Estimates, speed: MaiaSpeed, start: number): { 
   return { rating: from ? all[from]!.rating : start, from }
 }
 
+// The estimate going into each of the last 30 games at a speed, oldest
+// first, as each stored game keeps it
+export const history = (games: Game[], speed: MaiaSpeed): number[] =>
+  games
+    .filter(g => g.site === 'maia' && speedOf(g.speed) === speed)
+    .sort((a, b) => a.playedAt - b.playedAt)
+    .slice(-30)
+    .map(g => g.rating)
+
 // Where the estimate starts: the Lichess blitz rating when there is one,
 // since the levels are blitz ratings, else the median rating of the last 50
 // imported games, else 1000.

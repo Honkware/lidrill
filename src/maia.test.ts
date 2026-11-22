@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Game } from './db'
-import { clampLevel, estimateFor, estimates, expectedScore, fetchMove, levelFor, MAX_LEVEL, MIN_LEVEL, ownStarts, speedOf, startEstimate, startLabel, updateEstimate, type Start } from './maia'
+import { clampLevel, estimateFor, estimates, expectedScore, fetchMove, history, levelFor, MAX_LEVEL, MIN_LEVEL, ownStarts, speedOf, startEstimate, startLabel, updateEstimate, type Start } from './maia'
 import { pgnMoves } from './sync/pgn'
 
 const game = (over: Partial<Game> = {}): Game => ({
@@ -88,6 +88,26 @@ describe('estimates', () => {
     expect(estimateFor(all, 'blitz', 1000)).toEqual({ rating: 1300, from: 'blitz' })
     expect(estimateFor(all, 'rapid', 1000)).toEqual({ rating: 1500, from: 'untimed' })
     expect(estimateFor({}, 'rapid', 1000)).toEqual({ rating: 1000, from: undefined })
+  })
+})
+
+describe('history', () => {
+  it('lists the estimate going into each game at the speed, oldest first', () => {
+    const games = [
+      game({ site: 'maia', speed: '10+0', rating: 1450, playedAt: 3 }),
+      game({ site: 'maia', speed: '15+10', rating: 1400, playedAt: 2 }),
+      game({ site: 'maia', speed: '3+2', rating: 1200, playedAt: 4 }),
+      game({ site: 'lichess', speed: 'rapid', rating: 1600, playedAt: 5 }),
+    ]
+    expect(history(games, 'rapid')).toEqual([1400, 1450])
+    expect(history(games, 'blitz')).toEqual([1200])
+    expect(history(games, 'untimed')).toEqual([])
+  })
+  it('keeps the last 30', () => {
+    const games = Array.from({ length: 40 }, (_, i) => game({ site: 'maia', speed: 'untimed', rating: 1000 + i, playedAt: i }))
+    const pts = history(games, 'untimed')
+    expect(pts).toHaveLength(30)
+    expect([pts[0], pts.at(-1)]).toEqual([1010, 1039])
   })
 })
 

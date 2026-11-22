@@ -1,8 +1,8 @@
-import type { VNode } from 'snabbdom'
+import { h, type VNode } from 'snabbdom'
 import type { Ctrl } from '../ctrl'
-import type { Practice, PracticeKind } from '../db'
+import type { MaiaSpeed, Practice, PracticeKind } from '../db'
 import { el } from '../el'
-import { MAX_LEVEL, MIN_LEVEL, startLabel } from '../maia'
+import { history, MAX_LEVEL, MIN_LEVEL, startLabel } from '../maia'
 import { readGame, TIMES, type SavedGame } from '../play'
 import { CLEAR_AFTER } from '../practice'
 import { board, button, card, dateLabel, icon, moveInput, pawns, topBar } from './ui'
@@ -60,6 +60,7 @@ function maiaCard(ctrl: Ctrl): VNode {
       el('p', 'font-display text-2xl tabular-nums', `about ${level}`),
       el('p', 'text-xs text-dim', 'approximate Lichess blitz rating'),
     ]),
+    levelLine(ctrl, speed),
     el('div', 'mt-3 grid grid-cols-6 gap-2', [-100, -10, -1, 1, 10, 100].map(step)),
     el('p', 'mt-2 text-center text-xs text-dim', [
       ctrl.playLevel === undefined
@@ -97,6 +98,31 @@ function maiaCard(ctrl: Ctrl): VNode {
           ),
         )
       : null,
+  ])
+}
+
+// The estimate going into each of the last games at the card's speed, then
+// the estimate now, once there are enough games for a line to mean anything
+function levelLine(ctrl: Ctrl, speed: MaiaSpeed): VNode | null {
+  const pts = history(ctrl.maiaGames, speed)
+  if (pts.length < 5) return null
+  const n = pts.length
+  if (ctrl.maiaEstimate.from === speed) pts.push(ctrl.maiaRating)
+  const lo = Math.min(...pts)
+  const hi = Math.max(...pts)
+  const w = 100
+  const ht = 32
+  const xy = pts.map((v, i) => `${(i / (pts.length - 1)) * w},${hi === lo ? ht / 2 : 2 + ((hi - v) / (hi - lo)) * (ht - 4)}`).join(' ')
+  return el('div', 'mt-3', [
+    el('div', 'flex items-center gap-2 text-xs tabular-nums text-dim', [
+      el('span', String(pts[0])),
+      // Stretched to the card's width; the stroke stays 2px wide
+      h('svg', { attrs: { viewBox: `0 0 ${w} ${ht}`, preserveAspectRatio: 'none', height: ht, class: 'min-w-0 flex-1', 'aria-hidden': 'true' } }, [
+        h('polyline', { attrs: { points: xy, fill: 'none', class: 'stroke-accent', 'stroke-width': 2, 'stroke-linejoin': 'round', 'vector-effect': 'non-scaling-stroke' } }),
+      ]),
+      el('span', String(pts.at(-1))),
+    ]),
+    el('p', 'text-center text-xs text-dim', `Your ${speed} estimate over the last ${n} games`),
   ])
 }
 

@@ -81,6 +81,7 @@ export class Ctrl {
   run?: PracticeRun
   play?: PlayRun
   playStarts: Start[] = [] // positions from the player's own games a Maia game can start from
+  maiaGames: Game[] = [] // for the level history on the card
   playLevel?: number // a level picked by hand; undefined follows the estimate
   playChoices = readChoices()
   playPuzzles?: number // puzzles the last finished Maia game produced, once analyzed
@@ -218,6 +219,7 @@ export class Ctrl {
       if (this.screen === 'review') await this.loadReview(done)
       if (this.screen === 'drills') {
         this.playStarts = ownStarts(all)
+        this.maiaGames = all.filter(g => g.site === 'maia')
         this.maiaStart = startEstimate(this.profile?.ratings, all)
       }
       if (this.screen === 'settings')
