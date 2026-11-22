@@ -20,6 +20,8 @@ from typing import Any
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from pydantic import BaseModel
 
+import maia
+
 DATA_DIR = os.environ.get("DATA_DIR", "/opt/lidrill/data")
 LIDRILL_KEY = os.environ.get("LIDRILL_KEY", "")
 
@@ -97,6 +99,21 @@ def queue_analysis(conn: sqlite3.Connection, table: str, row_id: str, data: Any)
 def health(x_lidrill_key: str | None = Header(default=None)) -> dict[str, bool]:
     guard(x_lidrill_key)
     return {"ok": True}
+
+
+class MoveBody(BaseModel):
+    moves: list[str]
+    level: int
+
+
+@app.post("/maia/move")
+def maia_move(body: MoveBody, x_lidrill_key: str | None = Header(default=None)) -> dict[str, str]:
+    """Maia-3's reply to a game given as UCI moves from the start position."""
+    guard(x_lidrill_key)
+    try:
+        return {"move": maia.move(maia.model(), body.moves, body.level)}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @app.post("/u/{user}/push")
