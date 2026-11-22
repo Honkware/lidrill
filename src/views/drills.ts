@@ -10,11 +10,11 @@ import { board, button, card, icon, moveInput, pawns, topBar } from './ui'
 const ABOUT: Record<PracticeKind, { title: string; text: string }> = {
   conversion: {
     title: 'Conversion',
-    text: "Positions where you were winning on material and didn't win. Play them out against Stockfish until you convert three times in a row.",
+    text: "Positions where you were winning on material and didn't win. Play them out against Maia at about your level until you convert three times in a row. Stockfish judges the result.",
   },
   defense: {
     title: 'Defense',
-    text: "Positions where you were worse and saved the game. Hold them against Stockfish for 12 moves, three times in a row.",
+    text: "Positions where you were worse and saved the game. Hold them against Maia at about your level for 12 moves, three times in a row. Stockfish judges the result.",
   },
 }
 
@@ -161,7 +161,7 @@ export function practiceView(ctrl: Ctrl): VNode {
         el('div', [el('p', 'text-xs text-dim', 'Target'), el('p', 'font-medium tabular-nums', { attrs: { title: targetNote } }, target)]),
         el('div', [el('p', 'text-xs text-dim', 'Eval'), el('p', 'font-medium tabular-nums', pawns(run.cp))]),
         el('div', [el('p', 'text-xs text-dim', 'Your moves'), el('p', 'font-medium tabular-nums', String(run.moves))]),
-        run.last ? el('div', [el('p', 'text-xs text-dim', 'Stockfish played'), el('p', 'font-medium', run.last)]) : null,
+        run.last ? el('div', [el('p', 'text-xs text-dim', `${run.lastBy} played`), el('p', 'font-medium', run.last)]) : null,
       ]),
       done
         ? el('div', 'space-y-3', [
@@ -169,7 +169,7 @@ export function practiceView(ctrl: Ctrl): VNode {
             el('div', 'flex gap-2', [button('Try again', () => ctrl.retryPractice()), button('All drills', () => ctrl.go('drills'), 'plain')]),
           ])
         : el('div', 'space-y-2', [
-            el('p', 'text-sm text-dim', run.state === 'thinking' ? 'Stockfish is thinking…' : 'Your move.'),
+            el('p', 'text-sm text-dim', run.state === 'thinking' ? `${run.opponent} is thinking…` : 'Your move.'),
             // Same rule as the drill: typing is for keyboards
             el('div', 'hidden md:block', [moveInput(t => run.typeMove(t))]),
           ]),

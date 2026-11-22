@@ -132,7 +132,7 @@ function drillsCard(ctrl: Ctrl): VNode | null {
   if (!open && !d.cleared) return null
   return card([
     label('Drills'),
-    el('p', 'mt-2', open ? `${plural(open, 'position')} to play out against Stockfish.` : 'All cleared. New ones come from your next games.'),
+    el('p', 'mt-2', open ? `${plural(open, 'position')} to play out against Maia.` : 'All cleared. New ones come from your next games.'),
     d.cleared ? el('p', 'mt-1 text-sm text-dim', `${d.cleared} cleared so far.`) : null,
     open ? el('div', 'mt-4 grid', [button('Open drills', () => ctrl.go('drills'), 'plain')]) : null,
   ])
