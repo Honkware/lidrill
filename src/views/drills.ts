@@ -5,7 +5,7 @@ import { el } from '../el'
 import { history, MAX_LEVEL, MIN_LEVEL, startLabel } from '../maia'
 import { readGame, TIMES, type SavedGame } from '../play'
 import { CLEAR_AFTER } from '../practice'
-import { board, btnClass, button, card, dateLabel, icon, moveInput, pawns, topBar } from './ui'
+import { board, btnClass, button, card, dateLabel, icon, listRow, moveInput, pawns, rowList, topBar } from './ui'
 
 const ABOUT: Record<PracticeKind, { title: string; text: string }> = {
   conversion: {
@@ -84,19 +84,9 @@ function maiaCard(ctrl: Ctrl): VNode {
     ]),
     saved ? el('p', 'mt-2 text-xs text-dim', savedText(saved)) : null,
     ctrl.playPicking
-      ? el(
-          'ul',
-          'mt-2 divide-y divide-raised',
-          ctrl.playStarts.slice(0, 5).map(s =>
-            el('li', [
-              el(
-                'button',
-                'block min-h-11 w-full truncate text-left text-sm',
-                { attrs: { type: 'button' }, on: { click: () => ctrl.startPlay(s) } },
-                `${startLabel(s)}, ${dateLabel(s.playedAt)}`,
-              ),
-            ]),
-          ),
+      ? rowList(
+          ctrl.playStarts.slice(0, 5).map(s => listRow(() => ctrl.startPlay(s), [el('span', 'min-w-0 truncate text-sm', `${startLabel(s)}, ${dateLabel(s.playedAt)}`)])),
+          'mt-2 -mx-4 sm:-mx-5',
         )
       : null,
   ])
@@ -162,26 +152,23 @@ function section(kind: PracticeKind, list?: Practice[]): VNode {
     el('h2', 'font-display text-lg', ABOUT[kind].title),
     el('p', 'mt-1 text-sm text-dim', ABOUT[kind].text),
     items.length
-      ? el(
-          'ul',
-          'mt-3 divide-y divide-raised',
+      ? rowList(
           items.slice(0, 20).map(p =>
-            el('li', [
-              el('a', 'flex items-center gap-3 py-3', { attrs: { href: `#/practice/${encodeURIComponent(p.id)}` } }, [
-                el('div', 'min-w-0 flex-1', [
-                  el('p', 'font-medium', `Move ${Math.ceil(p.ply / 2)}, ${pawns(p.startCp)}`),
-                  el('p', 'text-xs text-dim', p.attempts ? `${p.attempts} ${p.attempts === 1 ? 'try' : 'tries'}` : 'Not tried yet'),
-                ]),
-                p.cleared
-                  ? el('span', 'flex items-center gap-1 text-sm text-accent', [icon('check', 16), 'Cleared'])
-                  : el(
-                      'span',
-                      'flex gap-1',
-                      Array.from({ length: CLEAR_AFTER }, (_, i) => el('span', 'size-2 rounded-full', { class: { 'bg-accent': i < p.streak, 'bg-raised': i >= p.streak } })),
-                    ),
+            listRow(`#/practice/${encodeURIComponent(p.id)}`, [
+              el('div', 'min-w-0 flex-1', [
+                el('p', 'font-medium', `Move ${Math.ceil(p.ply / 2)}, ${pawns(p.startCp)}`),
+                el('p', 'text-xs text-dim', p.attempts ? `${p.attempts} ${p.attempts === 1 ? 'try' : 'tries'}` : 'Not tried yet'),
               ]),
+              p.cleared
+                ? el('span', 'flex items-center gap-1 text-sm text-accent', [icon('check', 16), 'Cleared'])
+                : el(
+                    'span',
+                    'flex gap-1',
+                    Array.from({ length: CLEAR_AFTER }, (_, i) => el('span', 'size-2 rounded-full', { class: { 'bg-accent': i < p.streak, 'bg-raised': i >= p.streak } })),
+                  ),
             ]),
           ),
+          'mt-3 -mx-4 sm:-mx-5',
         )
       : el('p', 'mt-3 text-sm text-dim', 'None in analyzed games yet.'),
   ])

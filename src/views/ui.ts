@@ -25,6 +25,15 @@ export const btnClass = (kind: Kind = 'primary', size: keyof typeof SIZE = 'md')
 export const button = (label: VNodeChildren, onClick: () => void, kind: Kind = 'primary', disabled = false) =>
   el('button', btnClass(kind), { attrs: { disabled, type: 'button' }, on: { click: onClick } }, label)
 
+// A list whose rows are links or buttons the full width of the row. Inside a
+// card it takes -mx-4 sm:-mx-5 so the rows reach the card's edges.
+export const rowList = (rows: VNode[], extra = '') => el('ul', `divide-y divide-raised ${extra}`, rows)
+
+const ROW = 'flex min-h-11 w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-hover focus-visible:-outline-offset-2 active:bg-press sm:px-5'
+
+export const listRow = (to: string | (() => void), children: VNodeChildren) =>
+  el('li', [typeof to === 'string' ? el('a', ROW, { attrs: { href: to } }, children) : el('button', ROW, { attrs: { type: 'button' }, on: { click: to } }, children)])
+
 export const card = (children: VNodeChildren, extra = '') => el('section', `rounded-xl bg-surface p-4 sm:p-5 ${extra}`, children)
 
 export const label = (text: string) => el('p', 'text-xs font-medium uppercase tracking-wide text-dim', text)

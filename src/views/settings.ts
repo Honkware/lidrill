@@ -7,7 +7,7 @@ import { STUDY_READ_SCOPE } from '../lichess/repertoire'
 import { STUDY_SCOPE } from '../lichess/study'
 import { BOARDS, DEFAULT_BOARD, DEFAULT_PIECES, PIECE_SETS } from '../look'
 import { setSound, soundOn } from '../sound'
-import { btnClass, button, card, HANG_RULE, label } from './ui'
+import { btnClass, button, card, HANG_RULE, label, listRow, rowList } from './ui'
 import { chesscomField } from './welcome'
 
 // What each Lichess permission is used for
@@ -173,12 +173,9 @@ function studyPicker(ctrl: Ctrl): VNode {
   return el('div', 'space-y-2 border-t border-raised pt-3', [
     el('p', 'text-sm', current ? `Repertoire from your study "${current.name}" (${current.lines.length} lines).` : 'Or use one of your Lichess studies as your repertoire.'),
     ctrl.studies
-      ? el(
-          'ul',
-          'scroll max-h-60 space-y-1 overflow-y-auto',
-          ctrl.studies.map(st =>
-            el('li', [el('button', 'min-h-11 w-full rounded-lg bg-raised px-3 text-left text-sm', { attrs: { type: 'button' }, on: { click: () => ctrl.useStudy(st) } }, st.name)]),
-          ),
+      ? rowList(
+          ctrl.studies.map(st => listRow(() => ctrl.useStudy(st), [el('span', 'text-sm', st.name)])),
+          'scroll -mx-4 max-h-60 overflow-y-auto sm:-mx-5',
         )
       : el('div', 'flex flex-wrap gap-2', [
           button(current ? 'Pick another study' : 'Pick a study', () => ctrl.loadStudies(), 'plain'),

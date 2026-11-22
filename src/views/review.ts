@@ -5,7 +5,7 @@ import type { Game } from '../db'
 import { el } from '../el'
 import type { GameView } from '../gameview'
 import { deviation } from '../lichess/repertoire'
-import { board, btnClass, button, card, dateLabel, icon, judgColor, judgMark, label, plural, resultChip, topBar } from './ui'
+import { board, btnClass, button, card, dateLabel, icon, judgColor, judgMark, label, listRow, plural, resultChip, rowList, topBar } from './ui'
 import { journalHangParts } from '../server/surface'
 import { moveTable, score } from './moves'
 
@@ -18,7 +18,7 @@ export function reviewView(ctrl: Ctrl): VNode {
       ? el('div', 'h-96 animate-pulse rounded-xl bg-surface')
       : !rows.length
         ? card([el('p', 'text-dim', ctrl.syncing ? 'Analyzing games. Each one appears here when done.' : 'No analyzed games yet.')])
-        : el('ul', 'divide-y divide-raised overflow-hidden rounded-xl bg-surface', rows.map(r => row(r))),
+        : rowList(rows.map(r => row(r)), 'overflow-hidden rounded-xl bg-surface'),
     openings.length ? openingsCard(openings) : null,
   ])
 }
@@ -59,21 +59,19 @@ function openingsCard(rows: NonNullable<Ctrl['today']>['openings']): VNode {
 function row(r: ReviewRow): VNode {
   const g = r.game
   const marks = (['blunder', 'mistake', 'inaccuracy'] as const).filter(j => r[j])
-  return el('li', [
-    el('a', 'flex items-center gap-3 px-4 py-3 active:bg-raised', { attrs: { href: `#/game/${encodeURIComponent(g.id)}` } }, [
-      resultChip(g.result),
-      el('div', 'min-w-0 flex-1', [
-        el('p', 'truncate font-medium', [g.opponent ? `vs ${g.opponent}` : g.opening || 'Game', g.opponentRating ? el('span', 'font-normal text-dim', ` ${g.opponentRating}`) : '']),
-        el('p', 'truncate text-sm text-dim', `${g.opening ? `${g.opening.split(':')[0]} · ` : ''}${g.speed} · ${dateLabel(g.playedAt)}`),
-      ]),
-      el('div', 'flex shrink-0 flex-col items-end gap-1 text-sm', [
-        el(
-          'p',
-          'flex gap-2 tabular-nums',
-          marks.length ? marks.map(j => el('span', judgColor[j], `${r[j]}${judgMark[j]}`)) : [el('span', 'text-accent', 'clean')],
-        ),
-        r.journal && !r.journal.hung ? (marks.length ? el('p', 'text-xs text-accent', 'clean game') : null) : r.puzzles ? el('p', 'text-xs text-dim', plural(r.puzzles, 'puzzle')) : null,
-      ]),
+  return listRow(`#/game/${encodeURIComponent(g.id)}`, [
+    resultChip(g.result),
+    el('div', 'min-w-0 flex-1', [
+      el('p', 'truncate font-medium', [g.opponent ? `vs ${g.opponent}` : g.opening || 'Game', g.opponentRating ? el('span', 'font-normal text-dim', ` ${g.opponentRating}`) : '']),
+      el('p', 'truncate text-sm text-dim', `${g.opening ? `${g.opening.split(':')[0]} · ` : ''}${g.speed} · ${dateLabel(g.playedAt)}`),
+    ]),
+    el('div', 'flex shrink-0 flex-col items-end gap-1 text-sm', [
+      el(
+        'p',
+        'flex gap-2 tabular-nums',
+        marks.length ? marks.map(j => el('span', judgColor[j], `${r[j]}${judgMark[j]}`)) : [el('span', 'text-accent', 'clean')],
+      ),
+      r.journal && !r.journal.hung ? (marks.length ? el('p', 'text-xs text-accent', 'clean game') : null) : r.puzzles ? el('p', 'text-xs text-dim', plural(r.puzzles, 'puzzle')) : null,
     ]),
   ])
 }
