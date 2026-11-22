@@ -5,7 +5,7 @@ import type { Game } from '../db'
 import { el } from '../el'
 import type { GameView } from '../gameview'
 import { deviation } from '../lichess/repertoire'
-import { board, btnClass, button, card, dateLabel, icon, judgColor, judgMark, label, listRow, plural, resultChip, rowList, topBar } from './ui'
+import { board, btnClass, button, card, dateLabel, icon, judgColor, judgMark, label, listRow, loading, loadingBlock, plural, resultChip, rowList, topBar } from './ui'
 import { journalHangParts } from '../server/surface'
 import { moveTable, score } from './moves'
 
@@ -15,7 +15,7 @@ export function reviewView(ctrl: Ctrl): VNode {
   return el('div', 'mx-auto max-w-2xl space-y-3', [
     el('h1', 'font-display text-2xl', 'Review'),
     !rows
-      ? el('div', 'h-96 animate-pulse rounded-xl bg-surface')
+      ? loadingBlock('h-96')
       : !rows.length
         ? card([el('p', 'text-dim', ctrl.syncing ? 'Analyzing games. Each one appears here when done.' : 'No analyzed games yet.')])
         : rowList(rows.map(r => row(r)), 'overflow-hidden rounded-xl bg-surface'),
@@ -78,7 +78,7 @@ function row(r: ReviewRow): VNode {
 
 export function gameView(ctrl: Ctrl): VNode {
   const v = ctrl.gameView
-  if (!v) return el('p', 'p-4 text-dim', 'Loading…')
+  if (!v) return loading()
   const g = v.game
   return el('div', 'md:grid md:grid-cols-[auto_minmax(0,1fr)] md:gap-6 md:pt-4', [
     el('div', [

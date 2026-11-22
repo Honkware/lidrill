@@ -7,13 +7,13 @@ import type { Game } from '../db'
 import { material, type PlayRun } from '../play'
 import { el } from '../el'
 import { moveTable, score } from './moves'
-import { board, button, judgColor, plural, topBar } from './ui'
+import { board, button, judgColor, loading, plural, topBar } from './ui'
 
 const RESULT = { win: 'You won', loss: 'You lost', draw: 'Draw' } as const
 
 export function playView(ctrl: Ctrl): VNode {
   const run = ctrl.play
-  if (!run) return el('p', 'p-4 text-dim', 'Loading…')
+  if (!run) return loading()
   const { level, start, color } = run.opts
   const bar = () => topBar('Play Maia', () => ctrl.back('drills'))
   const m = material(run.fen)

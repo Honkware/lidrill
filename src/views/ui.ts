@@ -60,6 +60,12 @@ export function segmented<T extends string>(name: string, opts: [T, string, stri
 
 export const card = (children: VNodeChildren, extra = '') => el('section', `rounded-xl bg-surface p-4 sm:p-5 ${extra}`, children)
 
+// Until a board screen's data is read
+export const loading = () => el('p', 'p-4 text-dim', { attrs: { role: 'status' } }, 'Loading…')
+
+// A grey block in the shape of what is loading
+export const loadingBlock = (extra: string) => el('div', `animate-pulse rounded-xl bg-surface ${extra}`)
+
 export const label = (text: string) => el('p', 'text-xs font-medium uppercase tracking-wide text-dim', text)
 
 export const pct = (x?: number) => (x === undefined ? '–' : `${Math.round(x * 100)}%`)

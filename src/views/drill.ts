@@ -3,12 +3,12 @@ import type { Ctrl } from '../ctrl'
 import type { Drill } from '../drill'
 import { el } from '../el'
 import type { BoardLink, Segment } from '../server/render'
-import { board, btnClass, button, icon, moveInput, topBar } from './ui'
+import { board, btnClass, button, icon, loading, moveInput, topBar } from './ui'
 import { drillGameLine } from '../server/surface'
 
 export function drillView(ctrl: Ctrl): VNode {
   const d = ctrl.displayDrill
-  if (!d) return el('p', 'p-4 text-dim', 'Loading…')
+  if (!d) return loading()
   const top = topBar("Today's puzzles", () => ctrl.go('today'))
   return el('div', 'md:grid md:grid-cols-[auto_minmax(0,1fr)] md:gap-6 md:pt-4', [
     el('div', [el('div', 'md:hidden', [top]), boardWithWheel(d)]),

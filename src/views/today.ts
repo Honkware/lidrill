@@ -1,7 +1,7 @@
 import type { VNode } from 'snabbdom'
 import type { Ctrl } from '../ctrl'
 import { el } from '../el'
-import { btnClass, button, card, label, plural, weekBars } from './ui'
+import { btnClass, button, card, label, loadingBlock, plural, weekBars } from './ui'
 import { thresholdWords } from '../server/surface'
 
 // Home IA: one hero (streak), one primary action (due), then at most three
@@ -31,8 +31,7 @@ export function todayView(ctrl: Ctrl): VNode {
 
 // Grey blocks in the shape of the dashboard while the first load runs
 function skeleton(): VNode {
-  const block = (extra: string) => el('div', `animate-pulse rounded-xl bg-surface ${extra}`)
-  return el('div', 'grid gap-4 md:grid-cols-2', [block('h-32 md:col-span-2'), block('h-44'), block('h-44'), block('h-40'), block('h-40')])
+  return el('div', 'grid gap-4 md:grid-cols-2', [loadingBlock('h-32 md:col-span-2'), loadingBlock('h-44'), loadingBlock('h-44'), loadingBlock('h-40'), loadingBlock('h-40')])
 }
 
 // The single home of the band rule: Settings → "What counts". Other

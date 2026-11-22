@@ -5,7 +5,7 @@ import { el } from '../el'
 import { history, MAX_LEVEL, MIN_LEVEL, startLabel } from '../maia'
 import { readGame, TIMES, type SavedGame } from '../play'
 import { CLEAR_AFTER } from '../practice'
-import { board, btnClass, button, card, dateLabel, icon, listRow, moveInput, pawns, rowList, segmented, topBar } from './ui'
+import { board, btnClass, button, card, dateLabel, icon, listRow, loading, moveInput, pawns, rowList, segmented, topBar } from './ui'
 
 const ABOUT: Record<PracticeKind, { title: string; text: string }> = {
   conversion: {
@@ -157,7 +157,7 @@ function section(kind: PracticeKind, list?: Practice[]): VNode {
 
 export function practiceView(ctrl: Ctrl): VNode {
   const run = ctrl.run
-  if (!run) return el('p', 'p-4 text-dim', 'Loading…')
+  if (!run) return loading()
   const p = run.practice
   const title = ABOUT[p.kind].title
   // The rule is stated once, on the list page (ABOUT). Here: one line, and

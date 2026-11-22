@@ -3,11 +3,11 @@ import type { Ctrl } from '../ctrl'
 import { el } from '../el'
 import type { Replay } from '../replay'
 import { puzzleSide } from './drill'
-import { board, button, card, label, plural, topBar } from './ui'
+import { board, button, card, label, loading, plural, topBar } from './ui'
 
 export function replayView(ctrl: Ctrl): VNode {
   const r = ctrl.replay
-  if (!r) return el('p', 'p-4 text-dim', 'Loading…')
+  if (!r) return loading()
   const title = `Turning points${r.game.opponent ? ` vs ${r.game.opponent}` : ''}`
   return el('div', 'md:grid md:grid-cols-[auto_minmax(0,1fr)] md:gap-6 md:pt-4', [
     el('div', [el('div', 'md:hidden', [topBar(title, () => ctrl.back('review'))]), board(`replay:${r.game.id}`, e => r.mount(e))]),
