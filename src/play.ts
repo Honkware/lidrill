@@ -5,7 +5,7 @@ import { Chess, normalizeMove } from 'chessops/chess'
 import { chessgroundDests } from 'chessops/compat'
 import { makeFen } from 'chessops/fen'
 import { makeSan } from 'chessops/san'
-import { makeUci, parseSquare, parseUci } from 'chessops/util'
+import { makeUci, opposite, parseSquare, parseUci } from 'chessops/util'
 import type { Color } from 'chessops/types'
 import { checkColor } from './checkColor'
 import type { Game, Result } from './db'
@@ -19,12 +19,50 @@ import { landSound, sound } from './sound'
 // into puzzles is where the feedback comes from.
 
 export type PlayState = 'thinking' | 'your-move' | 'failed' | 'over'
+export type Pace = 'human' | 'instant'
 
 export interface PlayOptions {
   level: number
   color: 'white' | 'black'
   rating: number // the player's estimate going in, stored on the game
   start?: Start
+  clock?: { base: number; inc: number } // seconds; none is an untimed game
+  pace: Pace // human waits as long as Maia says a person would have taken
+}
+
+// What the Play Maia card was last set to, kept per browser
+export interface Choices {
+  time: string
+  color: 'white' | 'black' | 'random'
+  pace: Pace
+}
+
+export const TIMES = ['3+2', '5+0', '5+3', '10+0', '10+5', '15+10', 'unlimited']
+const DEFAULT_CHOICES: Choices = { time: '10+0', color: 'random', pace: 'human' }
+const CHOICES_KEY = 'lidrill.maiaChoices'
+
+// Storage can be off (private mode), which just means the defaults
+export function readChoices(): Choices {
+  try {
+    return { ...DEFAULT_CHOICES, ...(JSON.parse(localStorage.getItem(CHOICES_KEY) ?? '{}') as Partial<Choices>) }
+  } catch {
+    return { ...DEFAULT_CHOICES }
+  }
+}
+
+export function writeChoices(c: Choices) {
+  try {
+    localStorage.setItem(CHOICES_KEY, JSON.stringify(c))
+  } catch {
+    // not saved; fine
+  }
+}
+
+// '5+3' is 5 minutes and 3 seconds a move
+export function clockOf(time: string): PlayOptions['clock'] {
+  if (time === 'unlimited') return undefined
+  const [min, inc] = time.split('+').map(Number)
+  return { base: min * 60, inc }
 }
 
 // Castling rights and the en passant square are part of a position, the move
@@ -58,7 +96,15 @@ export class PlayRun {
   private redraw: () => void
   private onEnd: (run: PlayRun) => void
   private fetchFn: typeof fetch
+  private now: () => number
   private gone = false
+  // Milliseconds on each clock, not counting the one running since `since`.
+  // Nothing runs before both first moves, while a failed request waits for
+  // a retry, or once the game is over.
+  private left = { white: 0, black: 0 }
+  private since?: number
+  private clocks: number[] = [] // centiseconds left after each move
+  private timer?: ReturnType<typeof setInterval>
   private onKey = (e: KeyboardEvent) => {
     const to = stepKey(e, this.viewPly, this.moves.length)
     if (to === undefined) return
@@ -66,11 +112,12 @@ export class PlayRun {
     this.go(to)
   }
 
-  constructor(opts: PlayOptions, redraw: () => void, onEnd: (run: PlayRun) => void, fetchFn: typeof fetch = fetch) {
+  constructor(opts: PlayOptions, redraw: () => void, onEnd: (run: PlayRun) => void, fetchFn: typeof fetch = fetch, now = Date.now) {
     this.opts = opts
     this.redraw = redraw
     this.onEnd = onEnd
     this.fetchFn = fetchFn
+    this.now = now
     this.moves = [...(opts.start?.moves ?? [])]
     this.count()
     for (const m of this.moves) {
@@ -78,6 +125,11 @@ export class PlayRun {
       this.count()
     }
     this.viewPly = this.moves.length
+    if (opts.clock) {
+      this.left = { white: opts.clock.base * 1000, black: opts.clock.base * 1000 }
+      this.resume()
+      this.timer = setInterval(() => this.tick(), 100)
+    }
     if (this.pos.turn !== opts.color) void this.reply()
   }
 
@@ -99,8 +151,44 @@ export class PlayRun {
 
   destroy() {
     this.gone = true
+    clearInterval(this.timer)
     window.removeEventListener('keydown', this.onKey)
     this.cg?.destroy()
+  }
+
+  // Milliseconds left, counting the clock that is running
+  clock(color: Color): number {
+    const ran = this.since !== undefined && this.pos.turn === color ? this.now() - this.since : 0
+    return Math.max(0, this.left[color] - ran)
+  }
+
+  get running(): Color | undefined {
+    return this.since === undefined ? undefined : this.pos.turn
+  }
+
+  // In a game from move 1 the clocks start once both sides have moved, as
+  // on Lichess. From an own game they run from the start.
+  private resume() {
+    if (this.opts.clock && (this.opts.start || this.moves.length >= 2)) this.since = this.now()
+  }
+
+  private stop() {
+    if (this.since === undefined) return
+    this.left[this.pos.turn] -= this.now() - this.since
+    this.since = undefined
+  }
+
+  private tick() {
+    if (this.since !== undefined && !this.flag()) this.redraw()
+  }
+
+  // Ends the game when the side to move is out of time. It is a draw when
+  // the other side has too little left to mate, as on Lichess.
+  private flag(): boolean {
+    const side = this.pos.turn
+    if (this.since === undefined || this.clock(side) > 0) return false
+    this.end(this.pos.hasInsufficientMaterial(opposite(side)) ? 'draw' : side === this.opts.color ? 'loss' : 'win', 'Time out')
+    return true
   }
 
   get live() {
@@ -147,6 +235,10 @@ export class PlayRun {
     if (!this.pos.isLegal(move)) throw new Error(`Maia answered with ${uci}, which isn’t legal here.`)
     const capture = this.pos.board.get(move.to) !== undefined || move.to === this.pos.epSquare
     const mover = this.pos.turn
+    const timed = this.since !== undefined
+    this.stop()
+    if (timed) this.left[mover] += this.opts.clock!.inc * 1000
+    this.clocks.push(Math.round(this.left[mover] / 10))
     this.moves.push({ san: makeSan(this.pos, move), uci: makeUci(move) })
     this.pos.play(move)
     this.count()
@@ -155,12 +247,13 @@ export class PlayRun {
     sound[landSound(capture, this.pos.isCheck())]()
     if (this.pos.isCheckmate()) return this.end(mover === this.opts.color ? 'win' : 'loss', 'Checkmate'), false
     if (drawn(this.pos, this.seen)) return this.end('draw', this.pos.isStalemate() ? 'Stalemate' : 'Draw'), false
+    this.resume()
     return true
   }
 
   // The player's move, as the board reports it
   async move(uci: string) {
-    if (this.state !== 'your-move' || !this.live) return
+    if (this.state !== 'your-move' || !this.live || this.flag()) return
     if (!this.push(uci)) return
     await this.reply()
   }
@@ -170,15 +263,24 @@ export class PlayRun {
     this.error = undefined
     this.sync()
     this.redraw()
+    const c = this.opts.clock
+    const clock = c && { ...c, left: Math.round(this.clock(opposite(this.opts.color)) / 100) / 10 }
+    const asked = this.now()
     try {
-      const uci = await fetchMove(this.moves.map(m => m.uci), this.opts.level, this.fetchFn)
-      if (this.gone || this.state !== 'thinking') return
+      const { move: uci, think } = await fetchMove(this.moves.map(m => m.uci), this.opts.level, clock, this.fetchFn)
+      // Human pace shows the move once the time a person would have taken
+      // has passed, counting the time the request took
+      const wait = this.opts.pace === 'human' ? think * 1000 - (this.now() - asked) : 0
+      if (wait > 0) await new Promise(r => setTimeout(r, wait))
+      if (this.gone || this.state !== 'thinking' || this.flag()) return
       const before = this.moves.length
       if (!this.push(uci)) return
       this.last = this.moves[before].san
       this.state = 'your-move'
     } catch (e) {
       if (this.state !== 'thinking') return
+      // Waiting for a retry isn't Maia thinking, so neither clock runs
+      this.stop()
       this.state = 'failed'
       this.error = (e as Error).message
     }
@@ -187,7 +289,9 @@ export class PlayRun {
   }
 
   retry() {
-    if (this.state === 'failed') void this.reply()
+    if (this.state !== 'failed') return
+    this.resume()
+    void this.reply()
   }
 
   resign() {
@@ -195,6 +299,8 @@ export class PlayRun {
   }
 
   private end(result: Result, ending: string) {
+    this.stop()
+    clearInterval(this.timer)
     this.state = 'over'
     this.result = result
     this.ending = ending
@@ -208,6 +314,7 @@ export class PlayRun {
   // and Turning Points treat it the same
   toGame(now: number): Game {
     const white = this.opts.color === 'white'
+    const c = this.opts.clock
     const score = this.result === 'draw' ? '1/2-1/2' : (this.result === 'win') === white ? '1-0' : '0-1'
     const text = this.moves.map((m, i) => (i % 2 === 0 ? `${i / 2 + 1}. ${m.san}` : m.san)).join(' ')
     return {
@@ -220,12 +327,14 @@ export class PlayRun {
       rating: this.opts.rating,
       opponent: 'Maia',
       opponentRating: this.opts.level,
-      speed: 'untimed',
+      // Never a Lichess speed name, which would count it toward the band
+      speed: c ? `${c.base / 60}+${c.inc}` : 'untimed',
       eco: '',
       opening: this.opts.start?.opening ?? '',
       playedAt: now,
       moves: this.moves.map(m => ({ ...m })),
       termination: this.ending.toLowerCase(),
+      clocks: c && !this.opts.start ? [...this.clocks] : undefined,
     }
   }
 }

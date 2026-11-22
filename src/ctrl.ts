@@ -12,7 +12,7 @@ import { applyLook, BOARDS, PIECE_SETS } from './look'
 import { clampLevel, levelFor, ownStarts, startEstimate, updateEstimate, type Start } from './maia'
 import { compliance, openingTable, repertoireTargets, streak, type OpeningRow, type Streak } from './metrics'
 import { analyzePending, forgetLichessAccount, getEngine, precertifyDue, saveProfile, syncAndAnalyze, warmEngine } from './pipeline'
-import { PlayRun } from './play'
+import { clockOf, PlayRun, readChoices, writeChoices, type Choices } from './play'
 import { PracticeRun } from './practice'
 import { Replay } from './replay'
 import { weekReport, weeklyZeroHang, type WeekReport } from './report'
@@ -82,6 +82,7 @@ export class Ctrl {
   play?: PlayRun
   playStarts: Start[] = [] // positions from the player's own games a Maia game can start from
   playLevel?: number // a level picked by hand; undefined follows the estimate
+  playChoices = readChoices()
   playPuzzles?: number // puzzles the last finished Maia game produced, once analyzed
   private playOwn = false
   private maiaStart = 1000
@@ -541,6 +542,12 @@ export class Ctrl {
     this.redraw()
   }
 
+  setPlayChoice(c: Partial<Choices>) {
+    this.playChoices = { ...this.playChoices, ...c }
+    writeChoices(this.playChoices)
+    this.redraw()
+  }
+
   startPlay(own: boolean) {
     this.playOwn = own
     this.go('play')
@@ -551,9 +558,10 @@ export class Ctrl {
     this.playPuzzles = undefined
     if (!this.profile?.maia) this.maiaStart = startEstimate(this.profile?.ratings, await db.games.toArray())
     const start = this.playOwn ? this.playStarts[Math.floor(Math.random() * this.playStarts.length)] : undefined
-    // Colours alternate from move 1; a position from an own game keeps its side
-    const color = start?.color ?? ((this.profile?.maia?.games ?? 0) % 2 ? 'black' : 'white')
-    this.play = new PlayRun({ level: this.maiaLevel, color, rating: this.maiaRating, start }, this.redraw, run => void this.finishPlay(run))
+    const { time, color: side, pace } = this.playChoices
+    // A position from an own game keeps its side whatever was chosen
+    const color = start?.color ?? (side === 'random' ? (Math.random() < 0.5 ? 'white' : 'black') : side)
+    this.play = new PlayRun({ level: this.maiaLevel, color, rating: this.maiaRating, start, clock: clockOf(time), pace }, this.redraw, run => void this.finishPlay(run))
   }
 
   // A game given up in the first few moves is thrown away. Any other is

@@ -73,9 +73,17 @@ export function ownStarts(games: Game[]): Start[] {
   return out
 }
 
-export async function fetchMove(moves: string[], level: number, fetchFn: typeof fetch = fetch): Promise<string> {
-  const res = await fetchFn('/api/maia/move', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ moves, level }) })
-  const body = (await res.json().catch(() => ({}))) as { move?: string; error?: string }
+// clock is in seconds, with `left` Maia's own time, and is left out of an
+// untimed game. think is how long a person would have taken over the move,
+// in seconds; a server that doesn't say counts as 0.
+export async function fetchMove(
+  moves: string[],
+  level: number,
+  clock: { base: number; inc: number; left: number } | undefined,
+  fetchFn: typeof fetch = fetch,
+): Promise<{ move: string; think: number }> {
+  const res = await fetchFn('/api/maia/move', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ moves, level, clock }) })
+  const body = (await res.json().catch(() => ({}))) as { move?: string; think?: number; error?: string }
   if (!res.ok || !body.move) throw new Error(body.error ?? 'Maia isn’t available right now.')
-  return body.move
+  return { move: body.move, think: body.think ?? 0 }
 }

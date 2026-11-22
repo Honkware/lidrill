@@ -94,13 +94,22 @@ describe('fetchMove', () => {
       sent = JSON.parse(String(init.body))
       return new Response(JSON.stringify({ move: 'e7e5' }))
     }) as typeof fetch
-    expect(await fetchMove(['e2e4'], 1500, fetchFn)).toBe('e7e5')
+    expect(await fetchMove(['e2e4'], 1500, undefined, fetchFn)).toEqual({ move: 'e7e5', think: 0 })
     expect(sent).toEqual({ moves: ['e2e4'], level: 1500 })
+  })
+  it('sends the clock with Maia\'s time left and returns how long a person would think', async () => {
+    let sent: unknown
+    const fetchFn = (async (_url: string, init: RequestInit) => {
+      sent = JSON.parse(String(init.body))
+      return new Response(JSON.stringify({ move: 'e7e5', think: 4.2 }))
+    }) as typeof fetch
+    expect(await fetchMove(['e2e4'], 1500, { base: 300, inc: 3, left: 287.4 }, fetchFn)).toEqual({ move: 'e7e5', think: 4.2 })
+    expect(sent).toEqual({ moves: ['e2e4'], level: 1500, clock: { base: 300, inc: 3, left: 287.4 } })
   })
   it('fails with the server\'s message, or a plain one when there is no JSON', async () => {
     const limited = (async () => new Response(JSON.stringify({ error: 'Too many moves at once. Try again in a minute.' }), { status: 429 })) as typeof fetch
-    await expect(fetchMove([], 1500, limited)).rejects.toThrow('Too many moves')
+    await expect(fetchMove([], 1500, undefined, limited)).rejects.toThrow('Too many moves')
     const down = (async () => new Response('<html>', { status: 404 })) as typeof fetch
-    await expect(fetchMove([], 1500, down)).rejects.toThrow('Maia isn’t available')
+    await expect(fetchMove([], 1500, undefined, down)).rejects.toThrow('Maia isn’t available')
   })
 })
