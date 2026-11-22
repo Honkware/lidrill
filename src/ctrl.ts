@@ -511,8 +511,10 @@ export class Ctrl {
   private async openPractice(id: string) {
     const practice = await db.practice.get(id)
     if (!practice) return void (this.screen = 'drills')
+    const game = await db.games.get(practice.gameId)
+    const maia = game && { level: this.maiaLevel, moves: game.moves.slice(0, practice.ply).map(m => m.uci) }
     this.screen = 'practice'
-    this.run = new PracticeRun(practice, getEngine(), this.redraw)
+    this.run = new PracticeRun(practice, getEngine(), this.redraw, maia)
   }
 
   async retryPractice() {

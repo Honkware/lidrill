@@ -1,20 +1,23 @@
 import { Chessground } from '@lichess-org/chessground'
 import type { Api } from '@lichess-org/chessground/api'
 import type { Key } from '@lichess-org/chessground/types'
-import { Chess } from 'chessops/chess'
+import { Chess, normalizeMove } from 'chessops/chess'
 import { chessgroundDests } from 'chessops/compat'
 import { makeFen, parseFen } from 'chessops/fen'
 import { makeSan } from 'chessops/san'
-import { parseSquare, parseUci } from 'chessops/util'
+import { makeUci, parseSquare, parseUci } from 'chessops/util'
 import type { Engine } from './analysis/engine'
 import { checkColor } from './checkColor'
 import { db, type Game, type Practice, type PracticeKind } from './db'
+import { fetchMove } from './maia'
 import { povCp } from './puzzles/generate'
 import { landSound, sound } from './sound'
 import { parseTyped } from './typed'
 
-// Conversion and defense drills: positions from the player's own
-// games, played out against Stockfish. Cleared after 3 successes in a row.
+// Conversion and defense drills: positions from the player's own games,
+// played out against Maia at about the player's level, because a human-like
+// defender is what a real game has. Stockfish's eval after each of the
+// player's moves decides the result. Cleared after 3 successes in a row.
 
 export const CLEAR_AFTER = 3
 const VALUE = { pawn: 1, knight: 3, bishop: 3, rook: 5, queen: 9, king: 0 }
@@ -71,21 +74,33 @@ export class PracticeRun {
   state: RunState = 'your-move'
   moves = 0
   cp: number
-  last?: string // SAN of the engine's last reply
+  last?: string // SAN of the last reply
+  lastBy?: 'Maia' | 'Stockfish'
   readonly practice: Practice
   private pos: Chess
   private cg?: Api
   private engine: Engine
   private redraw: () => void
   private color: 'white' | 'black'
+  // Maia is sent the whole game from move 1, so this is the stored game up to
+  // the drill's ply and then every move of the drill. Without it (the game is
+  // gone) Stockfish replies for the whole drill.
+  private maia?: { level: number; moves: string[] }
+  private fetchFn: typeof fetch
 
-  constructor(practice: Practice, engine: Engine, redraw: () => void) {
+  constructor(practice: Practice, engine: Engine, redraw: () => void, maia?: { level: number; moves: string[] }, fetchFn: typeof fetch = fetch) {
     this.practice = practice
     this.engine = engine
     this.redraw = redraw
+    this.maia = maia && { level: maia.level, moves: [...maia.moves] }
+    this.fetchFn = fetchFn
     this.cp = practice.startCp
     this.pos = Chess.fromSetup(parseFen(practice.fen).unwrap()).unwrap()
     this.color = this.pos.turn
+  }
+
+  get opponent(): 'Maia' | 'Stockfish' {
+    return this.maia ? 'Maia' : 'Stockfish'
   }
 
   get orientation() {
@@ -136,6 +151,7 @@ export class PracticeRun {
   private async onUci(uci: string) {
     const move = parseUci(uci)!
     const capture = this.pos.board.get(move.to) !== undefined || move.to === this.pos.epSquare
+    this.maia?.moves.push(makeUci(normalizeMove(this.pos, move)))
     this.pos.play(move)
     this.moves++
     this.state = 'thinking'
@@ -145,13 +161,15 @@ export class PracticeRun {
     if (this.pos.isCheckmate()) return this.end('won')
     if (this.pos.isEnd()) return this.end(this.practice.kind === 'defense' ? 'won' : 'lost') // a draw holds, but doesn't convert
 
-    const reply = await this.engine.search(makeFen(this.pos.toSetup()), DEPTH)
+    const [reply, human] = await Promise.all([this.engine.search(makeFen(this.pos.toSetup()), DEPTH), this.askMaia()])
     // The search is from the engine's side: flip it for the player
     this.cp = -povCp(reply.eval, 'white')
     const early = verdict(this.practice.kind, this.practice.startCp, this.cp, this.moves)
     if (early === 'lost' || !reply.pv[0]) return this.end(early ?? 'lost')
-    const replyMove = parseUci(reply.pv[0])!
+    const replyMove = human ?? parseUci(reply.pv[0])!
     this.last = makeSan(this.pos, replyMove)
+    this.lastBy = human ? 'Maia' : 'Stockfish'
+    this.maia?.moves.push(makeUci(normalizeMove(this.pos, replyMove)))
     const took = this.pos.board.get(replyMove.to) !== undefined || replyMove.to === this.pos.epSquare
     this.pos.play(replyMove)
     sound[landSound(took, this.pos.isCheck())]()
@@ -159,8 +177,22 @@ export class PracticeRun {
     if (this.pos.isEnd()) return this.end(this.practice.kind === 'defense' ? 'won' : 'lost')
     if (early) return this.end(early)
     this.state = 'your-move'
-    this.sync(reply.pv[0])
+    this.sync(makeUci(replyMove))
     this.redraw()
+  }
+
+  // When Maia can't be reached or answers with a move that isn't legal, the
+  // drill takes Stockfish's reply instead, so it still works offline
+  private async askMaia() {
+    if (!this.maia) return undefined
+    try {
+      const { move: uci } = await fetchMove(this.maia.moves, this.maia.level, undefined, this.fetchFn)
+      const parsed = parseUci(uci)
+      const move = parsed && normalizeMove(this.pos, parsed)
+      return move && this.pos.isLegal(move) ? move : undefined
+    } catch {
+      return undefined
+    }
   }
 
   private async end(result: 'won' | 'lost') {
