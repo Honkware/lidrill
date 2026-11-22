@@ -23,6 +23,7 @@ from fastapi import FastAPI, Header, HTTPException, Query, Request
 from pydantic import BaseModel
 
 import maia
+import openings
 
 DATA_DIR = os.environ.get("DATA_DIR", "/opt/lidrill/data")
 LIDRILL_KEY = os.environ.get("LIDRILL_KEY", "")
@@ -132,6 +133,16 @@ def maia_move(body: MoveBody, x_lidrill_key: str | None = Header(default=None)) 
     guard(x_lidrill_key)
     try:
         return maia.move(maia.model(), body.moves, body.level, clock=body.clock)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/maia/policy")
+def maia_policy(body: openings.PolicyBody, x_lidrill_key: str | None = Header(default=None)) -> dict[str, list]:
+    """Maia-3's probability for every legal move, most likely first, as /maia/move would sample them."""
+    guard(x_lidrill_key)
+    try:
+        return {"moves": openings.policy(maia.model(), body.moves, body.level)}
     except ValueError as e:
         raise HTTPException(400, str(e))
 

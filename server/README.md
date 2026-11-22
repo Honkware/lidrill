@@ -23,6 +23,13 @@ The server tier's loopback backend (`docs/server-tier.md`).
   time at a quarter of `left` plus the increment, so Maia never flags by
   itself. Without one the game is timed as 10+0 and capped at the
   `ceiling` in `think.json`.
+- `openings.py` - `POST /maia/policy` takes `{moves, level}` like `/maia/move`
+  and answers `{"moves": [{"uci", "p"}, ...]}`, every legal move with the
+  probability Maia plays it, most likely first. The probabilities come from
+  the same dial and temperature as a sampled move, and a level between two
+  measured settings mixes their two distributions in the proportion
+  `setting_for` picks them, so they match what the opponent plays. The
+  opening trainer builds its trees from them.
 - `fit_think.py` - rebuilds `think.json` and `think_fit.md` (the tables behind
   the fit) from a Lichess monthly dump, one Maia forward pass per sampled
   move. It also needs numpy and zstandard:
