@@ -1,6 +1,6 @@
 import { Chess } from 'chessops/chess'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { material, PlayRun, readChoices, readGame, writeChoices } from './play'
+import { material, PlayRun, readChoices, readGame, rematch, writeChoices } from './play'
 import { computeBand } from './profile'
 import { sound } from './sound'
 
@@ -474,6 +474,19 @@ describe('Maia resigning and draw offers', () => {
     const after = reload(run, server([], [true]).fetchFn)
     await after.offerDraw()
     expect([after.result, after.ending, readGame()]).toEqual(['draw', 'Draw agreed', undefined])
+  })
+})
+
+describe('rematch', () => {
+  const timed = { ...opts, clock: { base: 300, inc: 3 }, pace: 'human' as const }
+
+  it('keeps the level, clock and pace and swaps the colours', () => {
+    expect(rematch(timed, 1510)).toEqual({ ...timed, color: 'black', rating: 1510 })
+  })
+
+  it('starts a game from an own position there again, on the same side', () => {
+    const start = { gameId: 'lichess:g', color: 'black' as const, opening: '', moves: [{ san: 'e4', uci: 'e2e4' }] }
+    expect(rematch({ ...timed, color: 'black', start }, 1510)).toEqual({ ...timed, color: 'black', start, rating: 1510 })
   })
 })
 

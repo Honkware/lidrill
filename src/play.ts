@@ -108,6 +108,13 @@ export function clearGame() {
   }
 }
 
+// The same level, clock and pace with the colours swapped. A game from one of
+// the player's own positions starts from that position again, on its side.
+// rating is the estimate now, after the last game.
+export function rematch(o: PlayOptions, rating: number): PlayOptions {
+  return { ...o, rating, color: o.start ? o.color : o.color === 'white' ? 'black' : 'white' }
+}
+
 // After a declined offer the player makes this many moves before the next
 const DRAW_WAIT = 10
 
@@ -230,6 +237,11 @@ export class PlayRun {
 
   get playerMoves() {
     return Math.floor((this.moves.length - (this.opts.start?.moves.length ?? 0) + 1) / 2)
+  }
+
+  // A game given up in the first few moves is not stored
+  get tooShort() {
+    return this.ending === 'Resigned' && this.playerMoves < 5
   }
 
   mount(el: HTMLElement) {
