@@ -22,7 +22,12 @@ The server tier's loopback backend (`docs/server-tier.md`).
   being Maia's own) sets the pace from its base and increment and caps the
   time at a quarter of `left` plus the increment, so Maia never flags by
   itself. Without one the game is timed as 10+0 and capped at the
-  `ceiling` in `think.json`.
+  `ceiling` in `think.json`. When Maia's value head has put its expected
+  score under its band's threshold in `resign.json` on each of its last
+  three turns, from the move given there on, it answers `{"resign": true}`
+  with no `move` or `think`. `POST /maia/draw` takes `{moves, level}` with
+  the player to move, as the player offers on their own turn, and answers
+  `{"accept": bool}`.
 - `openings.py` - `POST /maia/policy` takes `{moves, level}` like `/maia/move`
   and answers `{"moves": [{"uci", "p"}, ...]}`, every legal move with the
   probability Maia plays it, most likely first. The probabilities come from
@@ -30,9 +35,11 @@ The server tier's loopback backend (`docs/server-tier.md`).
   measured settings mixes their two distributions in the proportion
   `setting_for` picks them, so they match what the opponent plays. The
   opening trainer builds its trees from them.
-- `fit_think.py` - rebuilds `think.json` and `think_fit.md` (the tables behind
-  the fit) from a Lichess monthly dump, one Maia forward pass per sampled
-  move. It also needs numpy and zstandard:
+- `fit_think.py` and `fit_resign.py` - rebuild `think.json`, `resign.json`
+  and their tables (`think_fit.md`, `resign_fit.md`) from a Lichess monthly
+  dump, scoring positions with Maia (two forward passes per sampled move for
+  the think time, which also counts how surprising the opponent's last move
+  was). They also need numpy and zstandard:
   `python fit_think.py lichess_db_standard_rated_2025-10.pgn.zst`.
 - `systemd/` - the three VM units (`lidrill-server`, `lidrill-tunnel`,
   `lidrill-analysis`).
