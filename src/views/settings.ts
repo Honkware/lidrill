@@ -172,7 +172,7 @@ function studyPicker(ctrl: Ctrl): VNode {
     ctrl.studies
       ? el(
           'ul',
-          'max-h-60 space-y-1 overflow-y-auto',
+          'scroll max-h-60 space-y-1 overflow-y-auto',
           ctrl.studies.map(st =>
             el('li', [el('button', 'min-h-11 w-full rounded-lg bg-raised px-3 text-left text-sm', { attrs: { type: 'button' }, on: { click: () => ctrl.useStudy(st) } }, st.name)]),
           ),
