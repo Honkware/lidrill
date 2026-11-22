@@ -128,9 +128,9 @@ export async function fetchMove(
   level: number,
   clock: { base: number; inc: number; left: number } | undefined,
   fetchFn: typeof fetch = fetch,
-): Promise<{ move: string; think: number }> {
+): Promise<{ move?: string; think: number; resign?: boolean }> {
   const res = await fetchFn('/api/maia/move', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ moves, level, clock }) })
-  const body = (await res.json().catch(() => ({}))) as { move?: string; think?: number; error?: string }
-  if (!res.ok || !body.move) throw new Error(body.error ?? 'Maia isn’t available right now.')
-  return { move: body.move, think: body.think ?? 0 }
+  const body = (await res.json().catch(() => ({}))) as { move?: string; think?: number; resign?: boolean; error?: string }
+  if (!res.ok || !(body.move || body.resign)) throw new Error(body.error ?? 'Maia isn’t available right now.')
+  return { move: body.move, think: body.think ?? 0, resign: body.resign }
 }

@@ -81,12 +81,12 @@ function live(ctrl: Ctrl): VNode {
   return el('div', 'space-y-3', [
     run.state === 'failed'
       ? el('div', 'space-y-2', [el('p', 'text-sm text-bad', run.error), button('Try again', () => run.retry(), 'plain')])
-      : el('p', 'text-sm text-dim', run.state === 'thinking' ? 'Maia is thinking…' : 'Your move.'),
+      : el('p', 'text-sm text-dim', run.state === 'thinking' ? 'Maia is thinking…' : run.offering ? 'You offered a draw.' : run.note ? `${run.note} Your move.` : 'Your move.'),
     el('div', 'flex flex-wrap gap-2', [
       run.live ? null : button('Back to the game', () => run.go(run.moves.length), 'plain'),
       ...(run.resigning
         ? [button('Confirm resign', () => run.resign(), 'plain'), button('Cancel', () => run.cancelResign(), 'quiet')]
-        : [button('Resign', () => run.resign(), 'quiet')]),
+        : [button('Offer draw', () => void run.offerDraw(), 'quiet', !run.canOfferDraw), button('Resign', () => run.resign(), 'quiet')]),
     ]),
   ])
 }

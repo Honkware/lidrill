@@ -399,6 +399,84 @@ describe('PlayRun after a reload', () => {
   })
 })
 
+// Maia's moves and its answers to draw offers come from two lists, a number
+// in the second being an HTTP status
+describe('Maia resigning and draw offers', () => {
+  function server(moves: object[], draws: (boolean | number)[] = []) {
+    const offers: unknown[] = []
+    const fetchFn = (async (url: string, init: RequestInit) => {
+      if (url === '/api/maia/draw') {
+        offers.push(JSON.parse(String(init.body)))
+        const d = draws.shift()
+        return typeof d === 'number' ? new Response('Not found', { status: d }) : new Response(JSON.stringify({ accept: d }))
+      }
+      const r = moves.shift()
+      return r ? new Response(JSON.stringify(r)) : new Promise<Response>(() => {})
+    }) as typeof fetch
+    return { offers, fetchFn }
+  }
+  const reload = (run: PlayRun, fetchFn: typeof fetch) => {
+    run.destroy()
+    const saved = readGame()!
+    return new PlayRun(saved.opts, () => {}, () => {}, fetchFn, Date.now, saved)
+  }
+  const white = ['a2a3', 'b2b3', 'c2c3', 'd2d3', 'e2e3', 'f2f3', 'g2g3', 'h2h3', 'a3a4', 'b3b4']
+  const black = ['a7a6', 'b7b6', 'c7c6', 'd7d6', 'e7e6', 'f7f6', 'g7g6', 'h7h6', 'a6a5', 'b6b5']
+
+  beforeEach(() => localStorage.clear())
+
+  it('wins when Maia resigns instead of moving', async () => {
+    const run = new PlayRun(opts, () => {}, () => {}, server([{ resign: true, move: null }]).fetchFn)
+    await play(run, ['e2e4'])
+    expect([run.state, run.result, run.ending, run.moves.length]).toEqual(['over', 'win', 'Maia resigned', 1])
+    expect(run.toGame(1).termination).toBe('maia resigned')
+  })
+
+  it('ends in a draw when Maia accepts an offer', async () => {
+    const { offers, fetchFn } = server([{ move: 'e7e5' }], [true])
+    const run = new PlayRun(opts, () => {}, () => {}, fetchFn)
+    await play(run, ['e2e4'])
+    await run.offerDraw()
+    expect(offers).toEqual([{ moves: ['e2e4', 'e7e5'], level: 1500 }])
+    expect([run.state, run.result, run.ending]).toEqual(['over', 'draw', 'Draw agreed'])
+  })
+
+  it('says Maia declined and waits ten of the player\'s moves before another offer', async () => {
+    const run = new PlayRun(opts, () => {}, () => {}, server(black.map(move => ({ move })), [false]).fetchFn)
+    await run.offerDraw()
+    expect([run.state, run.note, run.canOfferDraw]).toEqual(['your-move', 'Maia declined.', false])
+    await play(run, white.slice(0, 9))
+    expect([run.note, run.canOfferDraw]).toEqual([undefined, false])
+    await play(run, white.slice(9))
+    await expect.poll(() => run.state).toBe('your-move')
+    expect(run.canOfferDraw).toBe(true)
+  })
+
+  it('counts a server without the draw route as a decline', async () => {
+    const run = new PlayRun(opts, () => {}, () => {}, server([], [404]).fetchFn)
+    await run.offerDraw()
+    expect([run.state, run.note, run.canOfferDraw]).toEqual(['your-move', 'Maia declined.', false])
+  })
+
+  it('keeps the wait for the next offer over a reload, and the game still ends when Maia resigns', async () => {
+    const run = new PlayRun(opts, () => {}, () => {}, server([{ move: 'e7e5' }], [false]).fetchFn)
+    await play(run, ['e2e4'])
+    await run.offerDraw()
+    const after = reload(run, server([{ resign: true }]).fetchFn)
+    expect(after.canOfferDraw).toBe(false)
+    await play(after, ['d2d4'])
+    expect([after.result, after.ending, readGame()]).toEqual(['win', 'Maia resigned', undefined])
+  })
+
+  it('ends a game carried on after a reload on an agreed draw and leaves nothing saved', async () => {
+    const run = new PlayRun(opts, () => {}, () => {}, server([{ move: 'e7e5' }]).fetchFn)
+    await play(run, ['e2e4'])
+    const after = reload(run, server([], [true]).fetchFn)
+    await after.offerDraw()
+    expect([after.result, after.ending, readGame()]).toEqual(['draw', 'Draw agreed', undefined])
+  })
+})
+
 describe('material', () => {
   it('shows nothing taken and no lead at the start', () => {
     expect(material('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')).toEqual({ white: [], black: [], diff: 0 })

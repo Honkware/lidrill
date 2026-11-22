@@ -66,6 +66,7 @@ export interface SavedGame {
   left: { white: number; black: number }
   clocks: number[]
   at: number
+  drawAfter?: number // not in games saved before draw offers
 }
 
 const GAME_KEY = 'lidrill.maiaGame'
@@ -105,6 +106,19 @@ export function clearGame() {
   } catch {
     // nothing was saved either
   }
+}
+
+// After a declined offer the player makes this many moves before the next
+const DRAW_WAIT = 10
+
+// Maia's answer to a draw offer. A server without the route yet answers
+// 404, which counts as a no.
+export async function offerDraw(moves: string[], level: number, fetchFn: typeof fetch = fetch): Promise<boolean> {
+  const res = await fetchFn('/api/maia/draw', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ moves, level }) })
+  if (res.status === 404) return false
+  const body = (await res.json().catch(() => ({}))) as { accept?: boolean; error?: string }
+  if (!res.ok) throw new Error(body.error ?? 'Maia isn’t available right now.')
+  return body.accept === true
 }
 
 // '5+3' is 5 minutes and 3 seconds a move
@@ -150,6 +164,8 @@ export class PlayRun {
   last?: string // SAN of Maia's last move
   resigning = false // Resign was tapped once and waits for a second tap
   promoting?: string // the player's pawn move to the last rank, waiting for a piece
+  offering = false // a draw offer waits for Maia's answer
+  note?: string // Maia's answer to a draw offer, until the player's next move
   saved?: Game
   readonly opts: PlayOptions
   readonly moves: { san: string; uci: string }[]
@@ -174,6 +190,7 @@ export class PlayRun {
   private clocks: number[] // centiseconds left after each move
   private timer?: ReturnType<typeof setInterval>
   private warned: boolean // the player's low-time sound has played
+  private drawAfter: number // playerMoves before another draw offer
   private onKey = (e: KeyboardEvent) => {
     const to = stepKey(e, this.viewPly, this.moves.length)
     if (to === undefined) return
@@ -192,6 +209,7 @@ export class PlayRun {
     this.clocks = [...(from?.clocks ?? [])]
     // Back after a reload already under the mark, the warning was heard
     this.warned = !!from && from.left[opts.color] < LOW_TIME
+    this.drawAfter = from?.drawAfter ?? 0
     this.count()
     for (const m of this.moves) {
       this.pos.play(parseUci(m.uci)!)
@@ -250,7 +268,7 @@ export class PlayRun {
   }
 
   private save() {
-    writeGame({ opts: this.opts, moves: this.moves, left: { white: this.clock('white'), black: this.clock('black') }, clocks: this.clocks, at: this.now() })
+    writeGame({ opts: this.opts, moves: this.moves, left: { white: this.clock('white'), black: this.clock('black') }, clocks: this.clocks, at: this.now(), drawAfter: this.drawAfter })
   }
 
   private stop() {
@@ -354,6 +372,7 @@ export class PlayRun {
       return
     }
     this.promoting = undefined
+    this.note = undefined
     if (!this.push(uci)) return
     await this.reply()
   }
@@ -377,14 +396,16 @@ export class PlayRun {
     const clock = c && { ...c, left: Math.round(this.clock(opposite(this.opts.color)) / 100) / 10 }
     const asked = this.now()
     try {
-      const { move: uci, think } = await fetchMove(this.moves.map(m => m.uci), this.opts.level, clock, this.fetchFn)
+      const { move: uci, think, resign } = await fetchMove(this.moves.map(m => m.uci), this.opts.level, clock, this.fetchFn)
       // Human pace shows the move once the time a person would have taken
       // has passed, counting the time the request took
       const wait = this.opts.pace === 'human' ? think * 1000 - (this.now() - asked) : 0
       if (wait > 0) await new Promise(r => setTimeout(r, wait))
       if (this.gone || this.state !== 'thinking' || this.flag()) return
+      if (resign) return this.end('win', 'Maia resigned')
       const before = this.moves.length
-      if (!this.push(uci)) return
+      // fetchMove answers with a move or a resignation
+      if (!this.push(uci!)) return
       this.last = this.moves[before].san
       this.state = 'your-move'
     } catch (e) {
@@ -402,6 +423,33 @@ export class PlayRun {
     if (this.state !== 'failed') return
     this.resume()
     void this.reply()
+  }
+
+  get canOfferDraw() {
+    return this.state === 'your-move' && this.live && !this.offering && !this.promoting && this.playerMoves >= this.drawAfter
+  }
+
+  // Offered on the player's own turn, as on Lichess. A move made while the
+  // answer is on its way withdraws the offer.
+  async offerDraw() {
+    if (!this.canOfferDraw) return
+    const ply = this.moves.length
+    this.offering = true
+    this.note = undefined
+    this.redraw()
+    try {
+      const yes = await offerDraw(this.moves.map(m => m.uci), this.opts.level, this.fetchFn)
+      if (this.gone || this.state !== 'your-move' || this.moves.length !== ply) return
+      if (yes) return this.end('draw', 'Draw agreed')
+      this.drawAfter = this.playerMoves + DRAW_WAIT
+      this.note = 'Maia declined.'
+      this.save()
+    } catch (e) {
+      this.note = (e as Error).message
+    } finally {
+      this.offering = false
+      this.redraw()
+    }
   }
 
   // The first tap only asks, since a stray tap on a phone would lose the game
