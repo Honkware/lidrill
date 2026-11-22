@@ -30,6 +30,10 @@ class DialMaia:
     def logits(self, board, dial):
         return self.by_dial.get(dial, self.default)
 
+    # move() also reads the score, to decide on resigning; an even one never resigns
+    def evaluate(self, board, dial):
+        return self.logits(board, dial), 0.5
+
 
 def test_the_probabilities_are_the_softmax_at_the_settings_temperature():
     elo, setting = maia.ANCHORS[5]
