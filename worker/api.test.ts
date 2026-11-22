@@ -324,17 +324,17 @@ describe('POST /api/maia/move', () => {
 
   it('is only for lidrill pages and is rate limited per visitor', async () => {
     const calls = backend(200, { move: 'e7e5' })
-    expect((await post('/api/maia/move', game, { origin: 'https://evil.example' })).status).toBe(403)
-    expect((await post('/api/maia/move', game, { method: 'GET' })).status).toBe(405)
+    expect((await post('/api/maia/move', game, { origin: 'https://evil.example', proof: null })).status).toBe(403)
+    expect((await post('/api/maia/move', game, { method: 'GET', proof: null })).status).toBe(405)
     maiaLimitOk = false
-    expect((await post('/api/maia/move', game)).status).toBe(429)
+    expect((await post('/api/maia/move', game, { proof: null })).status).toBe(429)
     expect(calls).toEqual([])
   })
 
   it('answers 502 when the backend is down and 400 for a game it refuses', async () => {
     backend(500, {})
-    expect((await post('/api/maia/move', game)).status).toBe(502)
+    expect((await post('/api/maia/move', game, { proof: null })).status).toBe(502)
     backend(400, { detail: 'level 1550 was not measured' })
-    expect((await post('/api/maia/move', game)).status).toBe(400)
+    expect((await post('/api/maia/move', game, { proof: null })).status).toBe(400)
   })
 })
