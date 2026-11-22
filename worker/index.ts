@@ -29,6 +29,7 @@ interface Env {
   EXPLAIN_LIMIT: RateLimit
   PACKET_LIMIT: RateLimit
   SYNC_LIMIT: RateLimit
+  MAIA_LIMIT: RateLimit
   PACKETS: KVNamespace
   // Server tier (docs/server-tier.md): the loopback FastAPI service, reached
   // through its cloudflared quick tunnel, guarded by the shared secret
@@ -237,12 +238,29 @@ async function syncProxy(request: Request, url: URL, env: Env, ctx: { waitUntil(
   return new Response(res.body, { status: res.status, headers: { 'content-type': 'application/json' } })
 }
 
+// One Maia-3 move for a game in progress. The model runs on the backend, on
+// a CPU that costs nothing per call, so an Origin check and a per-visitor
+// rate limit are enough here and a move doesn't wait on a proof of work.
+async function maiaMove(request: Request, env: Env): Promise<Response> {
+  if (request.method !== 'POST') return json({ error: 'POST only' }, 405)
+  if (!ORIGINS.some(o => o.test(request.headers.get('origin') ?? ''))) return json({ error: 'Not from lidrill' }, 403)
+  const ip = request.headers.get('cf-connecting-ip') ?? 'unknown'
+  if (!(await env.MAIA_LIMIT.limit({ key: ip })).success) return json({ error: 'Too many moves at once. Try again in a minute.' }, 429)
+  const body = await request.text()
+  if (body.length > 10_000) return json({ error: 'Too large' }, 413)
+  const res = await fetch(`${env.BACKEND_URL}/maia/move`, { method: 'POST', headers: { 'x-lidrill-key': env.LIDRILL_KEY, 'content-type': 'application/json' }, body })
+  if (res.status === 400) return json({ error: 'Maia can’t move from that position.' }, 400)
+  if (!res.ok) return json({ error: 'Maia isn’t available right now.' }, 502)
+  return json(await res.json())
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: { waitUntil(p: Promise<unknown>): void }): Promise<Response> {
     const url = new URL(request.url)
     if (url.pathname === '/api/challenge') return challenge(request, env)
     if (url.pathname === '/api/packet') return packet(request, env)
     if (url.pathname === '/api/explain') return explain(request, env, ctx)
+    if (url.pathname === '/api/maia/move') return maiaMove(request, env)
     if (url.pathname.startsWith('/api/sync/')) return syncProxy(request, url, env, ctx)
     if (url.pathname.startsWith('/api/')) return json({ error: 'Not found' }, 404)
     return env.ASSETS.fetch(request)

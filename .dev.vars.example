@@ -4,3 +4,6 @@
 OPENROUTER_API_KEY=your-openrouter-key
 # Any long random string; it signs the /api/challenge proof-of-work tokens
 POW_SECRET=change-me
+# Only for sync and Maia games: where server/app.py listens, and its LIDRILL_KEY
+BACKEND_URL=http://127.0.0.1:8010
+LIDRILL_KEY=change-me-too

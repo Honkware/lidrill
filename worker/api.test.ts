@@ -34,6 +34,7 @@ const forkReport = (over: Partial<EngineReport> = {}): EngineReport => ({
 const kv = new Map<string, string>()
 const puts: { key: string; ttl?: number }[] = []
 let packetLimitOk = true
+let maiaLimitOk = true
 
 const env = {
   ASSETS: { fetch: async () => new Response('assets') },
@@ -42,6 +43,7 @@ const env = {
   EXPLAIN_LIMIT: { limit: async () => ({ success: true }) },
   PACKET_LIMIT: { limit: async () => ({ success: packetLimitOk }) },
   SYNC_LIMIT: { limit: async () => ({ success: true }) },
+  MAIA_LIMIT: { limit: async () => ({ success: maiaLimitOk }) },
   BACKEND_URL: 'https://backend.example',
   LIDRILL_KEY: 'backend-secret',
   PACKETS: {
@@ -76,6 +78,7 @@ beforeEach(() => {
   kv.clear()
   puts.length = 0
   packetLimitOk = true
+  maiaLimitOk = true
   vi.stubGlobal('caches', { default: { match: async () => null, put: async () => {} } })
 })
 afterEach(() => vi.unstubAllGlobals())
@@ -298,5 +301,40 @@ describe('/api/sync/*', () => {
     expect(res.status).toBe(401)
     expect(await res.json()).toEqual({ error: 'sign-in-expired' })
     expect(backendCalls).toHaveLength(0)
+  })
+})
+
+describe('POST /api/maia/move', () => {
+  const game = { moves: ['e2e4'], level: 1500 }
+  const backend = (status: number, body: unknown) => {
+    const calls: { url: string; key: string | null; body: string }[] = []
+    vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
+      calls.push({ url, key: new Headers(init.headers).get('x-lidrill-key'), body: String(init.body) })
+      return new Response(JSON.stringify(body), { status })
+    })
+    return calls
+  }
+
+  it('forwards the game to the backend with the shared key and returns the move', async () => {
+    const calls = backend(200, { move: 'e7e5' })
+    const res = await post('/api/maia/move', game, { proof: null })
+    expect(await res.json()).toEqual({ move: 'e7e5' })
+    expect(calls).toEqual([{ url: 'https://backend.example/maia/move', key: 'backend-secret', body: JSON.stringify(game) }])
+  })
+
+  it('is only for lidrill pages and is rate limited per visitor', async () => {
+    const calls = backend(200, { move: 'e7e5' })
+    expect((await post('/api/maia/move', game, { origin: 'https://evil.example' })).status).toBe(403)
+    expect((await post('/api/maia/move', game, { method: 'GET' })).status).toBe(405)
+    maiaLimitOk = false
+    expect((await post('/api/maia/move', game)).status).toBe(429)
+    expect(calls).toEqual([])
+  })
+
+  it('answers 502 when the backend is down and 400 for a game it refuses', async () => {
+    backend(500, {})
+    expect((await post('/api/maia/move', game)).status).toBe(502)
+    backend(400, { detail: 'level 1550 was not measured' })
+    expect((await post('/api/maia/move', game)).status).toBe(400)
   })
 })
