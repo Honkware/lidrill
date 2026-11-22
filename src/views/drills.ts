@@ -39,7 +39,8 @@ export function drillsView(ctrl: Ctrl): VNode {
 function maiaCard(ctrl: Ctrl): VNode {
   const level = ctrl.maiaLevel
   const { time, color, pace } = ctrl.playChoices
-  const games = ctrl.profile?.maia?.games ?? 0
+  const speed = ctrl.maiaSpeed
+  const { from, games } = ctrl.maiaEstimate
   const saved = readGame()
   const step = (by: number) =>
     el(
@@ -62,9 +63,11 @@ function maiaCard(ctrl: Ctrl): VNode {
     el('div', 'mt-3 grid grid-cols-6 gap-2', [-100, -10, -1, 1, 10, 100].map(step)),
     el('p', 'mt-2 text-center text-xs text-dim', [
       ctrl.playLevel === undefined
-        ? games
-          ? `Set from your ${games === 1 ? 'game' : `${games} games`} against Maia.`
-          : 'Set from your rating until you have played a game.'
+        ? from === speed
+          ? `Set from your ${games === 1 ? `${speed} game` : `${games} ${speed} games`} against Maia.`
+          : from
+            ? `Set from your ${from} games against Maia, as you have no ${speed} games yet.`
+            : 'Set from your rating until you have played a game.'
         : el('button', 'underline', { attrs: { type: 'button' }, on: { click: () => ctrl.stepMaiaLevel(0) } }, 'Back to the level that follows your results'),
     ]),
     // Seven times fit a phone's card only with the symbol for unlimited

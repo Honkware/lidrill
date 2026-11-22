@@ -1,10 +1,11 @@
-import type { Game, Profile } from './db'
+import type { Estimate, Game, MaiaSpeed, Profile } from './db'
 import { povCp } from './puzzles/generate'
 
 // Games against Maia-3, a model that plays like a person of a given rating.
 // The opponent's level follows the player: an Elo-style estimate of how the
 // player does against Maia is updated after every game, and the next
-// opponent is 50 above it.
+// opponent is 50 above it. A player isn't equally strong at every time
+// control, so there is one estimate for each of blitz, rapid and untimed.
 
 // The range the server will play (MIN_LEVEL and MAX_LEVEL in
 // server/maia.py), as an approximate Lichess blitz rating. Maia-3's strength
@@ -36,6 +37,29 @@ export const expectedScore = (rating: number, level: number): number => 1 / (1 +
 export function updateEstimate(rating: number, level: number, score: number, games: number): number {
   const next = rating + (games < NEW_GAMES ? K_NEW : K) * (score - expectedScore(rating, level))
   return Math.round(Math.max(MIN_LEVEL - 100, Math.min(MAX_LEVEL + 100, next)))
+}
+
+export type Estimates = Partial<Record<MaiaSpeed, Estimate>>
+
+const SPEEDS: MaiaSpeed[] = ['blitz', 'rapid', 'untimed']
+
+// time is a time control as text, '5+3', and anything else (the card's
+// 'unlimited', a stored game's 'untimed') has no clock. Lichess's rule:
+// under 8 minutes of base time plus 40 moves of increment is blitz.
+export function speedOf(time: string): MaiaSpeed {
+  const m = /^(\d+)\+(\d+)$/.exec(time)
+  if (!m) return 'untimed'
+  return Number(m[1]) * 60 + 40 * Number(m[2]) < 480 ? 'blitz' : 'rapid'
+}
+
+// A profile from before the split has one estimate, read as the untimed one
+export const estimates = (maia: Profile['maia']): Estimates => (maia && 'rating' in maia ? { untimed: maia } : (maia ?? {}))
+
+// The estimate at a speed and the speed it comes from. A speed with no games
+// yet borrows the one with the most games, else the starting guess.
+export function estimateFor(all: Estimates, speed: MaiaSpeed, start: number): { rating: number; from?: MaiaSpeed } {
+  const from = all[speed] ? speed : SPEEDS.filter(s => all[s]).sort((a, b) => all[b]!.games - all[a]!.games)[0]
+  return { rating: from ? all[from]!.rating : start, from }
 }
 
 // Where the estimate starts: the Lichess blitz rating when there is one,

@@ -129,6 +129,12 @@ export interface Puzzle {
 
 export type Band = 'beginner' | 'club' | 'advanced'
 
+export type MaiaSpeed = 'blitz' | 'rapid' | 'untimed'
+export interface Estimate {
+  rating: number
+  games: number
+}
+
 export interface Profile {
   id: 'me'
   lichessUser?: string
@@ -143,7 +149,10 @@ export interface Profile {
   ratings?: Partial<Record<Speed | 'puzzle', Perf>> // from /api/account when signed in
   weakThemes?: WeakTheme[] // from the Lichess puzzle dashboard
   puzzleActivityAt?: number // newest Lichess puzzle activity already read
-  maia?: { rating: number; games: number } // strength estimate from games against Maia, see maia.ts
+  // Strength estimates from games against Maia, one per speed, see maia.ts.
+  // A single estimate is the shape from before the split and can still
+  // arrive from another device.
+  maia?: Partial<Record<MaiaSpeed, Estimate>> | Estimate
   theme?: 'dark' | 'light'
   pieces?: string // piece set key, see look.ts
   board?: string

@@ -2,14 +2,14 @@ import type { Progress } from './analysis/queue'
 import { finishSignIn, signOut, startSignIn } from './auth'
 import { backfillPackets } from './backfill'
 import { deleteAllData, exportData, importData, sameUser } from './backup'
-import { db, type Auth, type Game, type JournalEntry, type Practice, type Profile } from './db'
+import { db, type Auth, type Game, type JournalEntry, type MaiaSpeed, type Practice, type Profile } from './db'
 import { Drill, SessionReview, type Outcome } from './drill'
 import { GameView } from './gameview'
 import { fetchLook, PREFERENCE_SCOPE } from './lichess/api'
 import { fetchStudyLines, listStudies, STUDY_READ_SCOPE, studyCompliance, type StudyInfo } from './lichess/repertoire'
 import { STUDY_SCOPE, sendToStudy } from './lichess/study'
 import { applyLook, BOARDS, PIECE_SETS } from './look'
-import { clampLevel, levelFor, ownStarts, startEstimate, updateEstimate, type Start } from './maia'
+import { clampLevel, estimateFor, estimates, levelFor, ownStarts, speedOf, startEstimate, updateEstimate, type Start } from './maia'
 import { compliance, openingTable, repertoireTargets, streak, type OpeningRow, type Streak } from './metrics'
 import { analyzePending, forgetLichessAccount, getEngine, precertifyDue, saveProfile, syncAndAnalyze, warmEngine } from './pipeline'
 import { clearGame, clockOf, PlayRun, readChoices, readGame, writeChoices, type Choices } from './play'
@@ -530,8 +530,19 @@ export class Ctrl {
 
   // --- games against Maia ---
 
+  // The speed of the time control picked on the card, and its estimate
+  get maiaSpeed(): MaiaSpeed {
+    return speedOf(this.playChoices.time)
+  }
+
+  get maiaEstimate(): { rating: number; from?: MaiaSpeed; games: number } {
+    const all = estimates(this.profile?.maia)
+    const from = estimateFor(all, this.maiaSpeed, this.maiaStart)
+    return { ...from, games: from.from ? all[from.from]!.games : 0 }
+  }
+
   get maiaRating(): number {
-    return this.profile?.maia?.rating ?? this.maiaStart
+    return this.maiaEstimate.rating
   }
 
   get maiaLevel(): number {
@@ -582,9 +593,11 @@ export class Ctrl {
     await db.games.add(game)
     run.saved = game
     const score = run.result === 'win' ? 1 : run.result === 'draw' ? 0.5 : 0
-    const games = this.profile?.maia?.games ?? 0
-    const maia = { rating: updateEstimate(run.opts.rating, run.opts.level, score, games), games: games + 1 }
-    this.profile = await saveProfile({ maia })
+    const all = estimates(this.profile?.maia)
+    const speed = speedOf(game.speed)
+    const games = all[speed]?.games ?? 0
+    const next = { rating: updateEstimate(run.opts.rating, run.opts.level, score, games), games: games + 1 }
+    this.profile = await saveProfile({ maia: { ...all, [speed]: next } })
     this.redraw()
     await this.analyzeNow()
     if (this.play !== run) return

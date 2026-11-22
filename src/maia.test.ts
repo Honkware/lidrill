@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Game } from './db'
-import { clampLevel, expectedScore, fetchMove, levelFor, MAX_LEVEL, MIN_LEVEL, ownStarts, startEstimate, updateEstimate } from './maia'
+import { clampLevel, estimateFor, estimates, expectedScore, fetchMove, levelFor, MAX_LEVEL, MIN_LEVEL, ownStarts, speedOf, startEstimate, updateEstimate } from './maia'
 import { pgnMoves } from './sync/pgn'
 
 const game = (over: Partial<Game> = {}): Game => ({
@@ -62,6 +62,32 @@ describe('updateEstimate', () => {
   it('stays within 100 of the range', () => {
     expect(updateEstimate(2400, 2300, 1, 20)).toBe(2400)
     expect(updateEstimate(500, 600, 0, 20)).toBe(500)
+  })
+})
+
+describe('speedOf', () => {
+  it('splits blitz from rapid at 8 minutes of base time plus 40 increments', () => {
+    expect(['3+2', '5+0', '5+3', '10+0', '10+5', '15+10'].map(speedOf)).toEqual(['blitz', 'blitz', 'blitz', 'rapid', 'rapid', 'rapid'])
+    expect(speedOf('7+2')).toBe('rapid')
+    expect(speedOf('7+1')).toBe('blitz')
+  })
+  it('counts a game without a clock as untimed, as picked or as stored', () => {
+    expect(speedOf('unlimited')).toBe('untimed')
+    expect(speedOf('untimed')).toBe('untimed')
+  })
+})
+
+describe('estimates', () => {
+  it('reads a single estimate from before the split as the untimed one', () => {
+    expect(estimates({ rating: 1420, games: 12 })).toEqual({ untimed: { rating: 1420, games: 12 } })
+    expect(estimates({ blitz: { rating: 1300, games: 3 } })).toEqual({ blitz: { rating: 1300, games: 3 } })
+    expect(estimates(undefined)).toEqual({})
+  })
+  it('starts a speed with no games from the one with the most games, else the guess', () => {
+    const all = { blitz: { rating: 1300, games: 3 }, untimed: { rating: 1500, games: 9 } }
+    expect(estimateFor(all, 'blitz', 1000)).toEqual({ rating: 1300, from: 'blitz' })
+    expect(estimateFor(all, 'rapid', 1000)).toEqual({ rating: 1500, from: 'untimed' })
+    expect(estimateFor({}, 'rapid', 1000)).toEqual({ rating: 1000, from: undefined })
   })
 })
 
