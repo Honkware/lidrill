@@ -3,7 +3,7 @@ import type { Ctrl } from '../ctrl'
 import type { Drill } from '../drill'
 import { el } from '../el'
 import type { BoardLink, Segment } from '../server/render'
-import { board, btnClass, button, icon, loading, moveInput, topBar } from './ui'
+import { board, btnClass, button, dots, icon, loading, moveInput, topBar } from './ui'
 import { drillGameLine } from '../server/surface'
 
 export function drillView(ctrl: Ctrl): VNode {
@@ -32,23 +32,10 @@ function sessionRow(ctrl: Ctrl): VNode {
     )
   return el('div', 'flex items-center gap-1', [
     step('prev', 'Previous puzzle', () => ctrl.sessionBack(), ctrl.review.canBack),
-    el(
-      'div',
-      'flex flex-wrap gap-1',
-      { attrs: { 'aria-label': `${done.length} of ${total} done` } },
-      Array.from({ length: total }, (_, i) => {
-        const r = done[i]
-        return el('span', 'size-3 rounded-sm', {
-          class: {
-            'bg-accent': r === 'clean',
-            'bg-warn': r === 'hinted',
-            'bg-bad': r === 'missed' || r === 'shown',
-            'bg-raised': !r,
-            'ring-2': i === current,
-            'ring-fg': i === current,
-          },
-        })
-      }),
+    dots(
+      Array.from({ length: total }, (_, i) => (done[i] === 'clean' ? 'good' : done[i] === 'hinted' ? 'warn' : done[i] ? 'bad' : undefined)),
+      current,
+      `${done.length} of ${total} done`,
     ),
     step('next', 'Next puzzle', () => ctrl.sessionForward(), ctrl.review.canForward),
   ])

@@ -3,7 +3,7 @@ import type { Ctrl } from '../ctrl'
 import { el } from '../el'
 import type { Replay } from '../replay'
 import { puzzleSide } from './drill'
-import { board, button, card, label, loading, plural, topBar } from './ui'
+import { board, button, card, dots, label, loading, plural, topBar } from './ui'
 
 export function replayView(ctrl: Ctrl): VNode {
   const r = ctrl.replay
@@ -15,27 +15,11 @@ export function replayView(ctrl: Ctrl): VNode {
   ])
 }
 
-// One square per stop, styled like the drill's session row: green found,
-// red missed, grey to come, outlined for the current one
+// One square per stop: green found, red missed
 function progressDots(r: Replay): VNode {
   const found = r.results.filter(Boolean).length
-  const current = r.current ? r.stopIndex : -1
-  return el(
-    'div',
-    'flex flex-wrap gap-1',
-    { attrs: { 'aria-label': `${found} of ${r.stops.length} found` } },
-    r.stops.map((_, i) =>
-      el('span', 'size-3 rounded-sm', {
-        class: {
-          'bg-accent': r.results[i] === true,
-          'bg-bad': r.results[i] === false,
-          'bg-raised': r.results[i] === undefined,
-          'ring-2': i === current,
-          'ring-fg': i === current,
-        },
-      }),
-    ),
-  )
+  const marks = r.stops.map((_, i) => (r.results[i] === true ? 'good' : r.results[i] === false ? 'bad' : undefined))
+  return dots(marks, r.current ? r.stopIndex : -1, `${found} of ${r.stops.length} found`)
 }
 
 function side(ctrl: Ctrl, r: Replay): VNode {

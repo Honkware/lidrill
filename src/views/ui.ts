@@ -66,6 +66,18 @@ export const loading = () => el('p', 'p-4 text-dim', { attrs: { role: 'status' }
 // A grey block in the shape of what is loading
 export const loadingBlock = (extra: string) => el('div', `animate-pulse rounded-xl bg-surface ${extra}`)
 
+// One square per item in a run: coloured by result once done, grey to come,
+// outlined for the one on screen
+export const dots = (marks: ('good' | 'warn' | 'bad' | undefined)[], current: number, name: string) =>
+  el(
+    'div',
+    'flex flex-wrap gap-1',
+    { attrs: { role: 'img', 'aria-label': name } },
+    marks.map((m, i) =>
+      el('span', 'size-3 rounded-sm', { class: { 'bg-accent': m === 'good', 'bg-warn': m === 'warn', 'bg-bad': m === 'bad', 'bg-raised': !m, 'ring-2': i === current, 'ring-fg': i === current } }),
+    ),
+  )
+
 // A card that says there is nothing to show yet
 export const empty = (text: string) => card([el('p', 'text-dim', text)])
 
