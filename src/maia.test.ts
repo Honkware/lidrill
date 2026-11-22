@@ -36,19 +36,32 @@ describe('levelFor', () => {
 
 describe('updateEstimate', () => {
   it('moves up after a win and down after a loss, more for the surprising result', () => {
-    expect(updateEstimate(1500, 1550, 1) - 1500).toBe(37)
-    expect(1500 - updateEstimate(1500, 1550, 0)).toBe(27)
-    expect(updateEstimate(1500, 1500, 0.5)).toBe(1500)
+    expect(updateEstimate(1500, 1550, 1, 20) - 1500).toBe(37)
+    expect(1500 - updateEstimate(1500, 1550, 0, 20)).toBe(27)
+    expect(updateEstimate(1500, 1500, 0.5, 20)).toBe(1500)
   })
+  it('moves twice as far in the first five games', () => {
+    expect(updateEstimate(1500, 1550, 1, 0) - 1500).toBe(73)
+    expect(updateEstimate(1500, 1550, 1, 4) - 1500).toBe(73)
+    expect(updateEstimate(1500, 1550, 1, 5) - 1500).toBe(37)
+  })
+  // someone who really is `truth` playing whatever level the rule picks
+  const settle = (truth: number, est: number, games: (i: number) => number, until: (est: number, i: number) => boolean) => {
+    let i = 0
+    while (!until(est, i)) est = updateEstimate(est, levelFor(est), expectedScore(truth, levelFor(est)), games(i++))
+    return { est, i }
+  }
   it('settles where the player scores what the level predicts', () => {
-    // someone who really is 1300 playing whatever level the rule picks
-    let est = 1900
-    for (let i = 0; i < 200; i++) est = updateEstimate(est, levelFor(est), expectedScore(1300, levelFor(est)))
+    const { est } = settle(1300, 1900, i => i, (_, i) => i === 200)
     expect(Math.abs(est - 1300)).toBeLessThan(15)
   })
+  it('gets a new player 300 off the guess within 100 in 9 games instead of 14', () => {
+    expect(settle(1300, 1600, i => i, est => est < 1400).i).toBe(9)
+    expect(settle(1300, 1600, () => 20, est => est < 1400).i).toBe(14)
+  })
   it('stays within 100 of the range', () => {
-    expect(updateEstimate(2400, 2300, 1)).toBe(2400)
-    expect(updateEstimate(500, 600, 0)).toBe(500)
+    expect(updateEstimate(2400, 2300, 1, 20)).toBe(2400)
+    expect(updateEstimate(500, 600, 0, 20)).toBe(500)
   })
 })
 

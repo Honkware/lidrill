@@ -18,6 +18,11 @@ export const MAX_LEVEL = 2300
 // player loses a little more often than they win.
 const EDGE = 50
 const K = 64
+// The starting guess can be hundreds of points off, so the first games move
+// the estimate twice as far. In simulation a player 300 below the guess is
+// within 100 after 9 games instead of 14, and by game 30 the error is the same.
+const K_NEW = 128
+const NEW_GAMES = 5
 
 export const clampLevel = (level: number): number => Math.max(MIN_LEVEL, Math.min(MAX_LEVEL, Math.round(level)))
 
@@ -25,10 +30,11 @@ export const levelFor = (estimate: number): number => clampLevel(estimate + EDGE
 
 export const expectedScore = (rating: number, level: number): number => 1 / (1 + 10 ** ((level - rating) / 400))
 
-// score is 1 for a win, 0.5 for a draw, 0 for a loss. The estimate stays
-// within 100 of the range so a long run can't carry it out of reach.
-export function updateEstimate(rating: number, level: number, score: number): number {
-  const next = rating + K * (score - expectedScore(rating, level))
+// score is 1 for a win, 0.5 for a draw, 0 for a loss, and games is how many
+// were played before this one. The estimate stays within 100 of the range
+// so a long run can't carry it out of reach.
+export function updateEstimate(rating: number, level: number, score: number, games: number): number {
+  const next = rating + (games < NEW_GAMES ? K_NEW : K) * (score - expectedScore(rating, level))
   return Math.round(Math.max(MIN_LEVEL - 100, Math.min(MAX_LEVEL + 100, next)))
 }
 

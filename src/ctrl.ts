@@ -582,7 +582,8 @@ export class Ctrl {
     await db.games.add(game)
     run.saved = game
     const score = run.result === 'win' ? 1 : run.result === 'draw' ? 0.5 : 0
-    const maia = { rating: updateEstimate(run.opts.rating, run.opts.level, score), games: (this.profile?.maia?.games ?? 0) + 1 }
+    const games = this.profile?.maia?.games ?? 0
+    const maia = { rating: updateEstimate(run.opts.rating, run.opts.level, score, games), games: games + 1 }
     this.profile = await saveProfile({ maia })
     this.redraw()
     await this.analyzeNow()
