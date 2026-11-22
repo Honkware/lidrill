@@ -134,7 +134,7 @@ async function topUpExternal(token: string, profile: Profile, now: Date): Promis
 // Journal entries for every analyzed game. Re-run when the band changes,
 // since the hang definition depends on it; notes and confirmations stay.
 export async function rebuildJournal(profile: Profile): Promise<void> {
-  const games = await db.games.filter(g => g.analyzedAt !== undefined).toArray()
+  const games = await db.games.filter(g => g.analyzedAt !== undefined && g.site !== 'maia').toArray()
   const cutoff = worst5Cutoff(games)
   const old = new Map((await db.journal.toArray()).map(j => [j.gameId, j]))
   await db.journal.bulkPut(games.map(g => journalFor(g, profile.band, cutoff, old.get(g.id))))
@@ -162,6 +162,32 @@ function bookFor(token?: string): (game: Game) => Promise<number> {
   }
 }
 
+const genOptsFor = (profile: Profile) => ({ swingThresholdCp: profile.swingThresholdCp, marginCp: profile.marginCp, depth: 16, maxSolutionMoves: 3, band: profile.band })
+
+// Analyzes every game that has no evals yet and makes its puzzles, journal
+// entry and drill positions. Run by a sync after the fetch, and on its own
+// after a game against Maia, which needs nothing from the game sites.
+export async function analyzePending(profile: Profile, token: string | undefined, onProgress: (p: Progress) => void, signal: AbortSignal): Promise<void> {
+  // The Advanced hang depends on all analyzed games, so it's refreshed as
+  // games come in and the journal is redone at the end
+  let cutoff = worst5Cutoff(await db.games.filter(g => g.analyzedAt !== undefined).toArray())
+  let sinceCutoff = 0
+  const genOpts = genOptsFor(profile)
+  await runQueue(getPool(), { depth: 14, bookPlies: bookFor(token) }, onProgress, signal, async (game, eng) => {
+    await db.puzzles.bulkPut(await generatePuzzles(game, eng, genOpts))
+    await db.games.update(game.id, { puzzlesVersion: GENERATOR_VERSION })
+    if (profile.band === 'advanced' && ++sinceCutoff >= 10) {
+      cutoff = worst5Cutoff(await db.games.filter(g => g.analyzedAt !== undefined).toArray())
+      sinceCutoff = 0
+    }
+    // The streak and the weekly report are about rated games, so games
+    // against Maia get puzzles and drills but no journal entry
+    if (game.site !== 'maia') await db.journal.put(journalFor(game, profile.band, cutoff, await db.journal.get(game.id)))
+    await addPractice([game])
+  })
+  if (profile.band === 'advanced') await rebuildJournal(profile)
+}
+
 export async function syncAndAnalyze(
   accounts: Accounts,
   onStatus: (s: string) => void,
@@ -181,26 +207,12 @@ export async function syncAndAnalyze(
   if (accounts.lichessToken) await topUpExternal(accounts.lichessToken, profile, now)
 
   onStatus(`Added ${added.lichess + added.chesscom} games. Analyzing…`)
-  // The Advanced hang depends on all analyzed games, so it's refreshed as
-  // games come in and the journal is redone at the end
-  let cutoff = worst5Cutoff(await db.games.filter(g => g.analyzedAt !== undefined).toArray())
-  let sinceCutoff = 0
   // Over the band cap a line is replay material, not a puzzle - drop
   // stored own-game puzzles the current band would never have generated
   const plyCap = SOLUTION_PLIES_CAP[profile.band]
   await db.puzzles.filter(p => p.source === 'own' && p.solution.length > plyCap).delete()
-  const genOpts = { swingThresholdCp: profile.swingThresholdCp, marginCp: profile.marginCp, depth: 16, maxSolutionMoves: 3, band: profile.band }
-  await runQueue(getPool(), { depth: 14, bookPlies: bookFor(accounts.lichessToken) }, onProgress, signal, async (game, eng) => {
-    await db.puzzles.bulkPut(await generatePuzzles(game, eng, genOpts))
-    await db.games.update(game.id, { puzzlesVersion: GENERATOR_VERSION })
-    if (profile.band === 'advanced' && ++sinceCutoff >= 10) {
-      cutoff = worst5Cutoff(await db.games.filter(g => g.analyzedAt !== undefined).toArray())
-      sinceCutoff = 0
-    }
-    await db.journal.put(journalFor(game, profile.band, cutoff, await db.journal.get(game.id)))
-    await addPractice([game])
-  })
-  if (profile.band === 'advanced') await rebuildJournal(profile)
+  await analyzePending(profile, accounts.lichessToken, onProgress, signal)
+  const genOpts = genOptsFor(profile)
 
   // Games analyzed by an older generator get another look; puzzles they
   // already have keep their schedule
