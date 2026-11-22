@@ -186,7 +186,9 @@ export class PracticeRun {
   private async askMaia() {
     if (!this.maia) return undefined
     try {
+      // A resignation is not a reply: a drill is judged by Stockfish, so it plays on
       const { move: uci } = await fetchMove(this.maia.moves, this.maia.level, undefined, this.fetchFn)
+      if (!uci) return undefined
       const parsed = parseUci(uci)
       const move = parsed && normalizeMove(this.pos, parsed)
       return move && this.pos.isLegal(move) ? move : undefined

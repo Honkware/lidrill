@@ -485,7 +485,7 @@ describe('rematch', () => {
   })
 
   it('starts a game from an own position there again, on the same side', () => {
-    const start = { gameId: 'lichess:g', color: 'black' as const, opening: '', moves: [{ san: 'e4', uci: 'e2e4' }] }
+    const start = { gameId: 'lichess:g', color: 'black' as const, opening: '', playedAt: 1, moves: [{ san: 'e4', uci: 'e2e4' }] }
     expect(rematch({ ...timed, color: 'black', start }, 1510)).toEqual({ ...timed, color: 'black', start, rating: 1510 })
   })
 })
