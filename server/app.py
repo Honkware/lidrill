@@ -14,7 +14,9 @@ import json
 import os
 import re
 import sqlite3
+import threading
 import time
+from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request
@@ -33,7 +35,24 @@ MAX_ROWS_PER_PUSH = 5000
 MAX_ROW_BYTES = 2_000_000
 MAX_PAGE = 1000
 
-app = FastAPI(title="lidrill-server")
+
+
+def warm_maia() -> None:
+    try:
+        maia.model()
+    except ImportError:
+        pass  # a sync store without torch and maia3 installed still serves everything else
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    # Loading the weights takes a couple of seconds, which the first Maia
+    # move after a restart would otherwise wait for. Sync is not held up.
+    threading.Thread(target=warm_maia, daemon=True).start()
+    yield
+
+
+app = FastAPI(title="lidrill-server", lifespan=lifespan)
 USER_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 

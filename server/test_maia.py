@@ -7,6 +7,7 @@ import math
 import os
 import random
 import statistics
+import threading
 
 import pytest
 from fastapi.testclient import TestClient
@@ -154,3 +155,17 @@ def test_a_think_stays_between_the_floor_and_the_cap():
 def test_the_same_seed_gives_the_same_move_and_time():
     fake, moves = FakeMaia(spread(4)), [m.uci() for m in OPEN.move_stack]
     assert maia.move(fake, moves, 1500, random.Random(3)) == maia.move(fake, moves, 1500, random.Random(3))
+
+
+def test_starting_the_service_loads_the_model_and_a_missing_torch_does_not_stop_it(monkeypatch):
+    loaded = threading.Event()
+    monkeypatch.setattr(maia, "model", loaded.set)
+    with TestClient(app):
+        assert loaded.wait(2)
+
+    def missing():
+        raise ImportError("No module named 'torch'")
+
+    monkeypatch.setattr(maia, "model", missing)
+    with TestClient(app) as client:
+        assert client.get("/health", **KEY).json() == {"ok": True}
