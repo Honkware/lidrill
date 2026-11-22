@@ -131,6 +131,7 @@ export class PlayRun {
   ending = '' // how it ended, in words
   error?: string
   last?: string // SAN of Maia's last move
+  resigning = false // Resign was tapped once and waits for a second tap
   saved?: Game
   readonly opts: PlayOptions
   readonly moves: { san: string; uci: string }[]
@@ -314,6 +315,7 @@ export class PlayRun {
   // The player's move, as the board reports it
   async move(uci: string) {
     if (this.state !== 'your-move' || !this.live || this.flag()) return
+    this.resigning = false
     if (!this.push(uci)) return
     await this.reply()
   }
@@ -354,8 +356,17 @@ export class PlayRun {
     void this.reply()
   }
 
+  // The first tap only asks, since a stray tap on a phone would lose the game
   resign() {
-    if (this.state !== 'over') this.end('loss', 'Resigned')
+    if (this.state === 'over') return
+    if (this.resigning) return this.end('loss', 'Resigned')
+    this.resigning = true
+    this.redraw()
+  }
+
+  cancelResign() {
+    this.resigning = false
+    this.redraw()
   }
 
   private end(result: Result, ending: string) {

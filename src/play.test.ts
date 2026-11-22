@@ -97,7 +97,22 @@ describe('PlayRun', () => {
     expect(asked).toEqual([['e2e4', 'c7c5']])
     expect(run.playerMoves).toBe(1)
     run.resign()
+    run.resign()
     expect([run.result, run.ending, run.toGame(1).opening]).toEqual(['loss', 'Resigned', 'Sicilian Defense'])
+  })
+
+  it('resigns on the second tap and not the first', async () => {
+    const { fetchFn } = scripted(['e7e5', 'b8c6'])
+    const run = new PlayRun(opts, () => {}, () => {}, fetchFn)
+    run.resign()
+    expect([run.state, run.resigning]).toEqual(['your-move', true])
+    run.cancelResign()
+    run.resign()
+    await play(run, ['e2e4'])
+    expect(run.resigning).toBe(false)
+    run.resign()
+    run.resign()
+    expect([run.state, run.result, run.ending]).toEqual(['over', 'loss', 'Resigned'])
   })
 
   it('steps back through the game read-only and refuses a move until it is back at the end', async () => {
@@ -181,6 +196,7 @@ describe('PlayRun clocks', () => {
     await play(run, ['g1f3'])
     expect([run.clock('white'), run.clock('black')]).toEqual([299000, 302000])
     run.resign()
+    run.resign()
     expect(run.toGame(1)).toMatchObject({ speed: '5+3', termination: 'resigned', clocks: [30000, 30000, 29900, 30200] })
   })
 
@@ -228,6 +244,7 @@ describe('PlayRun clocks', () => {
     void run.move('e2e4')
     await pass(1000)
     run.resign()
+    run.resign()
     await pass(5000)
     expect([run.result, run.moves.length]).toEqual(['loss', 1])
   })
@@ -259,6 +276,7 @@ describe('PlayRun clocks', () => {
 
   it('keeps a timed game out of the band worked out from rated games', () => {
     const run = new PlayRun({ ...timed, rating: 2000 }, () => {}, () => {}, maia([]).fetchFn, now)
+    run.resign()
     run.resign()
     const game = run.toGame(1)
     expect(computeBand([{ ...game, speed: 'blitz', rating: 1200 }, game])).toBe('club')

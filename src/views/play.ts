@@ -55,7 +55,9 @@ function live(ctrl: Ctrl): VNode {
       : el('p', 'text-sm text-dim', run.state === 'thinking' ? 'Maia is thinking…' : 'Your move.'),
     el('div', 'flex flex-wrap gap-2', [
       run.live ? null : button('Back to the game', () => run.go(run.moves.length), 'plain'),
-      button('Resign', () => run.resign(), 'quiet'),
+      ...(run.resigning
+        ? [button('Confirm resign', () => run.resign(), 'plain'), button('Cancel', () => run.cancelResign(), 'quiet')]
+        : [button('Resign', () => run.resign(), 'quiet')]),
     ]),
   ])
 }
