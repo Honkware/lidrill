@@ -74,6 +74,9 @@ function dueCard(ctrl: Ctrl): VNode {
     el('p', 'mt-1 font-display text-3xl', plural(remaining, 'puzzle')),
     queue.recovery ? el('p', 'mt-1 text-sm text-dim', 'A shorter set after more than two days away.') : null,
     external ? el('p', 'mt-1 text-sm text-dim', `${external} from Lichess: weak themes and puzzles missed there.`) : null,
+    ctrl.today!.openingDue
+      ? el('p', 'mt-1 text-sm', [`${plural(ctrl.today!.openingDue, 'opening card')} due. `, el('a', 'text-accent underline', { attrs: { href: '#/opening' } }, 'Train')])
+      : null,
     remaining
       ? el('div', 'mt-4 grid', [button('Start', () => ctrl.startDrill())])
       : el(
