@@ -75,7 +75,7 @@ function maiaCard(ctrl: Ctrl): VNode {
     segments('Time', TIMES.map(t => (t === 'unlimited' ? [t, '∞', 'Unlimited'] : [t, t])), time, t => ctrl.setPlayChoice({ time: t })),
     segments('Colour', [['white', 'White'], ['black', 'Black'], ['random', 'Random']], color, c => ctrl.setPlayChoice({ color: c })),
     segments('Pace', [['human', 'Human'], ['instant', 'Instant']], pace, p => ctrl.setPlayChoice({ pace: p })),
-    el('p', 'mt-1 text-xs text-dim', 'Maia takes about as long over a move as a person would.'),
+    el('p', 'mt-1 text-xs text-dim', pace === 'human' ? 'Maia takes about as long over a move as a person would.' : 'Maia moves as soon as it has a reply.'),
     el('div', 'mt-4 flex flex-wrap gap-2', [
       saved ? button('Continue game', () => ctrl.go('play')) : null,
       button('New game', () => ctrl.startPlay(false), saved ? 'plain' : 'primary'),
