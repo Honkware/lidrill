@@ -1,7 +1,7 @@
 import type { VNode } from 'snabbdom'
 import type { Ctrl } from '../ctrl'
 import { el } from '../el'
-import { button } from './ui'
+import { btnClass, button } from './ui'
 
 export const chesscomField = (ctrl: Ctrl, label: string) =>
   el(
@@ -12,7 +12,7 @@ export const chesscomField = (ctrl: Ctrl, label: string) =>
       el('input', 'min-h-11 min-w-0 flex-1 rounded-lg bg-raised px-3', {
         attrs: { id: 'cc-user', value: ctrl.profile?.chesscomUser ?? '', placeholder: 'Chess.com username', autocomplete: 'off', autocapitalize: 'none', spellcheck: false },
       }),
-      el('button', 'min-h-11 rounded-lg bg-raised px-4 font-medium', { attrs: { type: 'submit' } }, label),
+      el('button', btnClass('plain'), { attrs: { type: 'submit' } }, label),
     ],
   )
 

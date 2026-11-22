@@ -5,7 +5,7 @@ import type { Game } from '../db'
 import { el } from '../el'
 import type { GameView } from '../gameview'
 import { deviation } from '../lichess/repertoire'
-import { board, button, card, dateLabel, icon, judgColor, judgMark, label, plural, resultChip, topBar } from './ui'
+import { board, btnClass, button, card, dateLabel, icon, judgColor, judgMark, label, plural, resultChip, topBar } from './ui'
 import { journalHangParts } from '../server/surface'
 import { moveTable, score } from './moves'
 
@@ -99,7 +99,7 @@ export function gameView(ctrl: Ctrl): VNode {
         v.puzzles.length ? button(`Replay ${plural(v.puzzles.length, 'turning point')}`, () => ctrl.go('replay', g.id)) : null,
         v.puzzles.length && ctrl.auth && g.site === 'lichess' ? button('Send to Lichess study', () => ctrl.sendStudy(g.id), 'plain') : null,
         g.url
-          ? el('a', 'inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-dim', { attrs: { href: g.url, target: '_blank', rel: 'noopener' } }, [
+          ? el('a', btnClass('quiet'), { attrs: { href: g.url, target: '_blank', rel: 'noopener' } }, [
               `Open on ${g.site === 'lichess' ? 'Lichess' : 'Chess.com'}`,
               icon('external', 16),
             ])
@@ -113,7 +113,7 @@ export function gameView(ctrl: Ctrl): VNode {
 const navButton = (name: string, labelText: string, to: number, v: GameView) =>
   el(
     'button',
-    'grid h-12 flex-1 place-items-center rounded-lg bg-surface active:bg-raised disabled:opacity-50',
+    `${btnClass('plain', 'fill')} flex-1`,
     { attrs: { type: 'button', 'aria-label': labelText, disabled: to === v.ply }, on: { click: () => v.go(to) } },
     [icon(name)],
   )
@@ -146,6 +146,7 @@ function advice(v: GameView): VNode | null {
       ...ADVICE.map(([j, many]) => {
         const n = v.judged(j).length
         const text = [el('strong', 'tabular-nums', String(n)), ` ${n === 1 ? j : many}`]
+        // Coloured by judgment, as Lichess draws its advice summary
         return n
           ? el('button', `rounded-lg px-3 py-2 hover:bg-raised ${judgColor[j]}`, { attrs: { type: 'button' }, on: { click: () => v.nextJudged(j) } }, text)
           : el('span', 'px-3 py-2 text-dim opacity-60', text)
@@ -180,6 +181,7 @@ function journalCard(ctrl: Ctrl, v: GameView): VNode | null {
   // The hang line's words come from the shared validated surface;
   // only the stored SAN renders as a link, and it is never composed here
   const hang = j.hung ? journalHangParts(j.hung) : undefined
+  // The move is part of the sentence, so its button is drawn as a link
   const hangRow: VNodeChildren = hang
     ? [hang[0], el('button', 'underline', { attrs: { type: 'button' }, on: { click: () => v.go(j.hung!.ply) } }, hang[1]), hang[2]]
     : 'Nothing given away. Counts toward your streak.'
@@ -210,6 +212,7 @@ function studyNote(ctrl: Ctrl, v: GameView): VNode | null {
   const moveNo = `${Math.ceil(d.ply / 2)}${d.ply % 2 ? '.' : '...'}`
   const played = v.sanBefore(d.ply, v.game.moves[d.ply - 1].uci)
   const expected = v.sanBefore(d.ply, d.expected)
+  // A card that puts the board at the move, so it keeps the card's shape
   return el('button', 'block w-full rounded-xl bg-surface p-3 text-left text-sm', { attrs: { type: 'button' }, on: { click: () => v.go(d.ply - 1) } }, [
     el('span', 'text-dim', `Study "${study.name}": `),
     `left by ${d.byPlayer ? 'you' : 'your opponent'} at ${moveNo}${played}; the study has ${expected}.`,

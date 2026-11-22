@@ -5,7 +5,7 @@ import { el } from '../el'
 import { history, MAX_LEVEL, MIN_LEVEL, startLabel } from '../maia'
 import { readGame, TIMES, type SavedGame } from '../play'
 import { CLEAR_AFTER } from '../practice'
-import { board, button, card, dateLabel, icon, moveInput, pawns, topBar } from './ui'
+import { board, btnClass, button, card, dateLabel, icon, moveInput, pawns, topBar } from './ui'
 
 const ABOUT: Record<PracticeKind, { title: string; text: string }> = {
   conversion: {
@@ -45,7 +45,7 @@ function maiaCard(ctrl: Ctrl): VNode {
   const step = (by: number) =>
     el(
       'button',
-      'grid h-11 place-items-center rounded-lg bg-raised text-sm font-medium tabular-nums disabled:opacity-40',
+      `${btnClass('plain', 'fill')} tabular-nums`,
       { attrs: { type: 'button', disabled: level === (by < 0 ? MIN_LEVEL : MAX_LEVEL) }, on: { click: () => ctrl.stepMaiaLevel(by) } },
       `${by < 0 ? '−' : '+'}${Math.abs(by)}`,
     )
@@ -69,7 +69,8 @@ function maiaCard(ctrl: Ctrl): VNode {
           : from
             ? `Set from your ${from} games against Maia, as you have no ${speed} games yet.`
             : 'Set from your rating until you have played a game.'
-        : el('button', 'underline', { attrs: { type: 'button' }, on: { click: () => ctrl.stepMaiaLevel(0) } }, 'Back to the level that follows your results'),
+        : // A link in the line of text, so not a button()
+          el('button', 'underline', { attrs: { type: 'button' }, on: { click: () => ctrl.stepMaiaLevel(0) } }, 'Back to the level that follows your results'),
     ]),
     // Seven times fit a phone's card only with the symbol for unlimited
     segments('Time', TIMES.map(t => (t === 'unlimited' ? [t, '∞', 'Unlimited'] : [t, t])), time, t => ctrl.setPlayChoice({ time: t })),

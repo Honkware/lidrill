@@ -1,7 +1,7 @@
 import type { VNode } from 'snabbdom'
 import type { Ctrl } from '../ctrl'
 import { el } from '../el'
-import { button, card, label, plural, weekBars } from './ui'
+import { btnClass, button, card, label, plural, weekBars } from './ui'
 import { thresholdWords } from '../server/surface'
 
 // Home IA: one hero (streak), one primary action (due), then at most three
@@ -149,7 +149,7 @@ function bandNote(ctrl: Ctrl): VNode | null {
         el('p', 'text-sm', [`Level changed to ${last.band}, from your Lichess rating. Puzzles come from moves that gave away ${thresholdWords(ctrl.profile!.swingThresholdCp) ?? 'material'} or more.${extra} `, whatCountsLink()]),
         el(
           'button',
-          'shrink-0 rounded-lg px-2 py-1 text-dim active:bg-raised',
+          btnClass('quiet', 'icon'),
           { attrs: { type: 'button', 'aria-label': 'Dismiss' }, on: { click: () => { localStorage.setItem(seenKey, '1'); ctrl.redraw() } } },
           '✕',
         ),

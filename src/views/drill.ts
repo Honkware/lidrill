@@ -3,7 +3,7 @@ import type { Ctrl } from '../ctrl'
 import type { Drill } from '../drill'
 import { el } from '../el'
 import type { BoardLink, Segment } from '../server/render'
-import { board, button, icon, moveInput, topBar } from './ui'
+import { board, btnClass, button, icon, moveInput, topBar } from './ui'
 import { drillGameLine } from '../server/surface'
 
 export function drillView(ctrl: Ctrl): VNode {
@@ -26,8 +26,8 @@ function sessionRow(ctrl: Ctrl): VNode {
   const step = (name: string, aria: string, onClick: () => void, enabled: boolean) =>
     el(
       'button',
-      'grid size-6 place-items-center rounded-md text-dim active:bg-raised',
-      { attrs: { type: 'button', 'aria-label': aria, disabled: !enabled }, class: { 'opacity-30': !enabled }, on: { click: onClick } },
+      btnClass('quiet', 'icon'),
+      { attrs: { type: 'button', 'aria-label': aria, disabled: !enabled }, on: { click: onClick } },
       [icon(name, 16)],
     )
   return el('div', 'flex items-center gap-1', [
@@ -118,10 +118,10 @@ function playing(d: Drill): VNode {
     // turn it is)
     el(
       'button',
-      'inline-flex min-h-11 items-center gap-2 rounded-lg bg-raised px-4 text-sm font-medium',
+      btnClass('plain', 'sm'),
       {
         attrs: { type: 'button', disabled: !d.yourTurn, 'aria-hidden': available ? 'false' : 'true' },
-        class: { 'text-warn': d.showHint, 'opacity-50': !d.yourTurn, invisible: !available },
+        class: { 'text-warn': d.showHint, invisible: !available },
         on: { click: () => d.hint() },
       },
       [icon('hint', 18), d.showHint ? 'Hide hint' : 'Hint'],
@@ -148,6 +148,7 @@ function moveLine(d: Drill): VNode {
   d.nodes.forEach((n, i) => {
     if (!n.san || i < d.start) return
     items.push(
+      // A move in the line, sized like the cells of the move list
       el(
         'button',
         'rounded px-2 py-1 text-sm',
@@ -165,7 +166,7 @@ function moveLine(d: Drill): VNode {
 }
 
 const navButton = (name: string, labelText: string, onClick: () => void) =>
-  el('button', 'grid size-11 place-items-center rounded-lg text-dim active:bg-raised', { attrs: { type: 'button', 'aria-label': labelText }, on: { click: onClick } }, [icon(name)])
+  el('button', btnClass('quiet', 'icon'), { attrs: { type: 'button', 'aria-label': labelText }, on: { click: onClick } }, [icon(name)])
 
 // Every move mention in the explanation is a link - ref or certified text -
 // and each one behaves the same: hover with a mouse, tap on a touch screen
@@ -252,7 +253,7 @@ export function puzzleSide(d: Drill, after: (VNode | null)[]): VNode {
   // The cost words come from the shared validated surface, never
   // composed here; an unmeasurable swing omits the clause
   const game = p.played && !affirmed ? (drillGameLine({ san: d.sanAt(p.played) }, p.swingCp) ?? '') : ''
-  const why = d.why ? null : el('button', 'shrink-0 rounded-full bg-raised px-3 py-1 text-sm font-medium', { attrs: { type: 'button' }, on: { click: () => d.explain() } }, 'Why?')
+  const why = d.why ? null : el('button', btnClass('plain', 'sm'), { attrs: { type: 'button' }, on: { click: () => d.explain() } }, 'Why?')
   return el('div', 'space-y-3', [
     whyCard(feedbackBox(tone, title, `${answer}${game}`.trim() || null, why), whyPart(d)),
     el('div', 'rounded-xl bg-surface p-2', [

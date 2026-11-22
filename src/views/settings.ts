@@ -7,7 +7,7 @@ import { STUDY_READ_SCOPE } from '../lichess/repertoire'
 import { STUDY_SCOPE } from '../lichess/study'
 import { BOARDS, DEFAULT_BOARD, DEFAULT_PIECES, PIECE_SETS } from '../look'
 import { setSound, soundOn } from '../sound'
-import { button, card, HANG_RULE, label } from './ui'
+import { btnClass, button, card, HANG_RULE, label } from './ui'
 import { chesscomField } from './welcome'
 
 // What each Lichess permission is used for
@@ -18,6 +18,8 @@ const SCOPE_WHY: Record<string, string> = {
   [STUDY_READ_SCOPE]: 'Read your studies, when you pick one as your repertoire.',
 }
 
+// Tiles rather than buttons, since each shows a preview and the border
+// marks the one in use
 const choice = (selected: boolean, onClick: () => void, children: (VNode | string)[]) =>
   el(
     'button',
@@ -88,6 +90,7 @@ export function settingsView(ctrl: Ctrl): VNode {
               'flex flex-wrap gap-2',
               ctrl.playedFamilies.map(f => {
                 const on = !!p?.repertoire?.includes(f)
+                // A pill, as these are tags that can be on together
                 return el(
                   'button',
                   'min-h-9 rounded-full border px-3 text-sm',
@@ -140,7 +143,7 @@ export function settingsView(ctrl: Ctrl): VNode {
         el('p', 'text-sm text-dim', '"Why?" after a puzzle sends that position and Stockfish\'s lines, nothing else, through lidrill\'s server to an AI model (via OpenRouter).'),
         el('div', 'flex flex-wrap gap-2', [
           button('Export', () => ctrl.exportFile(), 'plain'),
-          el('label', 'inline-flex min-h-11 cursor-pointer items-center rounded-lg bg-raised px-4 font-medium', [
+          el('label', `${btnClass('plain')} cursor-pointer`, [
             'Import',
             el('input', 'hidden', {
               attrs: { type: 'file', accept: 'application/json,.json' },
@@ -155,7 +158,7 @@ export function settingsView(ctrl: Ctrl): VNode {
     el('p', 'px-1 text-xs text-dim', 'lidrill is open source under the AGPL. Stockfish 19 runs in your browser.'),
     el(
       'button',
-      'inline-flex min-h-11 items-center gap-2 px-1 text-sm text-dim',
+      btnClass('quiet', 'sm'),
       { attrs: { type: 'button', 'aria-pressed': soundOn() }, on: { click: () => { setSound(!soundOn()); ctrl.redraw() } } },
       ['Sounds', el('span', { class: { 'text-accent': soundOn() } }, soundOn() ? 'On' : 'Off')],
     ),

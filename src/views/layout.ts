@@ -10,7 +10,7 @@ import { precisionView } from './precision'
 import { replayView } from './replay'
 import { settingsView } from './settings'
 import { todayView } from './today'
-import { icon } from './ui'
+import { btnClass, icon } from './ui'
 import { welcomeView } from './welcome'
 
 const TABS: { screen: Screen; label: string; icon: string }[] = [
@@ -126,12 +126,12 @@ function notice(ctrl: Ctrl, tabs: boolean): VNode {
   const n = ctrl.notice!
   return el(
     'div',
-    'fixed inset-x-4 z-30 mx-auto flex max-w-md items-center gap-3 rounded-xl bg-raised px-4 py-3 shadow-lg',
+    'fixed inset-x-4 z-30 mx-auto flex max-w-md items-center gap-3 rounded-xl bg-raised py-1 pl-4 pr-1 shadow-lg',
     { class: { 'bottom-notice-tabs': tabs, 'bottom-notice': !tabs } },
     [
-      el('p', 'flex-1 text-sm', n.text),
+      el('p', 'flex-1 py-2 text-sm', n.text),
       n.href ? el('a', 'text-sm font-medium text-accent', { attrs: { href: n.href, target: '_blank', rel: 'noopener' } }, 'Open') : null,
-      el('button', 'text-sm text-dim', { attrs: { type: 'button' }, on: { click: () => ctrl.dismissNotice() } }, 'OK'),
+      el('button', btnClass('quiet', 'sm'), { attrs: { type: 'button' }, on: { click: () => ctrl.dismissNotice() } }, 'OK'),
     ],
   )
 }

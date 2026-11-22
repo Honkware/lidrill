@@ -73,6 +73,7 @@ const PIECES = [['q', 'queen'], ['r', 'rook'], ['b', 'bishop'], ['n', 'knight']]
 function promotion(run: PlayRun): VNode {
   return el('div', 'flex items-center gap-2', [
     ...PIECES.map(([piece, role]) =>
+      // 56px, a size up from an icon button, to fit the piece
       el(
         'button',
         'grid size-14 place-items-center rounded-lg bg-raised',

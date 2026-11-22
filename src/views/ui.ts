@@ -1,23 +1,29 @@
 import { h, type VNode, type VNodeChildren } from 'snabbdom'
 import { el } from '../el'
 
-export const button = (label: VNodeChildren, onClick: () => void, kind: 'primary' | 'plain' | 'quiet' = 'primary', disabled = false) =>
-  el(
-    'button',
-    'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 font-medium transition active:scale-95',
-    {
-      class: {
-        'bg-accent': kind === 'primary',
-        'text-bg': kind === 'primary',
-        'bg-raised': kind === 'plain',
-        'text-dim': kind === 'quiet',
-        'opacity-50': disabled,
-      },
-      attrs: { disabled, type: 'button' },
-      on: { click: onClick },
-    },
-    label,
-  )
+type Kind = 'primary' | 'plain' | 'quiet'
+
+// Every button is 44px high. sm is the same height with smaller text, icon
+// is a 44px square, and fill takes its width from a grid or flex row.
+const SIZE = {
+  md: 'min-h-11 px-4 text-base',
+  sm: 'min-h-11 px-4 text-sm',
+  icon: 'size-11 shrink-0',
+  fill: 'min-h-11 text-sm',
+}
+
+const KIND = {
+  primary: 'bg-accent text-bg not-disabled:hover:brightness-110',
+  plain: 'bg-raised not-disabled:hover:brightness-110',
+  quiet: 'text-dim not-disabled:hover:bg-hover not-disabled:active:bg-press',
+}
+
+// For a button that needs its own attributes, or a label or link drawn as one
+export const btnClass = (kind: Kind = 'primary', size: keyof typeof SIZE = 'md') =>
+  `inline-flex items-center justify-center gap-2 rounded-lg font-medium transition motion-safe:not-disabled:active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 ${SIZE[size]} ${KIND[kind]}`
+
+export const button = (label: VNodeChildren, onClick: () => void, kind: Kind = 'primary', disabled = false) =>
+  el('button', btnClass(kind), { attrs: { disabled, type: 'button' }, on: { click: onClick } }, label)
 
 export const card = (children: VNodeChildren, extra = '') => el('section', `rounded-xl bg-surface p-4 sm:p-5 ${extra}`, children)
 
@@ -72,7 +78,7 @@ export const board = (key: string, mount: (el: HTMLElement) => void): VNode =>
 // Top bar for the full-screen board screens
 export const topBar = (title: string, onBack: () => void, right?: VNode | null) =>
   el('div', 'flex items-center gap-2 px-2 py-2 sm:px-0', [
-    el('button', 'grid size-10 place-items-center rounded-lg text-dim', { attrs: { 'aria-label': 'Back', type: 'button' }, on: { click: onBack } }, [icon('back')]),
+    el('button', btnClass('quiet', 'icon'), { attrs: { 'aria-label': 'Back', type: 'button' }, on: { click: onBack } }, [icon('back')]),
     el('h1', 'min-w-0 flex-1 truncate font-display text-lg', title),
     right ?? null,
   ])
@@ -147,6 +153,6 @@ export const moveInput = (onMove: (text: string) => boolean) =>
         attrs: { name: 'move', placeholder: 'Or type a move: Nf3, exd5, O-O', autocomplete: 'off', autocapitalize: 'none', spellcheck: false, 'aria-label': 'Type a move' },
         on: { input: e => (e.target as HTMLInputElement).setCustomValidity('') },
       }),
-      el('button', 'min-h-11 rounded-lg bg-raised px-4 text-sm font-medium', { attrs: { type: 'submit' } }, 'Play'),
+      el('button', btnClass('plain', 'sm'), { attrs: { type: 'submit' } }, 'Play'),
     ],
   )
