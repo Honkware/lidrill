@@ -1,4 +1,5 @@
-import type { Eval } from '../db'
+import type { Eval, Move } from '../db'
+import { MATED } from './analyze'
 import { winningChances } from './judge'
 
 // Ported from lila: modules/analyse/src/main/AccuracyPercent.scala, with
@@ -64,4 +65,33 @@ export function gameAccuracy(start: 'white' | 'black', evals: (Eval | undefined)
   }
   if (!moves.white.length || !moves.black.length) return
   return { white: side(moves.white), black: side(moves.black) }
+}
+
+// lila's start eval when its analysis has none for the start position
+// (evals.legacyInitial in modules/tree/src/main/eval.scala)
+const INITIAL = { cp: 15 }
+
+// Below this many evaluated moves a side, one move decides the figure
+const MIN_MOVES = 5
+
+// A game's accuracy from its stored evals. lidrill keeps no eval for the
+// start position, and a game analysed in the browser has none for its book
+// moves or the position after the last of them, so the figure covers the
+// moves with an eval before and after, from the first evaluated position
+// on. A game whose first move has an eval was analysed in full and starts
+// from lila's 15 cp. The mated position is left out, as Lichess has no eval
+// for it.
+export function accuracy(moves: Move[]): Accuracy | undefined {
+  const evals = [
+    moves[0]?.eval ? INITIAL : undefined,
+    ...moves.map(m => (m.eval && Math.abs(m.eval.cp ?? 0) !== MATED ? m.eval : undefined)),
+  ]
+  const first = evals.findIndex(e => e)
+  if (first < 0) return
+  const rest = evals.slice(first)
+  const start = first % 2 === 0 ? 'white' : 'black'
+  const counted = { white: 0, black: 0 }
+  for (let i = 0; i + 1 < rest.length; i++) if (rest[i] && rest[i + 1]) counted[(i + first) % 2 === 0 ? 'white' : 'black']++
+  if (counted.white < MIN_MOVES || counted.black < MIN_MOVES) return
+  return gameAccuracy(start, rest)
 }

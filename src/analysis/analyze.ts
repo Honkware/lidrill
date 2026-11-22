@@ -12,7 +12,7 @@ export interface AnalyzeOptions {
   bookPlies: number
 }
 
-const MATED = 10000
+export const MATED = 10000
 
 // Returns the moves with eval/judg/book filled in. Moves that already carry an
 // eval aren't searched again. Positions are searched in order so a cancelled

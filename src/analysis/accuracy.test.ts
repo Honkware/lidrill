@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { gameAccuracy, moveAccuracy, winPercent } from './accuracy'
+import { accuracy, gameAccuracy, moveAccuracy, winPercent } from './accuracy'
+import { MATED } from './analyze'
 
 // The port checked against lila's own vectors, copied from
 // modules/analyse/src/test/AccuracyPercentTest.scala: each game starts from
@@ -63,5 +64,29 @@ describe('game accuracy, lila vectors', () => {
     near(compute([900, 900], 'black'), [100, 1], [10, 5])
     near(compute([15, -900], 'black'), [10, 5], [100, 1])
     near(compute([900, 0], 'black'), [10, 5], [10, 5])
+  })
+})
+
+describe('accuracy of a stored game', () => {
+  const moves = (cps: (number | undefined)[]) => cps.map(cp => ({ san: '', uci: '', eval: cp === undefined ? undefined : { cp } }))
+  const line = repeat(6, [-50, 15])
+
+  it('starts a fully analysed game from lila’s 15 cp', () => {
+    expect(accuracy(moves(line))).toEqual(compute(line))
+  })
+
+  it('skips book moves and starts from the first evaluated position', () => {
+    // after two book moves white has played, so black moves first
+    const book = [undefined, undefined]
+    expect(accuracy(moves([...book, ...line]))).toEqual(gameAccuracy('black', line.map(cp => ({ cp }))))
+  })
+
+  it('leaves out the mated position', () => {
+    expect(accuracy(moves([...line, MATED]))).toEqual(accuracy(moves(line)))
+  })
+
+  it('has no figure with under 5 evaluated moves a side', () => {
+    expect(accuracy(moves(repeat(5, [-50, 15])))).toBeDefined()
+    expect(accuracy(moves([undefined, ...repeat(5, [-50, 15])]))).toBeUndefined()
   })
 })

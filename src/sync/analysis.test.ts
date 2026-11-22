@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { accuracy } from '../analysis/accuracy'
 import { analyzeMoves } from '../analysis/analyze'
 import type { Engine } from '../analysis/engine'
 import { fromLichess } from './lichess'
@@ -34,5 +35,11 @@ describe('Lichess server analysis', () => {
         blunder: want.blunder,
       })
     }
+  })
+
+  it('gives each side the accuracy Lichess gave it', async () => {
+    const engine = { search: async () => ({ eval: { cp: 20 }, pv: [], depth: 1, multipv: 1 }) } as unknown as Engine
+    const a = accuracy(await analyzeMoves(game.moves, engine, { depth: 14, bookPlies: 0 }))!
+    expect([Math.round(a.white), Math.round(a.black)]).toEqual([raw.players.white.analysis.accuracy, raw.players.black.analysis.accuracy])
   })
 })
