@@ -12,7 +12,7 @@ import { applyLook, BOARDS, PIECE_SETS } from './look'
 import { clampLevel, levelFor, ownStarts, startEstimate, updateEstimate, type Start } from './maia'
 import { compliance, openingTable, repertoireTargets, streak, type OpeningRow, type Streak } from './metrics'
 import { analyzePending, forgetLichessAccount, getEngine, precertifyDue, saveProfile, syncAndAnalyze, warmEngine } from './pipeline'
-import { clockOf, PlayRun, readChoices, writeChoices, type Choices } from './play'
+import { clearGame, clockOf, PlayRun, readChoices, readGame, writeChoices, type Choices } from './play'
 import { PracticeRun } from './practice'
 import { Replay } from './replay'
 import { weekReport, weeklyZeroHang, type WeekReport } from './report'
@@ -548,7 +548,9 @@ export class Ctrl {
     this.redraw()
   }
 
+  // A new game from the Drills card replaces one left unfinished
   startPlay(own: boolean) {
+    clearGame()
     this.playOwn = own
     this.go('play')
   }
@@ -557,6 +559,11 @@ export class Ctrl {
     this.screen = 'play'
     this.playPuzzles = undefined
     if (!this.profile?.maia) this.maiaStart = startEstimate(this.profile?.ratings, await db.games.toArray())
+    const saved = readGame()
+    if (saved) {
+      this.play = new PlayRun(saved.opts, this.redraw, run => void this.finishPlay(run), fetch, Date.now, saved)
+      return
+    }
     const start = this.playOwn ? this.playStarts[Math.floor(Math.random() * this.playStarts.length)] : undefined
     const { time, color: side, pace } = this.playChoices
     // A position from an own game keeps its side whatever was chosen

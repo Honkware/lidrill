@@ -3,7 +3,7 @@ import type { Ctrl } from '../ctrl'
 import type { Practice, PracticeKind } from '../db'
 import { el } from '../el'
 import { MAX_LEVEL, MIN_LEVEL } from '../maia'
-import { TIMES } from '../play'
+import { readGame, TIMES, type SavedGame } from '../play'
 import { CLEAR_AFTER } from '../practice'
 import { board, button, card, icon, moveInput, pawns, topBar } from './ui'
 
@@ -40,6 +40,7 @@ function maiaCard(ctrl: Ctrl): VNode {
   const level = ctrl.maiaLevel
   const { time, color, pace } = ctrl.playChoices
   const games = ctrl.profile?.maia?.games ?? 0
+  const saved = readGame()
   const step = (by: number) =>
     el(
       'button',
@@ -72,10 +73,17 @@ function maiaCard(ctrl: Ctrl): VNode {
     segments('Pace', [['human', 'Human'], ['instant', 'Instant']], pace, p => ctrl.setPlayChoice({ pace: p })),
     el('p', 'mt-1 text-xs text-dim', 'Maia takes about as long over a move as a person would.'),
     el('div', 'mt-4 flex flex-wrap gap-2', [
-      button('New game', () => ctrl.startPlay(false)),
+      saved ? button('Continue your game', () => ctrl.go('play')) : null,
+      button('New game', () => ctrl.startPlay(false), saved ? 'plain' : 'primary'),
       ctrl.playStarts.length ? button('From one of your games', () => ctrl.startPlay(true), 'plain') : null,
     ]),
+    saved ? el('p', 'mt-2 text-xs text-dim', savedText(saved)) : null,
   ])
+}
+
+function savedText({ opts, moves }: SavedGame): string {
+  const c = opts.clock
+  return `${c ? `${c.base / 60}+${c.inc}` : 'Untimed game'} against Maia about ${opts.level}, move ${Math.floor(moves.length / 2) + 1}`
 }
 
 // [value, text, a spoken name when the text is a symbol]
