@@ -17,7 +17,7 @@ The moves in the final text are filled in from the engine's lines by the rendere
 ## What else it does
 
 - Turning Points replays one of your games and stops at the moves where it turned.
-- Conversion and defense drills let you play out your own positions against Stockfish.
+- Conversion and defense drills let you play out your own positions against Maia at about your level, with Stockfish judging the result.
 - Play Maia is a whole game against [Maia-3](https://github.com/CSSLab/maia3), a model that plays like a person of a given rating. The level follows your results and stays a little above you, and the mistakes you make in the game become puzzles like those from any other game. You pick a time control and a colour, and Maia can take about as long over each move as a person would.
 - Signed-in accounts sync between devices. Otherwise everything stays in your browser.
 
