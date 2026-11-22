@@ -3,10 +3,10 @@ import type { Api } from '@lichess-org/chessground/api'
 import type { Key } from '@lichess-org/chessground/types'
 import { Chess, normalizeMove } from 'chessops/chess'
 import { chessgroundDests } from 'chessops/compat'
-import { makeFen } from 'chessops/fen'
+import { makeFen, parseFen } from 'chessops/fen'
 import { makeSan } from 'chessops/san'
 import { makeUci, opposite, parseSquare, parseUci } from 'chessops/util'
-import type { Color } from 'chessops/types'
+import type { Color, Role } from 'chessops/types'
 import { checkColor } from './checkColor'
 import type { Game, Result } from './db'
 import { stepKey } from './gameview'
@@ -120,6 +120,20 @@ const positionKey = (pos: Chess) => makeFen(pos.toSetup()).split(' ').slice(0, 4
 
 export function drawn(pos: Chess, seen: Map<string, number>): boolean {
   return pos.isStalemate() || pos.isInsufficientMaterial() || pos.halfmoves >= 100 || (seen.get(positionKey(pos)) ?? 0) >= 3
+}
+
+const VALUE: Record<Role, number> = { pawn: 1, knight: 3, bishop: 3, rook: 5, queen: 9, king: 0 }
+const FULL: [Role, number][] = [['queen', 1], ['rook', 2], ['bishop', 2], ['knight', 2], ['pawn', 8]]
+
+// What each side has taken, counted against a full set so a game from one
+// of the player's own positions shows the earlier captures too, and white's
+// points minus black's. A promoted pawn shows as taken.
+export function material(fen: string): { white: Role[]; black: Role[]; diff: number } {
+  const board = parseFen(fen).unwrap().board
+  const taken = (by: Color) => FULL.flatMap(([role, n]) => Array<Role>(Math.max(0, n - board.pieces(opposite(by), role).size())).fill(role))
+  let diff = 0
+  for (const [, p] of board) diff += (p.color === 'white' ? 1 : -1) * VALUE[p.role]
+  return { white: taken('white'), black: taken('black'), diff }
 }
 
 let runs = 0
@@ -254,6 +268,10 @@ export class PlayRun {
 
   get live() {
     return this.viewPly === this.moves.length
+  }
+
+  get fen() {
+    return this.fens[this.viewPly]
   }
 
   go(ply: number) {

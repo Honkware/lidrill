@@ -1,6 +1,6 @@
 import { Chess } from 'chessops/chess'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { PlayRun, readChoices, readGame, writeChoices } from './play'
+import { material, PlayRun, readChoices, readGame, writeChoices } from './play'
 import { computeBand } from './profile'
 
 // A game against a scripted opponent: the fetch stands in for the Maia
@@ -382,6 +382,16 @@ describe('PlayRun after a reload', () => {
     localStorage.setItem('lidrill.maiaGame', '{"opts":')
     expect(readGame()).toBeUndefined()
     expect(localStorage.getItem('lidrill.maiaGame')).toBeNull()
+  })
+})
+
+describe('material', () => {
+  it('shows nothing taken and no lead at the start', () => {
+    expect(material('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')).toEqual({ white: [], black: [], diff: 0 })
+  })
+
+  it('lists what each side took, queen first, and counts a knight against a pawn as two up', () => {
+    expect(material('rnb1kb1r/pppppppp/8/8/8/8/PPPP1PP1/RNBQKBNR w KQkq - 0 1')).toEqual({ white: ['queen', 'knight'], black: ['pawn', 'pawn'], diff: 10 })
   })
 })
 
