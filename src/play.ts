@@ -58,6 +58,55 @@ export function writeChoices(c: Choices) {
   }
 }
 
+// The game in progress, rebuilt after a reload. left is each side's
+// milliseconds at the time of the save, `at` that time by the wall clock.
+export interface SavedGame {
+  opts: PlayOptions
+  moves: { san: string; uci: string }[]
+  left: { white: number; black: number }
+  clocks: number[]
+  at: number
+}
+
+const GAME_KEY = 'lidrill.maiaGame'
+
+// A game saved by an older version or damaged in storage would break
+// halfway through rebuilding the board, and there is nothing in it worth
+// recovering by hand, so it is dropped and the next game starts fresh
+export function readGame(): SavedGame | undefined {
+  try {
+    const g = JSON.parse(localStorage.getItem(GAME_KEY) ?? 'null') as SavedGame | null
+    if (!g) return undefined
+    if (!Number.isFinite(g.at + g.left.white + g.left.black + g.opts.level) || !['white', 'black'].includes(g.opts.color) || !Array.isArray(g.clocks)) throw new Error('old shape')
+    const pos = Chess.default()
+    for (const m of g.moves) {
+      const move = parseUci(m.uci)
+      if (!move || !pos.isLegal(move)) throw new Error('bad move')
+      pos.play(move)
+    }
+    return g
+  } catch {
+    clearGame()
+    return undefined
+  }
+}
+
+function writeGame(g: SavedGame) {
+  try {
+    localStorage.setItem(GAME_KEY, JSON.stringify(g))
+  } catch {
+    // storage off; the game only lasts as long as the page
+  }
+}
+
+export function clearGame() {
+  try {
+    localStorage.removeItem(GAME_KEY)
+  } catch {
+    // nothing was saved either
+  }
+}
+
 // '5+3' is 5 minutes and 3 seconds a move
 export function clockOf(time: string): PlayOptions['clock'] {
   if (time === 'unlimited') return undefined
@@ -103,7 +152,7 @@ export class PlayRun {
   // a retry, or once the game is over.
   private left = { white: 0, black: 0 }
   private since?: number
-  private clocks: number[] = [] // centiseconds left after each move
+  private clocks: number[] // centiseconds left after each move
   private timer?: ReturnType<typeof setInterval>
   private onKey = (e: KeyboardEvent) => {
     const to = stepKey(e, this.viewPly, this.moves.length)
@@ -112,13 +161,15 @@ export class PlayRun {
     this.go(to)
   }
 
-  constructor(opts: PlayOptions, redraw: () => void, onEnd: (run: PlayRun) => void, fetchFn: typeof fetch = fetch, now = Date.now) {
+  // `from` is a saved game to carry on with instead of starting a new one
+  constructor(opts: PlayOptions, redraw: () => void, onEnd: (run: PlayRun) => void, fetchFn: typeof fetch = fetch, now = Date.now, from?: SavedGame) {
     this.opts = opts
     this.redraw = redraw
     this.onEnd = onEnd
     this.fetchFn = fetchFn
     this.now = now
-    this.moves = [...(opts.start?.moves ?? [])]
+    this.moves = [...(from?.moves ?? opts.start?.moves ?? [])]
+    this.clocks = [...(from?.clocks ?? [])]
     this.count()
     for (const m of this.moves) {
       this.pos.play(parseUci(m.uci)!)
@@ -126,10 +177,14 @@ export class PlayRun {
     }
     this.viewPly = this.moves.length
     if (opts.clock) {
-      this.left = { white: opts.clock.base * 1000, black: opts.clock.base * 1000 }
+      this.left = from ? { ...from.left } : { white: opts.clock.base * 1000, black: opts.clock.base * 1000 }
       this.resume()
+      // The clock ran on while the page was away, as on Lichess
+      if (from && this.since !== undefined) this.since = from.at
       this.timer = setInterval(() => this.tick(), 100)
     }
+    this.save()
+    if (this.flag()) return
     if (this.pos.turn !== opts.color) void this.reply()
   }
 
@@ -170,6 +225,10 @@ export class PlayRun {
   // on Lichess. From an own game they run from the start.
   private resume() {
     if (this.opts.clock && (this.opts.start || this.moves.length >= 2)) this.since = this.now()
+  }
+
+  private save() {
+    writeGame({ opts: this.opts, moves: this.moves, left: { white: this.clock('white'), black: this.clock('black') }, clocks: this.clocks, at: this.now() })
   }
 
   private stop() {
@@ -248,6 +307,7 @@ export class PlayRun {
     if (this.pos.isCheckmate()) return this.end(mover === this.opts.color ? 'win' : 'loss', 'Checkmate'), false
     if (drawn(this.pos, this.seen)) return this.end('draw', this.pos.isStalemate() ? 'Stalemate' : 'Draw'), false
     this.resume()
+    this.save()
     return true
   }
 
@@ -300,6 +360,7 @@ export class PlayRun {
 
   private end(result: Result, ending: string) {
     this.stop()
+    clearGame()
     clearInterval(this.timer)
     this.state = 'over'
     this.result = result

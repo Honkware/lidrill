@@ -1,6 +1,6 @@
 import { Chess } from 'chessops/chess'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { PlayRun, readChoices, writeChoices } from './play'
+import { PlayRun, readChoices, readGame, writeChoices } from './play'
 import { computeBand } from './profile'
 
 // A game against a scripted opponent: the fetch stands in for the Maia
@@ -262,6 +262,94 @@ describe('PlayRun clocks', () => {
     run.resign()
     const game = run.toGame(1)
     expect(computeBand([{ ...game, speed: 'blitz', rating: 1200 }, game])).toBe('club')
+  })
+})
+
+// A reload is a destroyed run and a new one built from what was saved
+describe('PlayRun after a reload', () => {
+  let t = 0
+  const now = () => t
+  const ok = (body: object) => ({ ok: true, json: async () => body }) as Response
+  const timed = { ...opts, clock: { base: 300, inc: 3 } }
+  const maia = (replies: string[]) => {
+    const asked: string[][] = []
+    const fetchFn = (async (_url: string, init: RequestInit) => {
+      asked.push((JSON.parse(String(init.body)) as { moves: string[] }).moves)
+      const move = replies.shift()
+      return move ? ok({ move }) : new Promise<Response>(() => {})
+    }) as typeof fetch
+    return { asked, fetchFn }
+  }
+  const reload = (run: PlayRun, fetchFn: typeof fetch, onEnd: (r: PlayRun) => void = () => {}) => {
+    run.destroy()
+    const saved = readGame()!
+    return new PlayRun(saved.opts, () => {}, onEnd, fetchFn, now, saved)
+  }
+
+  beforeEach(() => {
+    t = 0
+    localStorage.clear()
+  })
+
+  it('carries on with the same moves, colour, level and clocks', async () => {
+    const run = new PlayRun({ ...timed, color: 'black', level: 1700 }, () => {}, () => {}, maia(['e2e4', 'g1f3', 'f1c4']).fetchFn, now)
+    await play(run, ['e7e5'])
+    t += 2000
+    await play(run, ['b8c6'])
+    const after = reload(run, maia([]).fetchFn)
+    expect(after.moves.map(m => m.san)).toEqual(['e4', 'e5', 'Nf3', 'Nc6', 'Bc4'])
+    expect([after.opts.color, after.opts.level]).toEqual(['black', 1700])
+    expect([after.clock('white'), after.clock('black')]).toEqual([306000, 301000])
+    expect(after.running).toBe('black')
+    after.destroy()
+  })
+
+  it('charges the time away to the side to move', async () => {
+    const run = new PlayRun(timed, () => {}, () => {}, maia(['e7e5']).fetchFn, now)
+    await play(run, ['e2e4'])
+    t += 60000
+    const after = reload(run, maia([]).fetchFn)
+    expect([after.clock('white'), after.clock('black')]).toEqual([240000, 300000])
+    after.destroy()
+  })
+
+  it('ends on time straight away when the flag fell while the page was away', async () => {
+    const run = new PlayRun(timed, () => {}, () => {}, maia(['e7e5']).fetchFn, now)
+    await play(run, ['e2e4'])
+    t += 400000
+    let ended: PlayRun | undefined
+    const after = reload(run, maia([]).fetchFn, r => (ended = r))
+    expect(ended).toBe(after)
+    expect([after.state, after.result, after.ending]).toEqual(['over', 'loss', 'Time out'])
+    expect(readGame()).toBeUndefined()
+  })
+
+  it('asks Maia for its move again when the page went away while it thought', async () => {
+    const run = new PlayRun(opts, () => {}, () => {}, maia([]).fetchFn, now)
+    void run.move('e2e4')
+    await expect.poll(() => run.state).toBe('thinking')
+    const { asked, fetchFn } = maia(['e7e5'])
+    const after = reload(run, fetchFn)
+    await expect.poll(() => after.state).toBe('your-move')
+    expect(asked).toEqual([['e2e4']])
+    expect(after.moves.map(m => m.san)).toEqual(['e4', 'e5'])
+  })
+
+  it('leaves nothing saved once the game is over', async () => {
+    const run = new PlayRun(opts, () => {}, () => {}, maia(['e7e5', 'b8c6', 'g8f6']).fetchFn, now)
+    await play(run, ['e2e4', 'd1h5', 'f1c4'])
+    expect(readGame()?.moves).toHaveLength(6)
+    await play(run, ['h5f7'])
+    expect(run.ending).toBe('Checkmate')
+    expect(readGame()).toBeUndefined()
+  })
+
+  it('drops a saved game that no longer parses', () => {
+    localStorage.setItem('lidrill.maiaGame', JSON.stringify({ moves: [{ san: 'e4', uci: 'e2e4' }], at: 1 }))
+    expect(readGame()).toBeUndefined()
+    localStorage.setItem('lidrill.maiaGame', '{"opts":')
+    expect(readGame()).toBeUndefined()
+    expect(localStorage.getItem('lidrill.maiaGame')).toBeNull()
   })
 })
 
