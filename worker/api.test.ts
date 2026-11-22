@@ -366,3 +366,38 @@ describe('POST /api/maia/policy', () => {
     expect(calls).toHaveLength(2)
   })
 })
+
+describe('POST /api/maia/draw', () => {
+  const game = { moves: ['e2e4', 'e7e5'], level: 1500 }
+  const backend = (status: number, body: unknown) => {
+    const calls: { url: string; key: string | null; body: string }[] = []
+    vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
+      calls.push({ url, key: new Headers(init.headers).get('x-lidrill-key'), body: String(init.body) })
+      return new Response(JSON.stringify(body), { status })
+    })
+    return calls
+  }
+
+  it('forwards the offer to the backend with the shared key and returns the answer', async () => {
+    const calls = backend(200, { accept: false })
+    const res = await post('/api/maia/draw', game, { proof: null })
+    expect(await res.json()).toEqual({ accept: false })
+    expect(calls).toEqual([{ url: 'https://backend.example/maia/draw', key: 'backend-secret', body: JSON.stringify(game) }])
+  })
+
+  it('has the same guards and rate limit as a move', async () => {
+    const calls = backend(200, { accept: true })
+    expect((await post('/api/maia/draw', game, { origin: 'https://evil.example', proof: null })).status).toBe(403)
+    expect((await post('/api/maia/draw', game, { method: 'GET', proof: null })).status).toBe(405)
+    maiaLimitOk = false
+    expect((await post('/api/maia/draw', game, { proof: null })).status).toBe(429)
+    expect(calls).toEqual([])
+  })
+
+  it('answers 502 when the backend is down and 400 for a game it refuses', async () => {
+    backend(500, {})
+    expect((await post('/api/maia/draw', game, { proof: null })).status).toBe(502)
+    backend(400, { detail: 'game is over' })
+    expect((await post('/api/maia/draw', game, { proof: null })).status).toBe(400)
+  })
+})

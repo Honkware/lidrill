@@ -183,7 +183,7 @@ def game(plies: int) -> list[str]:
     return [m.uci() for m in board.move_stack]
 
 
-RESIGN = maia.resign_fit()["resign"]
+RESIGN, DRAW = maia.resign_fit()["resign"], maia.resign_fit()["draw"]
 # Level 1500 plays in the 1400 band, and Maia is white at an even ply
 LOST = RESIGN["threshold"]["1400"]
 
@@ -227,3 +227,25 @@ def test_a_surprising_move_to_answer_lengthens_the_typical_think():
     expected, surprised = FakeMaia({"e2e4": 0.0}), FakeMaia({"d2d4": 0.0, "e2e4": -3.0})
     assert statistics.median(thinks(surprised)) > statistics.median(thinks(expected))
 
+
+def test_a_draw_is_taken_in_a_level_position_from_the_minimum_move():
+    moves = game(2 * (DRAW["min_move"] - 1))
+    assert maia.draw(FakeMaia({}), moves, 1500) == {"accept": True}
+    assert maia.draw(FakeMaia({}), moves[:-2], 1500) == {"accept": False}
+
+
+def test_a_draw_is_refused_when_maia_is_clearly_better():
+    # The score is the player's, who is to move
+    moves = game(2 * (DRAW["min_move"] - 1))
+    maia_better = FakeMaia({}, lambda board: 0.5 - DRAW["margin"] - 0.05)
+    assert maia.draw(maia_better, moves, 1500) == {"accept": False}
+    maia_worse = FakeMaia({}, lambda board: 0.5 + DRAW["margin"])
+    assert maia.draw(maia_worse, moves, 1500) == {"accept": True}
+
+
+def test_the_draw_endpoint_needs_the_key_and_a_level_on_offer(monkeypatch):
+    monkeypatch.setattr(maia, "model", lambda: FakeMaia({}))
+    body = {"moves": game(2 * (DRAW["min_move"] - 1)), "level": 1500}
+    assert CLIENT.post("/maia/draw", json=body).status_code == 401
+    assert CLIENT.post("/maia/draw", json=body, **KEY).json() == {"accept": True}
+    assert CLIENT.post("/maia/draw", json={**body, "level": 2400}, **KEY).status_code == 400

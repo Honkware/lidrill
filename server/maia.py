@@ -17,8 +17,9 @@ Each move also comes with a think time, drawn from a lognormal around a
 linear fit of log seconds on what the position, Maia's own move distribution
 and the clock give (think.json, from fit_think.py).
 
-Maia resigns by its value head, the expected score it gives
-the side to move, against thresholds measured on where people resigned (resign.json, from fit_resign.py). The server keeps no state, so
+Maia resigns and takes draws by its value head, the expected score it gives
+the side to move, against thresholds measured on where people resigned and
+agreed draws (resign.json, from fit_resign.py). The server keeps no state, so
 a resignation looks back over Maia's earlier turns in the game as sent.
 """
 
@@ -53,7 +54,7 @@ ANCHORS = sorted(((m.measured_elo, m.setting) for m in maia3_79m().measurements 
 THINK = Path(__file__).with_name("think.json")
 PLY_EDGES = [10, 20, 40, 60]
 
-# Where Maia resigns, from where people did
+# Where Maia resigns and which draws it takes, from where people did
 # (resign.json, from fit_resign.py)
 RESIGN = Path(__file__).with_name("resign.json")
 
@@ -260,3 +261,13 @@ def move(maia, moves: list[str], level: int, rng: random.Random = random,
     # Down to a tenth, so a time at the cap stays under it
     t = think(board, logits, uci, setting.temp, level, rng, clock, prev)
     return {"move": uci, "think": math.floor(t * 10) / 10}
+
+
+def draw(maia, moves: list[str], level: int, rng: random.Random = random) -> dict[str, bool]:
+    """Whether Maia accepts a draw offered by the player, who offers on their own turn."""
+    check_level(level)
+    board = replay(moves)
+    d = resign_fit()["draw"]
+    # The player is to move, so Maia's score is the rest of theirs
+    mine = 1 - maia.evaluate(board, setting_for(level, rng).dial)[1]
+    return {"accept": board.fullmove_number >= d["min_move"] and mine <= 0.5 + d["margin"]}

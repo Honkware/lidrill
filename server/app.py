@@ -148,6 +148,21 @@ def maia_policy(body: openings.PolicyBody, x_lidrill_key: str | None = Header(de
         raise HTTPException(400, str(e))
 
 
+class DrawBody(BaseModel):
+    moves: list[str]
+    level: int
+
+
+@app.post("/maia/draw")
+def maia_draw(body: DrawBody, x_lidrill_key: str | None = Header(default=None)) -> dict[str, bool]:
+    """Whether Maia accepts a draw offered by the player to move."""
+    guard(x_lidrill_key)
+    try:
+        return maia.draw(maia.model(), body.moves, body.level)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 @app.post("/u/{user}/push")
 def push(user: str, body: PushBody, x_lidrill_key: str | None = Header(default=None)) -> dict[str, Any]:
     guard(x_lidrill_key)
