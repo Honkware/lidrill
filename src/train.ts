@@ -1,4 +1,4 @@
-import { fsrs, Rating } from 'ts-fsrs'
+import { fsrs, Rating, type Card, type Grade } from 'ts-fsrs'
 import { db, queueSyncRow, type Puzzle, type Review } from './db'
 
 // Puzzles are reviewed once a day, so schedule in whole days: a graded
@@ -83,6 +83,9 @@ export async function dueToday(now = new Date()): Promise<{ remaining: number; d
   const cap = last !== undefined && +now - last.at > 2 * 24 * 3600 * 1000 ? RECOVERY_CAP : DAILY_CAP
   return { remaining: Math.max(0, Math.min(cap, dueNow + doneToday) - doneToday), doneToday }
 }
+
+// The same day-based scheduling for the opening cards
+export const nextCard = (card: Card, now: Date, rating: Grade): Card => scheduler.next(card, now, rating).card
 
 // First-try solve is Good, a solve after the hint is Hard, a miss is Again.
 // A hinted solve doesn't count as solved in the stats or for calibration,
