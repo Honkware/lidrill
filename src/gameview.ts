@@ -9,6 +9,17 @@ import type { Color } from 'chessops/types'
 import { checkColor } from './checkColor'
 import type { Game, JournalEntry, Puzzle } from './db'
 
+// Lichess's keys for stepping through a game (lila ui/round/src/keyboard.ts):
+// left/k back, right/j on, up/0/home to the start, down/$/end to the end.
+// Returns the ply to go to, or undefined when the key isn't one of them.
+export function stepKey(e: KeyboardEvent, ply: number, last: number): number | undefined {
+  if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) return
+  // Leave the browser's own shortcuts alone, such as ctrl+0 for zoom
+  if (e.ctrlKey || e.metaKey || e.altKey) return
+  const to: Record<string, number> = { ArrowLeft: ply - 1, k: ply - 1, ArrowRight: ply + 1, j: ply + 1, ArrowUp: 0, '0': 0, Home: 0, ArrowDown: last, $: last, End: last }
+  return to[e.key]
+}
+
 // Review of one game: step through it with the move list or the arrow keys.
 export class GameView {
   ply: number
@@ -20,8 +31,7 @@ export class GameView {
   private cg?: Api
   private redraw: () => void
   private onKey = (e: KeyboardEvent) => {
-    if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) return
-    const to = { ArrowLeft: this.ply - 1, ArrowRight: this.ply + 1, Home: 0, End: this.fens.length - 1 }[e.key]
+    const to = stepKey(e, this.ply, this.fens.length - 1)
     if (to === undefined) return
     e.preventDefault()
     this.go(to)

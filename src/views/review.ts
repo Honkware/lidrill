@@ -5,6 +5,7 @@ import type { GameView } from '../gameview'
 import { deviation } from '../lichess/repertoire'
 import { board, button, card, dateLabel, icon, judgColor, judgMark, label, plural, resultChip, topBar } from './ui'
 import { journalHangParts } from '../server/surface'
+import { moveTable, score } from './moves'
 
 export function reviewView(ctrl: Ctrl): VNode {
   const rows = ctrl.reviewList
@@ -109,15 +110,22 @@ export function gameView(ctrl: Ctrl): VNode {
   ])
 }
 
-const navButton = (name: string, labelText: string, onClick: () => void) =>
-  el('button', 'grid h-12 flex-1 place-items-center rounded-lg bg-surface active:bg-raised', { attrs: { type: 'button', 'aria-label': labelText }, on: { click: onClick } }, [icon(name)])
+// Disabled when it would not move, as Lichess's are at either end
+const navButton = (name: string, labelText: string, to: number, v: GameView) =>
+  el(
+    'button',
+    'grid h-12 flex-1 place-items-center rounded-lg bg-surface active:bg-raised disabled:opacity-50',
+    { attrs: { type: 'button', 'aria-label': labelText, disabled: to === v.ply }, on: { click: () => v.go(to) } },
+    [icon(name)],
+  )
 
 function controls(v: GameView): VNode {
+  const end = v.game.moves.length
   return el('div', 'flex gap-2 px-4 pt-3 md:px-0', [
-    navButton('first', 'Start', () => v.go(0)),
-    navButton('prev', 'Previous move', () => v.go(v.ply - 1)),
-    navButton('next', 'Next move', () => v.go(v.ply + 1)),
-    navButton('last', 'End', () => v.go(v.game.moves.length)),
+    navButton('first', 'Start', 0, v),
+    navButton('prev', 'Previous move', Math.max(0, v.ply - 1), v),
+    navButton('next', 'Next move', Math.min(end, v.ply + 1), v),
+    navButton('last', 'End', end, v),
   ])
 }
 
@@ -142,33 +150,7 @@ function lowPoints(v: GameView): VNode | null {
   ])
 }
 
-function moveList(v: GameView): VNode {
-  const moves = v.game.moves
-  const cells: VNode[] = []
-  for (let i = 0; i < moves.length; i += 2) {
-    cells.push(el('span', 'py-1 pr-1 text-right text-dim tabular-nums', `${i / 2 + 1}.`))
-    for (const j of [i, i + 1]) {
-      const m = moves[j]
-      if (!m) {
-        cells.push(el('span', ''))
-        continue
-      }
-      cells.push(
-        el(
-          'button',
-          'rounded px-2 py-1 text-left',
-          {
-            attrs: { type: 'button' },
-            class: { 'bg-raised': v.ply === j + 1, [m.judg ? judgColor[m.judg] : 'text-fg']: true, 'opacity-60': !!m.book },
-            on: { click: () => v.go(j + 1) },
-          },
-          `${m.san}${m.judg ? judgMark[m.judg] : ''}`,
-        ),
-      )
-    }
-  }
-  return el('div', 'max-h-64 overflow-y-auto rounded-xl bg-surface p-2 md:max-h-80', [el('div', 'grid grid-cols-[40px_1fr_1fr] text-sm', cells)])
-}
+const moveList = (v: GameView) => moveTable(v.game.moves, v.ply, ply => v.go(ply), score(v.game.result, v.game.color))
 
 function journalCard(ctrl: Ctrl, v: GameView): VNode | null {
   const j = v.journal
