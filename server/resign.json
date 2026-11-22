@@ -1,0 +1,23 @@
+{
+  "source": "lichess_db_standard_rated_2025-10.pgn.zst",
+  "revision": "a107d6ceb7b298cb04ae1da4edffe2939858b894",
+  "resign": {
+    "turns": 3,
+    "min_move": 9,
+    "threshold": {
+      "600": 0.2,
+      "800": 0.19,
+      "1000": 0.13,
+      "1200": 0.14,
+      "1400": 0.14,
+      "1600": 0.13,
+      "1800": 0.08,
+      "2000": 0.08,
+      "2200": 0.07
+    }
+  },
+  "draw": {
+    "min_move": 20,
+    "margin": 0.06
+  }
+}

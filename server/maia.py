@@ -16,6 +16,10 @@ and its tests free of them.
 Each move also comes with a think time, drawn from a lognormal around a
 linear fit of log seconds on what the position, Maia's own move distribution
 and the clock give (think.json, from fit_think.py).
+
+Maia resigns by its value head, the expected score it gives
+the side to move, against thresholds measured on where people resigned (resign.json, from fit_resign.py). The server keeps no state, so
+a resignation looks back over Maia's earlier turns in the game as sent.
 """
 
 import bisect
@@ -48,6 +52,10 @@ ANCHORS = sorted(((m.measured_elo, m.setting) for m in maia3_79m().measurements 
 # fit_think.py and kept in think.json.
 THINK = Path(__file__).with_name("think.json")
 PLY_EDGES = [10, 20, 40, 60]
+
+# Where Maia resigns, from where people did
+# (resign.json, from fit_resign.py)
+RESIGN = Path(__file__).with_name("resign.json")
 
 # A game without a clock is timed as 10+0 with the whole base left at every
 # move, and capped by the fit's ceiling instead of by a clock
@@ -201,19 +209,46 @@ def check_clock(clock: dict[str, float] | None) -> None:
         raise ValueError("clock base must be positive, inc and left not negative")
 
 
+@lru_cache(maxsize=1)
+def resign_fit() -> dict:
+    return json.loads(RESIGN.read_text())
+
+
+def resigns(maia, board: chess.Board, score: float, dial: int, level: int) -> bool:
+    """Whether Maia, on move with this score, has been lost for long enough to resign."""
+    r = resign_fit()["resign"]
+    bands = sorted(map(int, r["threshold"]))
+    t = r["threshold"][str(bands[max(bisect.bisect_right(bands, level) - 1, 0)])]
+    if board.fullmove_number < r["min_move"] or score >= t:
+        return False
+    # Its earlier turns are only scored once the current one is lost, so a
+    # move from a playable position costs no extra forward pass
+    before = board.copy()
+    for _ in range(r["turns"] - 1):
+        if len(before.move_stack) < 2:
+            return False
+        before.pop()
+        before.pop()
+        if maia.evaluate(before, dial)[1] >= t:
+            return False
+    return True
+
+
 def check_level(level: int) -> None:
     if not MIN_LEVEL <= level <= MAX_LEVEL:
         raise ValueError(f"level {level} is outside {MIN_LEVEL} to {MAX_LEVEL}")
 
 
 def move(maia, moves: list[str], level: int, rng: random.Random = random,
-         clock: dict[str, float] | None = None) -> dict[str, str | float]:
-    """Maia's move and how long a player at that level would take over it, in seconds."""
+         clock: dict[str, float] | None = None) -> dict[str, str | float | bool]:
+    """Maia's move and how long a player at that level would take over it, in seconds, or a resignation."""
     check_level(level)
     check_clock(clock)
     board = replay(moves)
     setting = setting_for(level, rng)
-    logits = maia.evaluate(board, setting.dial)[0]
+    logits, score = maia.evaluate(board, setting.dial)
+    if resigns(maia, board, score, setting.dial, level):
+        return {"resign": True}
     uci = sample(logits, setting.temp, rng)
     # How surprised Maia is by the move it is answering. The first move of a
     # game answers nothing, so it counts as no surprise.

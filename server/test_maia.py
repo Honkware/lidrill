@@ -173,8 +173,57 @@ def test_starting_the_service_loads_the_model_and_a_missing_torch_does_not_stop_
         assert client.get("/health", **KEY).json() == {"ok": True}
 
 
+def game(plies: int) -> list[str]:
+    """A legal game of that many plies that has not ended. Only its length matters to these tests."""
+    rng, board = random.Random(0), maia.replay([])
+    while len(board.move_stack) < plies:
+        board.push(rng.choice(sorted(board.legal_moves, key=str)))
+        if board.is_game_over():
+            board.pop()
+    return [m.uci() for m in board.move_stack]
+
+
+RESIGN = maia.resign_fit()["resign"]
+# Level 1500 plays in the 1400 band, and Maia is white at an even ply
+LOST = RESIGN["threshold"]["1400"]
+
+
+def lost_for(turns: int, moves: list[str]):
+    """Under the threshold on Maia's last `turns` turns and at it before."""
+    return lambda board: LOST - 0.001 if len(board.move_stack) > len(moves) - 2 * turns else LOST
+
+
+def test_a_position_lost_for_the_required_turns_resigns():
+    moves = game(2 * (RESIGN["min_move"] - 1))
+    assert maia.move(FakeMaia({}, lost_for(RESIGN["turns"], moves)), moves, 1500) == {"resign": True}
+
+
+def test_fewer_lost_turns_than_required_play_on():
+    moves = game(2 * (RESIGN["min_move"] - 1))
+    for turns in range(1, RESIGN["turns"]):
+        assert "move" in maia.move(FakeMaia({}, lost_for(turns, moves)), moves, 1500)
+
+
+def test_maia_never_resigns_before_the_minimum_move():
+    moves = game(2 * (RESIGN["min_move"] - 2))
+    assert "move" in maia.move(FakeMaia({}, lambda board: 0.0), moves, 1500)
+
+
+def test_a_playable_position_costs_one_pass_for_it_and_one_for_the_move_before():
+    fake, moves = FakeMaia({}), game(2 * (RESIGN["min_move"] - 1))
+    maia.move(fake, moves, 1500)
+    assert len(fake.asked) == 2
+
+
+def test_the_endpoint_answers_only_resign_when_maia_resigns(monkeypatch):
+    monkeypatch.setattr(maia, "model", lambda: FakeMaia({}, lambda board: 0.0))
+    body = {"moves": game(2 * (RESIGN["min_move"] - 1)), "level": 1500}
+    assert CLIENT.post("/maia/move", json=body, **KEY).json() == {"resign": True}
+
+
 def test_a_surprising_move_to_answer_lengthens_the_typical_think():
     def thinks(fake):
         return [maia.move(fake, ["e2e4"], 1500, random.Random(s))["think"] for s in range(300)]
     expected, surprised = FakeMaia({"e2e4": 0.0}), FakeMaia({"d2d4": 0.0, "e2e4": -3.0})
     assert statistics.median(thinks(surprised)) > statistics.median(thinks(expected))
+

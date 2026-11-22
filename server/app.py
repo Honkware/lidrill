@@ -128,8 +128,9 @@ class MoveBody(BaseModel):
 
 
 @app.post("/maia/move")
-def maia_move(body: MoveBody, x_lidrill_key: str | None = Header(default=None)) -> dict[str, str | float]:
-    """Maia-3's reply to a game given as UCI moves from the start position, and its think time."""
+def maia_move(body: MoveBody, x_lidrill_key: str | None = Header(default=None)) -> dict[str, str | float | bool]:
+    """Maia-3's reply to a game given as UCI moves from the start position and its think time, or
+    {"resign": true}."""
     guard(x_lidrill_key)
     try:
         return maia.move(maia.model(), body.moves, body.level, clock=body.clock)
