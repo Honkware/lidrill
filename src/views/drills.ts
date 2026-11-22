@@ -3,6 +3,7 @@ import type { Ctrl } from '../ctrl'
 import type { Practice, PracticeKind } from '../db'
 import { el } from '../el'
 import { MAX_LEVEL, MIN_LEVEL } from '../maia'
+import { TIMES } from '../play'
 import { CLEAR_AFTER } from '../practice'
 import { board, button, card, icon, moveInput, pawns, topBar } from './ui'
 
@@ -37,6 +38,7 @@ export function drillsView(ctrl: Ctrl): VNode {
 // the card says "about" and never promises a rating.
 function maiaCard(ctrl: Ctrl): VNode {
   const level = ctrl.maiaLevel
+  const { time, color, pace } = ctrl.playChoices
   const games = ctrl.profile?.maia?.games ?? 0
   const step = (by: number) =>
     el(
@@ -64,10 +66,39 @@ function maiaCard(ctrl: Ctrl): VNode {
           : 'Set from your rating until you have played a game.'
         : el('button', 'underline', { attrs: { type: 'button' }, on: { click: () => ctrl.stepMaiaLevel(0) } }, 'Back to the level that follows your results'),
     ]),
+    // Seven times fit a phone's card only with the symbol for unlimited
+    segments('Time', TIMES.map(t => (t === 'unlimited' ? [t, '∞', 'Unlimited'] : [t, t])), time, t => ctrl.setPlayChoice({ time: t })),
+    segments('Colour', [['white', 'White'], ['black', 'Black'], ['random', 'Random']], color, c => ctrl.setPlayChoice({ color: c })),
+    segments('Pace', [['human', 'Human'], ['instant', 'Instant']], pace, p => ctrl.setPlayChoice({ pace: p })),
+    el('p', 'mt-1 text-xs text-dim', 'Maia takes about as long over a move as a person would.'),
     el('div', 'mt-4 flex flex-wrap gap-2', [
       button('New game', () => ctrl.startPlay(false)),
       ctrl.playStarts.length ? button('From one of your games', () => ctrl.startPlay(true), 'plain') : null,
     ]),
+  ])
+}
+
+// [value, text, a spoken name when the text is a symbol]
+function segments<T extends string>(name: string, opts: [T, string, string?][], current: T, pick: (v: T) => void): VNode {
+  return el('div', 'mt-3', [
+    el('p', 'text-xs text-dim', name),
+    el(
+      'div',
+      'mt-1 grid auto-cols-fr grid-flow-col gap-1',
+      opts.map(([v, text, spoken]) => {
+        const on = v === current
+        return el(
+          'button',
+          'h-9 rounded-md text-xs font-medium tabular-nums',
+          {
+            attrs: { type: 'button', 'aria-pressed': String(on), ...(spoken && { 'aria-label': spoken, title: spoken }) },
+            class: { 'bg-accent': on, 'text-bg': on, 'bg-raised': !on },
+            on: { click: () => pick(v) },
+          },
+          text,
+        )
+      }),
+    ),
   ])
 }
 
