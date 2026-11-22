@@ -9,7 +9,7 @@ import { fetchLook, PREFERENCE_SCOPE } from './lichess/api'
 import { fetchStudyLines, listStudies, STUDY_READ_SCOPE, studyCompliance, type StudyInfo } from './lichess/repertoire'
 import { STUDY_SCOPE, sendToStudy } from './lichess/study'
 import { applyLook, BOARDS, PIECE_SETS } from './look'
-import { levelFor, LEVELS, ownStarts, startEstimate, updateEstimate, type Start } from './maia'
+import { clampLevel, levelFor, ownStarts, startEstimate, updateEstimate, type Start } from './maia'
 import { compliance, openingTable, repertoireTargets, streak, type OpeningRow, type Streak } from './metrics'
 import { analyzePending, forgetLichessAccount, getEngine, precertifyDue, saveProfile, syncAndAnalyze, warmEngine } from './pipeline'
 import { PlayRun } from './play'
@@ -535,10 +535,9 @@ export class Ctrl {
     return this.playLevel ?? levelFor(this.maiaRating)
   }
 
-  // One level up or down by hand; 0 goes back to following the estimate
-  stepMaiaLevel(by: -1 | 0 | 1) {
-    const i = LEVELS.indexOf(this.maiaLevel) + by
-    this.playLevel = by === 0 ? undefined : LEVELS[Math.max(0, Math.min(LEVELS.length - 1, i))]
+  // Moves the level by hand; 0 goes back to following the estimate
+  stepMaiaLevel(by: number) {
+    this.playLevel = by === 0 ? undefined : clampLevel(this.maiaLevel + by)
     this.redraw()
   }
 

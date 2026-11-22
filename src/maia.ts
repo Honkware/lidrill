@@ -4,30 +4,32 @@ import { povCp } from './puzzles/generate'
 // Games against Maia-3, a model that plays like a person of a given rating.
 // The opponent's level follows the player: an Elo-style estimate of how the
 // player does against Maia is updated after every game, and the next
-// opponent is the level just above it.
+// opponent is 50 above it.
 
-// The levels the server will play (LEVELS in server/maia.py). Each is a
-// rating at which Maia-3's strength was measured, as an approximate Lichess
-// blitz rating, so there is nothing between two of them.
-export const LEVELS = [600, 700, 800, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000, 2100, 2200, 2300]
+// The range the server will play (MIN_LEVEL and MAX_LEVEL in
+// server/maia.py), as an approximate Lichess blitz rating. Maia-3's strength
+// was measured about every 100 points, each to within some 40 Elo. A level
+// in between mixes the two measured settings around it, so a step of 1 is a
+// real but very small change, well inside that margin.
+export const MIN_LEVEL = 600
+export const MAX_LEVEL = 2300
 
 // Playing 50 above the estimate is an expected score of about 43%: the
 // player loses a little more often than they win.
 const EDGE = 50
 const K = 64
 
-// Halfway between two levels goes to the higher one
-export const nearestLevel = (rating: number): number => LEVELS.reduce((best, l) => (Math.abs(l - rating) <= Math.abs(best - rating) ? l : best))
+export const clampLevel = (level: number): number => Math.max(MIN_LEVEL, Math.min(MAX_LEVEL, Math.round(level)))
 
-export const levelFor = (estimate: number): number => nearestLevel(estimate + EDGE)
+export const levelFor = (estimate: number): number => clampLevel(estimate + EDGE)
 
 export const expectedScore = (rating: number, level: number): number => 1 / (1 + 10 ** ((level - rating) / 400))
 
 // score is 1 for a win, 0.5 for a draw, 0 for a loss. The estimate stays
-// within a level of the ladder so a long run can't carry it out of reach.
+// within 100 of the range so a long run can't carry it out of reach.
 export function updateEstimate(rating: number, level: number, score: number): number {
   const next = rating + K * (score - expectedScore(rating, level))
-  return Math.round(Math.max(LEVELS[0] - 100, Math.min(LEVELS[LEVELS.length - 1] + 100, next)))
+  return Math.round(Math.max(MIN_LEVEL - 100, Math.min(MAX_LEVEL + 100, next)))
 }
 
 // Where the estimate starts: the Lichess blitz rating when there is one,

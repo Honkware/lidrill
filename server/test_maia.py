@@ -1,4 +1,4 @@
-"""Maia moves come from the calibrated setting for a level, never from the
+"""Maia moves come from settings whose strength was measured, never from the
 level passed straight to the model. The model is scripted, so these run
 without torch or the weights."""
 
@@ -30,23 +30,34 @@ class FakeMaia:
         return self.fixed
 
 
-def test_every_level_is_a_measured_target_the_model_can_reach():
-    for level in maia.LEVELS:
-        row = next(m for m in maia.CALIBRATION.measurements if m.target == level)
-        assert abs(row.measured_elo - level) < 60
+def test_the_settings_in_use_get_stronger_and_cover_the_levels_offered():
+    elos = [elo for elo, _ in maia.ANCHORS]
+    assert elos == sorted(set(elos))
+    assert elos[0] < maia.MIN_LEVEL + 10 and elos[-1] > maia.MAX_LEVEL
 
 
-def test_the_model_is_given_the_calibrated_dial_for_both_players():
+def test_the_model_is_given_a_measured_dial_and_never_the_level():
     fake = FakeMaia({"e2e4": 0.0})
-    maia.move(fake, [], 1800)
-    assert fake.asked == [("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 1910)]
+    rng = random.Random(3)
+    for _ in range(50):
+        maia.move(fake, [], 1800, rng)
+    # 1800 sits between the settings measured at 1767 and 1914
+    assert {dial for _, dial in fake.asked} == {1910, 2010}
 
 
-def test_a_level_between_two_measured_targets_is_refused():
-    with pytest.raises(ValueError):
-        maia.move(FakeMaia({"e2e4": 0.0}), [], 1550)
-    with pytest.raises(ValueError):
-        maia.move(FakeMaia({"e2e4": 0.0}), [], 2400)
+def test_a_level_nearer_the_stronger_setting_uses_it_more_often():
+    rng = random.Random(5)
+    dials = lambda level: [maia.setting_for(level, rng).dial for _ in range(400)]
+    assert dials(1770).count(2010) < 40
+    assert 150 < dials(1840).count(2010) < 250
+    assert dials(1910).count(2010) > 360
+    assert set(dials(600)) == {610, 600}
+
+
+def test_a_level_outside_the_measured_range_is_refused():
+    for level in (590, 2310, 2600):
+        with pytest.raises(ValueError):
+            maia.move(FakeMaia({"e2e4": 0.0}), [], level)
 
 
 def test_a_low_temperature_almost_always_plays_the_top_move():

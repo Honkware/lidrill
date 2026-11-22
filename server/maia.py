@@ -3,7 +3,10 @@
 Maia-3 takes a rating as input, but the strength it plays at differs from
 the rating it is given. maia-calibrate holds the dial value and sampling
 temperature that were measured to play at each target rating, so a level
-here is one of those targets, not a number passed to the model as is.
+is never passed to the model as is. A level between two measured strengths
+plays every move with one of the two settings around it, the nearer one more
+often, which allows any level in the range without using a setting nobody
+measured.
 
 The model sees the last 8 positions, as it did in the calibration games, so
 the caller sends the whole game and it is replayed here. torch and maia3 are
@@ -11,6 +14,7 @@ only imported when the first move is asked for, which keeps the sync service
 and its tests free of them.
 """
 
+import bisect
 import math
 import random
 from collections import deque
@@ -22,13 +26,14 @@ from maia_calibrate import maia3_79m
 # The checkpoint the calibration was measured on
 REVISION = "a107d6ceb7b298cb04ae1da4edffe2939858b894"
 
-# Targets whose measured strength is within 50 Elo of the label, or just
-# outside it at 800. 900 is left out because its setting measured the same
-# as 1000, and nothing from 2400 up can be reached by the model.
-LEVELS = [600, 700, 800, *range(1000, 2400, 100)]
-
+MIN_LEVEL, MAX_LEVEL = 600, 2300
 MAX_PLIES = 600
-CALIBRATION = maia3_79m()
+
+# The measured strength of each usable setting, weakest first. The 900
+# target is left out because its setting measured the same as 1000's, and
+# the targets from 2400 up because the model can't reach them.
+TARGETS = [600, 700, 800, *range(1000, 2400, 100)]
+ANCHORS = sorted(((m.measured_elo, m.setting) for m in maia3_79m().measurements if m.target in TARGETS), key=lambda a: a[0])
 
 
 class Maia:
@@ -100,8 +105,17 @@ def sample(logits: dict[str, float], temp: float, rng: random.Random) -> str:
     return rng.choices(list(logits), weights)[0]
 
 
+def setting_for(level: int, rng: random.Random):
+    i = bisect.bisect_left([elo for elo, _ in ANCHORS], level)
+    if i == 0 or i == len(ANCHORS):
+        return ANCHORS[min(i, len(ANCHORS) - 1)][1]
+    (lo, weaker), (hi, stronger) = ANCHORS[i - 1], ANCHORS[i]
+    return stronger if rng.random() < (level - lo) / (hi - lo) else weaker
+
+
 def move(maia, moves: list[str], level: int, rng: random.Random = random) -> str:
-    if level not in LEVELS:
-        raise ValueError(f"level {level} was not measured")
-    setting = CALIBRATION.lookup(level).setting
-    return sample(maia.logits(replay(moves), setting.dial), setting.temp, rng)
+    if not MIN_LEVEL <= level <= MAX_LEVEL:
+        raise ValueError(f"level {level} is outside {MIN_LEVEL} to {MAX_LEVEL}")
+    board = replay(moves)
+    setting = setting_for(level, rng)
+    return sample(maia.logits(board, setting.dial), setting.temp, rng)

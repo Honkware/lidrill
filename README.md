@@ -33,7 +33,7 @@ bun run test
 
 `bun run dev` starts the app without explanations, because those need the Worker. To try them locally, run `bun run build` and then `wrangler dev`, with your OpenRouter key in `.dev.vars` (there is a `.dev.vars.example` to copy).
 
-Maia's levels are the ratings at which [LevelRL](https://github.com/Honkware/levelrl) measured Maia-3's strength, from 600 to 2300, so each one is an approximate Lichess blitz rating. The model runs in the sync service. To play locally, install `server/requirements.txt` and `server/requirements-maia.txt`, start `server/app.py` as its README shows, and add `BACKEND_URL` and `LIDRILL_KEY` to `.dev.vars`. The weights (about 300 MB) are downloaded from Hugging Face the first time Maia moves.
+Maia's level can be any rating from 600 to 2300. [LevelRL](https://github.com/Honkware/levelrl) measured the settings that make Maia-3 play at about every 100 points in that range, and a level in between plays each move with one of the two nearest measured settings, so the number is an approximate Lichess blitz rating. The model runs in the sync service. To play locally, install `server/requirements.txt` and `server/requirements-maia.txt`, start `server/app.py` as its README shows, and add `BACKEND_URL` and `LIDRILL_KEY` to `.dev.vars`. The weights (about 300 MB) are downloaded from Hugging Face the first time Maia moves.
 
 If you want to host your own copy, change the route in `wrangler.jsonc` and the allowed origins in `worker/index.ts`, create a `PACKETS` KV namespace, and set the `OPENROUTER_API_KEY` and `POW_SECRET` secrets. The sync service lives in `server/` and is described in `docs/server-tier.md`.
 

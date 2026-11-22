@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Game } from './db'
-import { expectedScore, fetchMove, levelFor, LEVELS, nearestLevel, ownStarts, startEstimate, updateEstimate } from './maia'
+import { clampLevel, expectedScore, fetchMove, levelFor, MAX_LEVEL, MIN_LEVEL, ownStarts, startEstimate, updateEstimate } from './maia'
 import { pgnMoves } from './sync/pgn'
 
 const game = (over: Partial<Game> = {}): Game => ({
@@ -22,26 +22,22 @@ const game = (over: Partial<Game> = {}): Game => ({
 })
 
 describe('levelFor', () => {
-  it('picks the measured level just above the estimate', () => {
-    expect(levelFor(1500)).toBe(1600)
-    expect(levelFor(1440)).toBe(1500)
+  it('plays 50 above the estimate', () => {
+    expect(levelFor(1500)).toBe(1550)
+    expect(levelFor(1437)).toBe(1487)
     expect(expectedScore(1500, 1550)).toBeCloseTo(0.43, 2)
   })
-  it('never leaves the measured ladder', () => {
-    expect(levelFor(300)).toBe(600)
-    expect(levelFor(2900)).toBe(2300)
-    expect(nearestLevel(900)).toBe(1000)
-    expect(LEVELS).not.toContain(900)
-    expect(Math.max(...LEVELS)).toBeLessThan(2400)
+  it('never leaves the measured range', () => {
+    expect(levelFor(300)).toBe(MIN_LEVEL)
+    expect(levelFor(2900)).toBe(MAX_LEVEL)
+    expect(clampLevel(1234.4)).toBe(1234)
   })
 })
 
 describe('updateEstimate', () => {
   it('moves up after a win and down after a loss, more for the surprising result', () => {
-    const win = updateEstimate(1500, 1600, 1) - 1500
-    const loss = 1500 - updateEstimate(1500, 1600, 0)
-    expect(win).toBe(41)
-    expect(loss).toBe(23)
+    expect(updateEstimate(1500, 1550, 1) - 1500).toBe(37)
+    expect(1500 - updateEstimate(1500, 1550, 0)).toBe(27)
     expect(updateEstimate(1500, 1500, 0.5)).toBe(1500)
   })
   it('settles where the player scores what the level predicts', () => {
@@ -50,7 +46,7 @@ describe('updateEstimate', () => {
     for (let i = 0; i < 200; i++) est = updateEstimate(est, levelFor(est), expectedScore(1300, levelFor(est)))
     expect(Math.abs(est - 1300)).toBeLessThan(15)
   })
-  it('stays within a level of the ladder', () => {
+  it('stays within 100 of the range', () => {
     expect(updateEstimate(2400, 2300, 1)).toBe(2400)
     expect(updateEstimate(500, 600, 0)).toBe(500)
   })

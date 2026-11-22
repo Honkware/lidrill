@@ -2,7 +2,7 @@ import type { VNode } from 'snabbdom'
 import type { Ctrl } from '../ctrl'
 import type { Practice, PracticeKind } from '../db'
 import { el } from '../el'
-import { LEVELS } from '../maia'
+import { MAX_LEVEL, MIN_LEVEL } from '../maia'
 import { CLEAR_AFTER } from '../practice'
 import { board, button, card, icon, moveInput, pawns, topBar } from './ui'
 
@@ -33,17 +33,17 @@ export function drillsView(ctrl: Ctrl): VNode {
   ])
 }
 
-// Whole games against Maia-3. The level is one of the ratings its strength
-// was measured at, so the card says "about" and never promises a rating.
+// Whole games against Maia-3. Its strength was measured, not guaranteed, so
+// the card says "about" and never promises a rating.
 function maiaCard(ctrl: Ctrl): VNode {
   const level = ctrl.maiaLevel
   const games = ctrl.profile?.maia?.games ?? 0
-  const step = (text: string, by: -1 | 1, name: string) =>
+  const step = (by: number) =>
     el(
       'button',
-      'grid size-11 place-items-center rounded-lg bg-raised text-lg font-medium disabled:opacity-40',
-      { attrs: { type: 'button', 'aria-label': name, disabled: level === LEVELS[by < 0 ? 0 : LEVELS.length - 1] }, on: { click: () => ctrl.stepMaiaLevel(by) } },
-      text,
+      'grid h-11 place-items-center rounded-lg bg-raised text-sm font-medium tabular-nums disabled:opacity-40',
+      { attrs: { type: 'button', disabled: level === (by < 0 ? MIN_LEVEL : MAX_LEVEL) }, on: { click: () => ctrl.stepMaiaLevel(by) } },
+      `${by < 0 ? '−' : '+'}${Math.abs(by)}`,
     )
   return card([
     el('h2', 'font-display text-lg', 'Play Maia'),
@@ -52,14 +52,11 @@ function maiaCard(ctrl: Ctrl): VNode {
       'mt-1 text-sm text-dim',
       'A whole game against Maia-3, a model that plays like a person of a given rating. The level follows your results and stays a little above you. Afterwards your mistakes become puzzles.',
     ),
-    el('div', 'mt-4 flex items-center gap-3', [
-      step('−', -1, 'Easier'),
-      el('div', 'min-w-0 flex-1 text-center', [
-        el('p', 'font-display text-2xl tabular-nums', `about ${level}`),
-        el('p', 'text-xs text-dim', 'approximate Lichess blitz rating'),
-      ]),
-      step('+', 1, 'Harder'),
+    el('div', 'mt-4 text-center', [
+      el('p', 'font-display text-2xl tabular-nums', `about ${level}`),
+      el('p', 'text-xs text-dim', 'approximate Lichess blitz rating'),
     ]),
+    el('div', 'mt-3 grid grid-cols-6 gap-2', [-100, -10, -1, 1, 10, 100].map(step)),
     el('p', 'mt-2 text-center text-xs text-dim', [
       ctrl.playLevel === undefined
         ? games
