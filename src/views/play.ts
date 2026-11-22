@@ -1,7 +1,7 @@
 import type { VNode } from 'snabbdom'
 import type { Ctrl } from '../ctrl'
 import { el } from '../el'
-import { board, button, moveInput, plural, topBar } from './ui'
+import { board, button, plural, topBar } from './ui'
 
 const RESULT = { win: 'You won', loss: 'You lost', draw: 'Draw' } as const
 
@@ -31,7 +31,6 @@ function live(ctrl: Ctrl): VNode {
     run.state === 'failed'
       ? el('div', 'space-y-2', [el('p', 'text-sm text-bad', run.error), button('Try again', () => run.retry(), 'plain')])
       : el('p', 'text-sm text-dim', run.state === 'thinking' ? 'Maia is thinking…' : 'Your move.'),
-    el('div', 'hidden md:block', [moveInput(t => run.typeMove(t))]),
     button('Resign', () => run.resign(), 'quiet'),
   ])
 }

@@ -10,7 +10,6 @@ import { checkColor } from './checkColor'
 import type { Game, Result } from './db'
 import { fetchMove, type Start } from './maia'
 import { landSound, sound } from './sound'
-import { parseTyped } from './typed'
 
 // A whole game against Maia-3, from move 1 or from a position out of one of
 // the player's own games. There are no hints and no take-backs: the finished
@@ -108,16 +107,7 @@ export class PlayRun {
   private onMove(orig: Key, dest: Key) {
     let uci = orig + dest
     if (this.pos.board.get(parseSquare(orig)!)?.role === 'pawn' && /[18]$/.test(dest)) uci += 'q'
-    void this.playerMove(uci)
-  }
-
-  // Keyboard entry; returns false if the text isn't a legal move here
-  typeMove(text: string): boolean {
-    if (this.state !== 'your-move') return false
-    const uci = parseTyped(this.pos, text)
-    if (!uci) return false
-    void this.playerMove(uci)
-    return true
+    void this.move(uci)
   }
 
   // Plays a move for whoever's turn it is; true when the game goes on
@@ -136,7 +126,9 @@ export class PlayRun {
     return true
   }
 
-  private async playerMove(uci: string) {
+  // The player's move, as the board reports it
+  async move(uci: string) {
+    if (this.state !== 'your-move') return
     if (!this.push(uci)) return
     await this.reply()
   }
