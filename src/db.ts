@@ -5,7 +5,8 @@ import type { Card } from 'ts-fsrs'
 import type { Perf, Speed } from './lichess/api'
 import type { WeakTheme } from './lichess/puzzles'
 
-export type Site = 'lichess' | 'chesscom'
+// 'maia' games were played here against Maia-3; they have no url
+export type Site = 'lichess' | 'chesscom' | 'maia'
 export type Result = 'win' | 'loss' | 'draw'
 
 // White's point of view. A checkmated position is stored as cp ±10000 so it
@@ -142,6 +143,7 @@ export interface Profile {
   ratings?: Partial<Record<Speed | 'puzzle', Perf>> // from /api/account when signed in
   weakThemes?: WeakTheme[] // from the Lichess puzzle dashboard
   puzzleActivityAt?: number // newest Lichess puzzle activity already read
+  maia?: { rating: number; games: number } // strength estimate from games against Maia, see maia.ts
   theme?: 'dark' | 'light'
   pieces?: string // piece set key, see look.ts
   board?: string
