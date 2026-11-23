@@ -30,8 +30,9 @@ export class OpeningBoard {
     this.cg?.destroy()
   }
 
-  // arrows are [uci, brush] pairs, in pos
-  show(pos: Chess, orientation: 'white' | 'black', lastMove: string | undefined, movable: boolean, arrows: [string, string][] = []) {
+  // arrows are [uci, brush] pairs, in pos; hint is a square to mark, the
+  // way a puzzle's hint marks the piece to move
+  show(pos: Chess, orientation: 'white' | 'black', lastMove: string | undefined, movable: boolean, arrows: [string, string][] = [], hint?: string) {
     this.pos = pos
     this.cg?.set({
       fen: makeFen(pos.toSetup()),
@@ -40,8 +41,10 @@ export class OpeningBoard {
       check: checkColor(pos),
       lastMove: lastMove ? ([lastMove.slice(0, 2), lastMove.slice(2, 4)] as Key[]) : undefined,
       movable: movable ? { free: false, color: pos.turn, dests: chessgroundDests(pos), showDests: true } : { color: undefined, dests: new Map() },
+      highlight: { custom: hint ? new Map([[hint as Key, 'hint']]) : new Map() },
     })
     this.cg?.setAutoShapes(arrows.map(([uci, brush]) => arrow(pos, uci, brush)))
+    if (hint) this.cg?.selectSquare(hint as Key)
   }
 
   private onMove(orig: Key, dest: Key) {
