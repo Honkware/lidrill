@@ -144,7 +144,7 @@ export interface Profile {
   swingThresholdCp: number
   marginCp: number
   thresholdHistory?: { cp: number; at: number; solveRate: number }[] // calibration audit
-  repertoire?: string[] // opening families the plan aims for, editable in Settings
+  repertoire?: string[] // opening families the plan aims for, once chosen in Settings; the trained openings replaced it
   repertoireStudy?: { id: string; name: string; lines: string[][] } // or a Lichess study's chapters
   openings?: Opening[] // trained in the opening trainer, see openings/
   ratings?: Partial<Record<Speed | 'puzzle', Perf>> // from /api/account when signed in

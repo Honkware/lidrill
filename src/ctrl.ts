@@ -121,7 +121,6 @@ export class Ctrl {
   private playFrom: Start | boolean = false
   private maiaStart = 1000
   studies?: StudyInfo[]
-  playedFamilies: string[] = []
   openingStats: OpeningStat[] = []
   openingsToday = { due: 0, fresh: 0 }
   openingPicking = false
@@ -177,7 +176,7 @@ export class Ctrl {
     if (after?.startsWith('study:')) this.sendStudy(after.slice(6))
     if (after === 'look') this.useLichessLook()
     if (after === 'studies') {
-      this.go(OPENINGS)
+      this.go('openings')
       this.loadStudies()
     }
     if (this.auth || this.profile?.chesscomUser) this.sync()
@@ -300,11 +299,6 @@ export class Ctrl {
         this.gamesOpenings = gamesOpenings(all)
         void this.countOpenings(all)
       }
-      if (this.screen === 'settings')
-        this.playedFamilies = openingTable(all.filter(g => g.site !== 'maia'))
-          .filter(r => r.family !== 'Unknown')
-          .slice(0, 10)
-          .map(r => r.family)
       this.loadedKey = key
       if (this.screen !== 'welcome') await this.loadDue()
     }
@@ -1079,18 +1073,6 @@ export class Ctrl {
     this.profile = await saveProfile(clean)
     applyLook(this.profile)
     this.redraw()
-  }
-
-  async setPlan(patch: Partial<Pick<Profile, 'repertoire'>>) {
-    this.profile = await saveProfile(patch)
-    this.refresh(true)
-  }
-
-  // Up to four families; none selected means lidrill picks them
-  async toggleRepertoire(family: string) {
-    const now = this.profile?.repertoire ?? []
-    const next = now.includes(family) ? now.filter(f => f !== family) : [...now, family].slice(-4)
-    await this.setPlan({ repertoire: next.length ? next : undefined })
   }
 
   async exportFile() {

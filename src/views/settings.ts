@@ -77,28 +77,6 @@ export function settingsView(ctrl: Ctrl): VNode {
       ],
       'space-y-3',
     ),
-    card(
-      [
-        label('Openings plan'),
-        ctrl.playedFamilies.length
-          ? el(
-              'div',
-              'flex flex-wrap gap-2',
-              ctrl.playedFamilies.map(f => {
-                const on = !!p?.repertoire?.includes(f)
-                // A pill, as these are tags that can be on together
-                return el(
-                  'button',
-                  'min-h-9 rounded-full border px-3 text-sm',
-                  { attrs: { type: 'button', 'aria-pressed': on }, class: { 'border-accent': on, 'text-accent': on, 'border-raised': !on }, on: { click: () => ctrl.toggleRepertoire(f) } },
-                  f,
-                )
-              }),
-            )
-          : el('p', 'text-sm text-dim', 'Openings appear here once games are imported.'),
-      ],
-      'space-y-3',
-    ),
     ctrl.auth
       ? card(
           [
