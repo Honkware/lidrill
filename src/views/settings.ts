@@ -7,7 +7,7 @@ import { STUDY_READ_SCOPE } from '../lichess/repertoire'
 import { STUDY_SCOPE } from '../lichess/study'
 import { BOARDS, DEFAULT_BOARD, DEFAULT_PIECES, PIECE_SETS } from '../look'
 import { setSound, soundOn } from '../sound'
-import { btnClass, button, card, HANG_RULE, label, listRow, rowList, segmented } from './ui'
+import { btnClass, button, card, HANG_RULE, label, segmented } from './ui'
 import { chesscomField } from './welcome'
 
 // What each Lichess permission is used for
@@ -96,7 +96,6 @@ export function settingsView(ctrl: Ctrl): VNode {
               }),
             )
           : el('p', 'text-sm text-dim', 'Openings appear here once games are imported.'),
-        ctrl.auth ? studyPicker(ctrl) : null,
       ],
       'space-y-3',
     ),
@@ -160,20 +159,3 @@ export function settingsView(ctrl: Ctrl): VNode {
   ])
 }
 
-
-// A Lichess study as the repertoire (study:read, asked for on first use)
-function studyPicker(ctrl: Ctrl): VNode {
-  const current = ctrl.profile?.repertoireStudy
-  return el('div', 'space-y-2 border-t border-raised pt-3', [
-    current ? el('p', 'text-sm', `Repertoire from your study "${current.name}" (${current.lines.length} lines).`) : null,
-    ctrl.studies
-      ? rowList(
-          ctrl.studies.map(st => listRow(() => ctrl.useStudy(st), [el('span', 'text-sm', st.name)])),
-          'scroll -mx-4 max-h-60 overflow-y-auto sm:-mx-5',
-        )
-      : el('div', 'flex flex-wrap gap-2', [
-          button(current ? 'Pick another study' : 'Pick a study', () => ctrl.loadStudies(), 'plain'),
-          current ? button('Stop using it', () => ctrl.useStudy(undefined), 'quiet') : null,
-        ]),
-  ])
-}

@@ -3,61 +3,104 @@ import { Rating } from 'ts-fsrs'
 import type { Ctrl, OpeningStat } from '../ctrl'
 import type { Opening, OpeningCard } from '../db'
 import { el } from '../el'
-import { BUILTIN, DEPTH } from '../openings/repertoire'
+import { NEW_PER_DAY, SET_SIZE } from '../openings/cards'
+import { BUILTIN, DEPTH, openingArg } from '../openings/repertoire'
 import { lineSan, type OpeningSession } from '../openings/session'
 import type { SparStep } from '../openings/spar'
-import { board, boardScreen, button, card, errorLine, icon, loading, pct, plural } from './ui'
+import { board, boardScreen, button, card, errorLine, icon, label, listRow, loading, pct, plural, rowList } from './ui'
 
 const side = (o: Opening) => (o.color === 'white' ? 'White' : 'Black')
-const sparArg = (o: Opening) => `${o.color}:${o.name}`
-// What a Learn button starts: the opening's new positions up to what is left of today's
+
+// What a Learn button starts: the opening's new positions, up to what is left of today's
 const learnN = (ctrl: Ctrl, r: OpeningStat) => Math.min(r.left ?? 0, ctrl.openingsToday.fresh)
 
-// TODO: replaced by the Openings page work
-export const openingsPage = (ctrl: Ctrl): VNode => el('div', 'mx-auto max-w-2xl space-y-4', [el('h1', 'font-display text-2xl', 'Openings'), openingsCard(ctrl)])
+const LIMIT_TIP = `Up to ${NEW_PER_DAY} new positions a day, across openings`
+const BUILD_TIP = "Maia's likely replies and Stockfish's check of each recommended move, once per opening"
 
-// The Openings card at the top of Drills
+const bar = (share: number, building: boolean, tip: string) =>
+  el('div', 'h-2 overflow-hidden rounded bg-raised', { attrs: { title: tip, role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': Math.round(share * 100), 'aria-label': tip } }, [
+    el('div', 'h-2 rounded transition-[width]', { class: { 'bg-accent': !building, 'bg-dim': building, 'animate-pulse': building }, style: { width: `${share * 100}%` } }),
+  ])
+
+// #/openings: the next step, one row per chosen opening, and the chooser
+export function openingsPage(ctrl: Ctrl): VNode {
+  return el('div', 'mx-auto max-w-2xl space-y-4', [el('h1', 'font-display text-2xl', 'Openings'), ...body(ctrl)])
+}
+
+// The same on Drills, until the page replaces it there
 export function openingsCard(ctrl: Ctrl): VNode {
+  return card([el('h2', 'font-display text-lg', 'Openings'), ...body(ctrl)], 'space-y-4')
+}
+
+function body(ctrl: Ctrl): (VNode | null)[] {
   const rows = ctrl.openingStats
-  return card([
-    el('h2', 'font-display text-lg', 'Openings'),
-    rows.length ? el('ul', 'mt-3 divide-y divide-raised', rows.map(r => openingRow(ctrl, r))) : el('p', 'mt-3 text-sm text-dim', 'No openings chosen yet.'),
-    el('div', 'mt-4 flex flex-wrap gap-2', [button(ctrl.openingPicking ? 'Close the list' : 'Add or remove openings', () => ctrl.toggleOpeningPicking(), 'plain')]),
-    ctrl.openingPicking ? picker(ctrl) : null,
+  const picking = ctrl.openingPicking || !ctrl.profile?.openings?.length
+  return [
+    nextStep(ctrl),
+    rows.length ? el('section', 'rounded-xl bg-surface', [rowList(rows.map(r => openingRow(ctrl, r)))]) : null,
+    picking ? card(picker(ctrl), 'space-y-4') : null,
+    el('div', 'grid sm:flex', [
+      picking ? (rows.length ? button('Close', () => ctrl.toggleOpeningPicking(), 'quiet') : null) : button('Add opening', () => ctrl.toggleOpeningPicking(), 'plain'),
+    ]),
+  ]
+}
+
+// Reviews due come first, then today's new positions, then sparring
+function nextStep(ctrl: Ctrl): VNode {
+  const { due, fresh } = ctrl.openingsToday
+  const rows = ctrl.openingStats
+  const learn = rows.find(r => learnN(ctrl, r))
+  const [text, go]: [string, () => void] = due
+    ? [`Review ${Math.min(due, SET_SIZE)}`, () => ctrl.go('opening')]
+    : learn
+      ? [`Learn ${learnN(ctrl, learn)} · ${learn.opening.name}`, () => ctrl.go('learn', openingArg(learn.opening))]
+      : rows[0]
+        ? [`Spar · ${rows[0].opening.name}`, () => ctrl.go('spar', openingArg(rows[0].opening))]
+        : ['Add opening', () => ctrl.toggleOpeningPicking()]
+  return el('div', 'space-y-2', [
+    el('div', 'grid', [button(text, go)]),
+    el('p', 'text-xs tabular-nums text-dim', { attrs: { title: LIMIT_TIP } }, `Due ${due} · New today ${fresh}`),
   ])
 }
 
 function openingRow(ctrl: Ctrl, r: OpeningStat): VNode {
-  const coverage = r.coverage !== undefined ? `${pct(r.coverage)} learned` : r.error ? 'not counted' : `checking ${pct(r.walked ?? 0)}`
-  const arg = sparArg(r.opening)
-  return el('li', 'py-3', [
-    el('p', 'truncate font-medium', r.opening.name),
-    el('p', 'text-xs text-dim', [
-      `${side(r.opening)}, `,
-      el('span', { attrs: { title: `Share of your moves against Maia's likely replies at about ${ctrl.openingLevel} you have learned, through move ${DEPTH}` } }, coverage),
+  const arg = openingArg(r.opening)
+  const n = learnN(ctrl, r)
+  const building = r.coverage === undefined && !r.error
+  const tip = building ? BUILD_TIP : `Share of your moves against Maia's likely replies at about ${ctrl.openingLevel} you have learned, through move ${DEPTH}`
+  const share = building ? (r.walked ?? 0) : (r.coverage ?? 0)
+  return el('li', 'px-4 py-3 sm:flex sm:items-center sm:gap-4 sm:px-5 sm:py-4', [
+    el('div', 'min-w-0 flex-1 space-y-2', [
+      el('div', 'flex items-baseline gap-2', [
+        el('p', 'min-w-0 flex-1 truncate font-medium', r.opening.name),
+        el('span', 'text-xs text-dim', side(r.opening)),
+        el('span', 'w-10 text-right text-sm tabular-nums', { attrs: { title: tip }, class: { 'text-dim': building } }, r.error ? '–' : pct(share)),
+      ]),
+      bar(share, building, tip),
+      r.error ? errorLine(r.error, 'text-xs') : null,
     ]),
-    r.error ? el('p', 'text-xs text-bad', r.error) : null,
-    el('div', 'mt-2 flex flex-wrap gap-2', [
-      button(learnN(ctrl, r) ? `Learn ${learnN(ctrl, r)}` : 'Learn', () => ctrl.go('learn', arg), 'primary', !learnN(ctrl, r)),
+    el('div', 'mt-3 flex flex-wrap gap-2 sm:mt-0 sm:flex-nowrap', [
+      el('span', 'grid', { attrs: { title: r.left && !n ? LIMIT_TIP : '' } }, [button(r.left === undefined ? 'Learn' : `Learn ${n}`, () => ctrl.go('learn', arg), 'plain', !n)]),
       button(`Review ${r.due}`, () => ctrl.go('opening', arg), 'plain', !r.due),
-      button('Spar', () => ctrl.go('spar', arg), 'plain'),
+      button('Spar', () => ctrl.go('spar', arg), 'quiet'),
     ]),
   ])
 }
 
-// The built-in openings, then the ones the player plays most in their games
-function picker(ctrl: Ctrl): VNode {
+// The built-in openings and the ones the player plays most in their games,
+// then a Lichess study as the source of the repertoire's moves
+function picker(ctrl: Ctrl): VNode[] {
   const chosen = ctrl.profile?.openings ?? []
   const same = (a: Opening, b: Opening) => a.name === b.name && a.color === b.color
   // A chosen opening stays on the list to be removed, even once it has
   // dropped out of the player's most played
   const options = [...BUILTIN, ...ctrl.gamesOpenings, ...chosen].filter((o, i, all) => all.findIndex(x => same(x, o)) === i)
   const group = (color: Opening['color']) =>
-    el('div', 'mt-3', [
-      el('p', 'text-xs text-dim', `As ${color === 'white' ? 'White' : 'Black'}`),
+    el('div', 'space-y-2', [
+      label(`As ${color === 'white' ? 'White' : 'Black'}`),
       el(
         'div',
-        'mt-1 flex flex-wrap gap-2',
+        'flex flex-wrap gap-2',
         options
           .filter(o => o.color === color)
           .map(o => {
@@ -71,7 +114,26 @@ function picker(ctrl: Ctrl): VNode {
           }),
       ),
     ])
-  return el('div', [group('white'), group('black')])
+  return ctrl.auth ? [group('white'), group('black'), studyPicker(ctrl)] : [group('white'), group('black')]
+}
+
+// A Lichess study's moves come before every other source (study:read,
+// asked for on first use)
+function studyPicker(ctrl: Ctrl): VNode {
+  const current = ctrl.profile?.repertoireStudy
+  return el('div', 'space-y-2 border-t border-raised pt-4', [
+    label('Lichess study'),
+    current ? el('p', 'flex gap-2 text-sm', [el('span', 'min-w-0 flex-1 truncate', current.name), el('span', 'tabular-nums text-dim', `${current.lines.length} lines`)]) : null,
+    ctrl.studies
+      ? rowList(
+          ctrl.studies.map(st => listRow(() => ctrl.useStudy(st), [el('span', 'text-sm', st.name)])),
+          'scroll -mx-4 max-h-60 overflow-y-auto sm:-mx-5',
+        )
+      : el('div', 'flex flex-wrap gap-2', [
+          button(current ? 'Pick another study' : 'Pick a study', () => ctrl.loadStudies(), 'plain'),
+          current ? button('Stop using it', () => ctrl.useStudy(undefined), 'quiet') : null,
+        ]),
+  ])
 }
 
 const TONE: Record<number, ['good' | 'warn' | 'bad', string]> = {
@@ -127,7 +189,7 @@ export function learnView(ctrl: Ctrl): VNode {
   return boardScreen({
     title: `Learn: ${r.opening.name}`,
     back: () => ctrl.back('drills'),
-    board: board(`learn:${sparArg(r.opening)}:${ctrl.learnRound}`, e => r.mount(e)),
+    board: board(`learn:${openingArg(r.opening)}:${ctrl.learnRound}`, e => r.mount(e)),
     side: [
       el('p', 'text-sm font-medium', r.name),
       r.played.length ? el('p', 'text-sm', lineSan(r.played)) : null,
@@ -164,7 +226,7 @@ export function sparView(ctrl: Ctrl): VNode {
   return boardScreen({
     title: `Spar: ${r.opening.name}`,
     back: () => ctrl.back('drills'),
-    board: board(`spar:${sparArg(r.opening)}:${ctrl.sparRound}`, e => r.mount(e)),
+    board: board(`spar:${openingArg(r.opening)}:${ctrl.sparRound}`, e => r.mount(e)),
     side: [
       el('p', 'text-xs text-dim', `${side(r.opening)} against Maia at about ${ctrl.openingLevel}, through move ${DEPTH}`),
       r.line.length ? el('p', 'text-sm', lineSan(r.line)) : null,

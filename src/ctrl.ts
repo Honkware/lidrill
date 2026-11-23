@@ -176,7 +176,10 @@ export class Ctrl {
     await this.route()
     if (after?.startsWith('study:')) this.sendStudy(after.slice(6))
     if (after === 'look') this.useLichessLook()
-    if (after === 'studies') this.loadStudies()
+    if (after === 'studies') {
+      this.go(OPENINGS)
+      this.loadStudies()
+    }
     if (this.auth || this.profile?.chesscomUser) this.sync()
     this.startServerSync()
     // Warm the interactive engine in the background so drills and practice
