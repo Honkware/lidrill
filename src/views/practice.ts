@@ -3,54 +3,41 @@ import type { Ctrl } from '../ctrl'
 import type { Practice, PracticeKind } from '../db'
 import { el } from '../el'
 import { CLEAR_AFTER, nextOpen } from '../practice'
-import { openingsCard } from './openings'
 import { summary } from './summary'
-import { timedCard } from './time'
-import { board, boardScreen, button, card, icon, listRow, loading, moveInput, pawns, rowList } from './ui'
+import { board, boardScreen, button, empty, icon, listRow, loading, loadingBlock, moveInput, pawns, rowList } from './ui'
 
 const TITLE: Record<PracticeKind, string> = { conversion: 'Conversion', defense: 'Defense' }
 
-export function drillsView(ctrl: Ctrl): VNode {
-  const list = ctrl.practiceList
-  const band = ctrl.profile?.band
+// Conversion or defense: every position found in the analyzed games, the
+// open ones first
+export function practiceListView(ctrl: Ctrl, kind: PracticeKind): VNode {
+  const items = (ctrl.practiceList ?? []).filter(p => p.kind === kind).sort((a, b) => Number(a.cleared) - Number(b.cleared) || b.ply - a.ply)
   return el('div', 'mx-auto max-w-2xl space-y-4', [
-    el('h1', 'font-display text-2xl', 'Drills'),
-    openingsCard(ctrl),
-    timedCard(ctrl),
-    section('conversion', list),
-    band === 'beginner'
-      ? card([
-          el('h2', 'font-display text-lg', TITLE.defense),
-          el('p', 'mt-1 text-sm text-dim', 'Unlocks at club level (rated 1000+).'),
-        ])
-      : section('defense', list),
-  ])
-}
-
-function section(kind: PracticeKind, list?: Practice[]): VNode {
-  const items = (list ?? []).filter(p => p.kind === kind).sort((a, b) => Number(a.cleared) - Number(b.cleared) || b.ply - a.ply)
-  return card([
-    el('h2', 'font-display text-lg', TITLE[kind]),
-    items.length
-      ? rowList(
-          items.slice(0, 20).map(p =>
-            listRow(`#/practice/${encodeURIComponent(p.id)}`, [
-              el('div', 'min-w-0 flex-1', [
-                el('p', 'font-medium', positionName(p)),
-                el('p', 'text-xs text-dim', p.attempts ? `${p.attempts} ${p.attempts === 1 ? 'try' : 'tries'}` : 'Not tried yet'),
-              ]),
-              p.cleared
-                ? el('span', 'flex items-center gap-1 text-sm text-accent', [icon('check', 16), 'Cleared'])
-                : el(
-                    'span',
-                    'flex gap-1',
-                    Array.from({ length: CLEAR_AFTER }, (_, i) => el('span', 'size-2 rounded-full', { class: { 'bg-accent': i < p.streak, 'bg-raised': i >= p.streak } })),
-                  ),
-            ]),
-          ),
-          'mt-3 -mx-4 sm:-mx-5',
-        )
-      : el('p', 'mt-3 text-sm text-dim', 'None in analyzed games yet.'),
+    el('h1', 'font-display text-2xl', TITLE[kind]),
+    kind === 'defense' && ctrl.profile?.band === 'beginner'
+      ? empty('Unlocks at club level (rated 1000+).')
+      : !ctrl.practiceList
+        ? loadingBlock('h-60')
+        : items.length
+          ? rowList(
+              items.slice(0, 20).map(p =>
+                listRow(`#/practice/${encodeURIComponent(p.id)}`, [
+                  el('div', 'min-w-0 flex-1', [
+                    el('p', 'font-medium', positionName(p)),
+                    el('p', 'text-xs text-dim', p.attempts ? `${p.attempts} ${p.attempts === 1 ? 'try' : 'tries'}` : 'Not tried yet'),
+                  ]),
+                  p.cleared
+                    ? el('span', 'flex items-center gap-1 text-sm text-accent', [icon('check', 16), 'Cleared'])
+                    : el(
+                        'span',
+                        'flex gap-1',
+                        Array.from({ length: CLEAR_AFTER }, (_, i) => el('span', 'size-2 rounded-full', { class: { 'bg-accent': i < p.streak, 'bg-raised': i >= p.streak } })),
+                      ),
+                ]),
+              ),
+              'overflow-hidden rounded-xl bg-surface',
+            )
+          : empty('None in analyzed games yet.'),
   ])
 }
 
@@ -64,10 +51,10 @@ export function practiceView(ctrl: Ctrl): VNode {
   const target = p.kind === 'conversion' ? '+10' : '12 moves'
   const targetNote = p.kind === 'conversion' ? 'Reach +10 or mate; dropping below +2 ends it.' : 'Slip at most a pawn from where you started.'
   const done = run.state === 'won' || run.state === 'lost'
-  if (done) return boardScreen({ title, back: () => ctrl.back('drills'), board: board(`${p.id}:${p.attempts}`, e => run.mount(e)), side: [practiceSummary(ctrl)] })
+  if (done) return boardScreen({ title, back: () => ctrl.back(p.kind), board: board(`${p.id}:${p.attempts}`, e => run.mount(e)), side: [practiceSummary(ctrl)] })
   return boardScreen({
     title,
-    back: () => ctrl.back('drills'),
+    back: () => ctrl.back(p.kind),
     board: board(`${p.id}:${p.attempts}`, e => run.mount(e)),
     side: [
       el('p', 'text-sm', goal),

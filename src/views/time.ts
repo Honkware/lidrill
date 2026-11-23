@@ -123,16 +123,6 @@ export function countdownBar(ctrl: Ctrl): VNode | null {
   ])
 }
 
-// The entry on the Drills screen
-export function timedCard(ctrl: Ctrl): VNode {
-  const p = ctrl.timeProfiles[0]
-  return card([
-    el('h2', 'font-display text-lg', 'Move under a clock'),
-    el('p', 'mt-1 text-sm', p ? `${limitFor(p.think, 1)} s a move` : `Needs ${MIN_GAMES} analyzed blitz or rapid games with clocks.`),
-    p ? el('div', 'mt-4 flex', [button('Start', () => void ctrl.startTimed('drills'), 'plain')]) : null,
-  ])
-}
-
 // After a timed game against Maia: the clock after the player's last move
 // and their slowest move
 export function playTimeLine(g: Game): VNode | null {

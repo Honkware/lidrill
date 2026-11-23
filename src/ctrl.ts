@@ -36,7 +36,7 @@ import { DAILY_CAP, dueQueue, dueToday, saveWhyMissed } from './train'
 
 export type { Screen } from './routes'
 
-// A trained opening on the Drills card: coverage and the positions still to
+// A trained opening on the Openings page: coverage and the positions still to
 // learn are filled in once its tree is counted
 export interface OpeningStat {
   opening: Opening
@@ -275,20 +275,20 @@ export class Ctrl {
     const version = [games, analyzed, puzzles, reviews, journal, practice, repertoire, openings, this.profile?.band, this.profile?.repertoire?.join(), this.profile?.repertoireStudy?.id, this.openingsTouched, new Date().toDateString()].join('|')
     const key = `${this.screen}:${version}`
     if (key !== this.loadedKey) {
-      const all = ['today', 'games', 'settings', 'drills', 'openings', 'play'].includes(this.screen) ? await db.games.toArray() : []
+      const all = ['today', 'games', 'settings', 'train', 'openings', 'play'].includes(this.screen) ? await db.games.toArray() : []
       const done = all.filter(g => g.analyzedAt !== undefined)
       if (this.screen === 'today') {
         await this.loadToday()
         this.maiaStart = startEstimate(this.profile?.ratings, all)
       }
       if (this.screen === 'games') await this.loadGames(all, done)
-      if (this.screen === 'games' || this.screen === 'drills') this.timeProfiles = timeProfiles(all)
+      if (this.screen === 'games' || this.screen === 'train') this.timeProfiles = timeProfiles(all)
       if (this.screen === 'play') {
         this.playStarts = ownStarts(all)
         this.maiaGames = all.filter(g => g.site === 'maia')
         this.maiaStart = startEstimate(this.profile?.ratings, all)
       }
-      if (this.screen === 'drills' || this.screen === 'openings') {
+      if (this.screen === 'openings') {
         this.gamesOpenings = gamesOpenings(all)
         void this.countOpenings(all)
       }
@@ -301,7 +301,7 @@ export class Ctrl {
       if (this.screen !== 'welcome') await this.loadDue()
     }
     // Streaks change without the count changing, and the list is small
-    if (this.screen === 'drills' || this.screen === 'practice') this.practiceList = await db.practice.toArray()
+    if (this.screen === 'conversion' || this.screen === 'defense' || this.screen === 'practice') this.practiceList = await db.practice.toArray()
     this.ready = true
     this.redraw()
   }
@@ -463,7 +463,7 @@ export class Ctrl {
   // for, since it may be finding the recommended moves this walk needs.
   private async openLearn(arg: string) {
     const opening = this.profile?.openings?.find(o => `${o.color}:${o.name}` === arg)
-    if (!opening) return void (this.screen = 'drills')
+    if (!opening) return void (this.screen = 'openings')
     this.screen = 'learn'
     this.learnError = undefined
     this.redraw()
@@ -492,7 +492,7 @@ export class Ctrl {
   // arg is 'white:Italian Game': an opening's name can come up for both colours
   private async openSpar(arg: string) {
     const opening = this.profile?.openings?.find(o => `${o.color}:${o.name}` === arg)
-    if (!opening) return void (this.screen = 'drills')
+    if (!opening) return void (this.screen = 'openings')
     if (!this.profile?.maia) this.maiaStart = startEstimate(this.profile?.ratings, await db.games.toArray())
     this.screen = 'spar'
     const cards = await db.openingCards.where('opening').equals(opening.name).toArray()
@@ -689,7 +689,7 @@ export class Ctrl {
   }
 
   // The player's own puzzles against their think time, from the time
-  // profile on Review or the card on Drills
+  // profile on Games or the Clock tile on Train
   async startTimed(from: Screen) {
     const games = await db.games.toArray()
     const profiles = timeProfiles(games)
@@ -757,7 +757,7 @@ export class Ctrl {
     if (this.drill?.reviewId !== undefined) saveWhyMissed(this.drill.reviewId, text)
   }
 
-  // --- review, replay, drills ---
+  // --- games, replay, practice ---
 
   private async openGame(id: string) {
     const game = await db.games.get(id)
@@ -803,7 +803,7 @@ export class Ctrl {
 
   private async openPractice(id: string) {
     const practice = await db.practice.get(id)
-    if (!practice) return void (this.screen = 'drills')
+    if (!practice) return void (this.screen = 'train')
     const game = await db.games.get(practice.gameId)
     const maia = game && { level: this.maiaLevel, moves: game.moves.slice(0, practice.ply).map(m => m.uci) }
     this.screen = 'practice'

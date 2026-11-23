@@ -1,31 +1,30 @@
 import type { VNode } from 'snabbdom'
 import type { Ctrl, Screen } from '../ctrl'
 import { el } from '../el'
-import { drillsView, practiceView } from './drills'
+import { tabOf } from '../routes'
 import { drillView } from './drill'
 import { gameView } from './review'
 import { gamesView } from './games'
 import { learnView, openingsPage, openingView, sparView } from './openings'
 import { playView, setupView } from './play'
+import { practiceListView, practiceView } from './practice'
 import { precisionView } from './precision'
 import { replayView } from './replay'
 import { settingsView } from './settings'
 import { todayView } from './today'
+import { trainView } from './train'
 import { btnClass, icon } from './ui'
 import { welcomeView } from './welcome'
 
 const TABS: { screen: Screen; label: string; icon: string }[] = [
   { screen: 'today', label: 'Today', icon: 'today' },
-  { screen: 'drills', label: 'Drills', icon: 'drills' },
+  { screen: 'train', label: 'Train', icon: 'train' },
   { screen: 'play', label: 'Play', icon: 'play' },
   { screen: 'games', label: 'Games', icon: 'games' },
-  { screen: 'settings', label: 'Settings', icon: 'settings' },
 ]
 
 // Board screens take the whole phone screen: no tab bar
 const BOARD_SCREENS: Screen[] = ['drill', 'replay', 'game', 'practice', 'maia', 'opening', 'learn', 'spar']
-
-const tabOf = (s: Screen): Screen => (s === 'game' || s === 'replay' ? 'games' : s === 'maia' ? 'play' : s === 'practice' || s === 'opening' || s === 'learn' || s === 'spar' || s === 'openings' ? 'drills' : s === 'drill' ? 'today' : s === 'precision' ? 'settings' : s)
 
 export function view(ctrl: Ctrl): VNode {
   const full = BOARD_SCREENS.includes(ctrl.screen)
@@ -52,8 +51,11 @@ function screen(ctrl: Ctrl): VNode {
       return gameView(ctrl)
     case 'games':
       return gamesView(ctrl)
-    case 'drills':
-      return drillsView(ctrl)
+    case 'train':
+      return trainView(ctrl)
+    case 'conversion':
+    case 'defense':
+      return practiceListView(ctrl, ctrl.screen)
     case 'practice':
       return practiceView(ctrl)
     case 'play':
@@ -75,8 +77,8 @@ function screen(ctrl: Ctrl): VNode {
   }
 }
 
-// Desktop: logo, nav and account. Phone: logo and sync state only, and none
-// at all on board screens, upright or sideways.
+// Desktop: logo, nav, account and the gear for Settings. Phone: logo, sync
+// state and the gear, and none at all on board screens, upright or sideways.
 function header(ctrl: Ctrl, full: boolean): VNode | null {
   const signedIn = ctrl.screen !== 'welcome'
   return el('header', 'pt-safe border-b border-raised', { class: { 'max-sm:hidden': full, 'short:hidden': full } }, [
@@ -96,7 +98,7 @@ function header(ctrl: Ctrl, full: boolean): VNode | null {
             ),
           )
         : null,
-      el('div', 'ml-auto flex items-center gap-3 text-sm text-dim', [
+      el('div', '-mr-2 ml-auto flex items-center gap-3 text-sm text-dim', [
         ctrl.syncing && ctrl.progress?.total
           ? el('a', 'flex items-center gap-2 tabular-nums', { attrs: { href: '#/games' } }, [
               el('span', 'size-2 animate-pulse rounded-full bg-accent'),
@@ -104,6 +106,14 @@ function header(ctrl: Ctrl, full: boolean): VNode | null {
             ])
           : null,
         ctrl.auth ? el('span', 'hidden sm:inline', ctrl.auth.username) : null,
+        signedIn
+          ? el(
+              'a',
+              btnClass('quiet', 'icon'),
+              { attrs: { href: '#/settings', 'aria-label': 'Settings', title: 'Settings' }, class: { 'text-accent': ctrl.screen === 'settings' } },
+              [icon('settings')],
+            )
+          : null,
       ]),
     ]),
   ])
@@ -116,7 +126,7 @@ function tabBar(ctrl: Ctrl): VNode {
     [
       el(
         'div',
-        'grid grid-cols-5',
+        'grid grid-cols-4',
         TABS.map(t => {
           const active = tabOf(ctrl.screen) === t.screen
           return el(
