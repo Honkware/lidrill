@@ -53,7 +53,11 @@ export const pastDepth = (pos: Chess) => pos.fullmoves + (pos.turn === 'black' ?
 // time a branch ends, 1 once the walk is done: the first walk asks Maia and
 // Stockfish at every turn and takes seconds, and the count of positions
 // isn't known until it ends.
-export async function buildTree(opening: Opening, rep: Map<string, string>, policy: Policy, recommend?: Recommend, walked?: (share: number) => void): Promise<Tree> {
+// enough, when given, ends the walk early once it returns true: Learn walks
+// only as far as it needs for one set instead of waiting for the whole tree.
+// Replies are walked most likely first, so the first lines found are the
+// main ones.
+export async function buildTree(opening: Opening, rep: Map<string, string>, policy: Policy, recommend?: Recommend, walked?: (share: number) => void, enough?: (nodes: TreeNode[]) => boolean): Promise<Tree> {
   const nodes: TreeNode[] = []
   const recs: RepMove[] = []
   const root = Chess.default()
@@ -65,6 +69,7 @@ export async function buildTree(opening: Opening, rep: Map<string, string>, poli
   }
 
   const walk = async (pos: Chess, moves: string[], reach: number): Promise<void> => {
+    if (enough?.(nodes)) return
     if (pos.isEnd()) return end(reach)
     if (pos.turn === opening.color) {
       if (pos.fullmoves > DEPTH) return end(reach)
@@ -85,7 +90,7 @@ export async function buildTree(opening: Opening, rep: Map<string, string>, poli
     // A position where every move is under the cut (rare: it takes twenty
     // or more moves about equally likely) keeps Maia's favourite
     const all = await policy(moves)
-    const replies = kept(all).length ? kept(all) : all.slice(0, 1)
+    const replies = (kept(all).length ? kept(all) : all.slice(0, 1)).sort((a, b) => b.p - a.p)
     const total = replies.reduce((s, r) => s + r.p, 0)
     for (const r of replies) {
       const next = pos.clone()

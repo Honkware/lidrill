@@ -492,19 +492,23 @@ export class Ctrl {
     this.learnRound++
     this.redraw()
     try {
-      if (!this.trees.has(arg)) await this.counting
+      const room = (await freshLeft()) || NEW_PER_DAY
       let nodes = this.trees.get(arg)
       if (!nodes) {
+        // The whole tree can take minutes to count the first time, so walk
+        // only until there is one set's worth of new positions. Maia's and
+        // the recommender's answers are cached, so the full count reuses them.
+        const before = await learnedKeys((await db.openingCards.where('opening').equals(opening.name).toArray()).map(c => c.id))
         const tree = await buildTree(opening, await this.repertoireMap(), cachedPolicy(this.openingLevel), this.recommender, share => {
           this.learnWalked = share
           this.redraw()
-        })
+        }, found => unlearned(found, before).length >= room)
         await db.repertoire.bulkPut(tree.recs)
         await saveTreeCards(tree.nodes, opening.name)
-        this.trees.set(arg, (nodes = tree.nodes))
+        nodes = tree.nodes
       }
       const learned = await learnedKeys(nodes.map(n => posKey(n.fen)))
-      this.learn = new LearnRun(opening, learnSet(opening, nodes, learned, (await freshLeft()) || NEW_PER_DAY), learned, this.redraw)
+      this.learn = new LearnRun(opening, learnSet(opening, nodes, learned, room), learned, this.redraw)
     } catch (e) {
       this.learnError = (e as Error).message
     }

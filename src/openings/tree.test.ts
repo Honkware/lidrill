@@ -69,6 +69,15 @@ describe('buildTree', () => {
     expect(tree.nodes.some(n => n.moves.includes('e8f8'))).toBe(false)
   })
 
+  it('walks the most likely reply first and stops once it has enough', async () => {
+    const asked: string[] = []
+    const counting = async (moves: string[]) => (asked.push(moves.join(' ')), policy(moves))
+    const tree = await buildTree(opening, known(), counting, undefined, undefined, nodes => nodes.length >= 2)
+    // 6...a6 (0.5) comes before 6...O-O and 6...h6, and its line gives the two positions
+    expect(tree.nodes.map(n => n.moves.slice(opening.moves.length).join(' '))).toEqual(['a7a6', 'a7a6 a2a4 e8h8'])
+    expect(asked).not.toContain(`${o} e8h8 f1e1`)
+  })
+
   it('walks on past a recommended move and keeps the ones it found', async () => {
     const rep = known()
     const tree = await buildTree(opening, rep, policy, recommend)

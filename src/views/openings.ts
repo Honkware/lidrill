@@ -47,11 +47,12 @@ function body(ctrl: Ctrl): (VNode | null)[] {
 function nextStep(ctrl: Ctrl): VNode {
   const { due, fresh } = ctrl.openingsToday
   const rows = ctrl.openingStats
-  const learn = rows.find(r => learnN(ctrl, r))
+  // An opening still being counted can already be learned, and comes before sparring
+  const learn = rows.find(r => learnN(ctrl, r) || (r.left === undefined && !r.error))
   const [text, go]: [string, () => void] = due
     ? [`Review ${Math.min(due, SET_SIZE)}`, () => ctrl.go('opening')]
     : learn
-      ? [`Learn ${learnN(ctrl, learn)} · ${learn.opening.name}`, () => ctrl.go('learn', openingArg(learn.opening))]
+      ? [`Learn${learn.left === undefined ? '' : ` ${learnN(ctrl, learn)}`} · ${learn.opening.name}`, () => ctrl.go('learn', openingArg(learn.opening))]
       : rows[0]
         ? [`Spar · ${rows[0].opening.name}`, () => ctrl.go('spar', openingArg(rows[0].opening))]
         : ['Add opening', () => ctrl.toggleOpeningPicking()]
