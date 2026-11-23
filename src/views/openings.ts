@@ -11,6 +11,9 @@ import { board, boardScreen, button, card, errorLine, icon, loading, pct, plural
 const side = (o: Opening) => (o.color === 'white' ? 'White' : 'Black')
 const sparArg = (o: Opening) => `${o.color}:${o.name}`
 
+// TODO: replaced by the Openings page work
+export const openingsPage = (ctrl: Ctrl): VNode => el('div', 'mx-auto max-w-2xl space-y-4', [el('h1', 'font-display text-2xl', 'Openings'), openingsCard(ctrl)])
+
 // The Openings card at the top of Drills
 export function openingsCard(ctrl: Ctrl): VNode {
   const rows = ctrl.openingStats

@@ -6,11 +6,11 @@ import { db, type Auth, type Game, type JournalEntry, type MaiaSpeed, type Openi
 import { Drill, SessionReview, type Outcome } from './drill'
 import { GameView } from './gameview'
 import { fetchLook, PREFERENCE_SCOPE } from './lichess/api'
-import { fetchStudyLines, listStudies, STUDY_READ_SCOPE, studyCompliance, type StudyInfo } from './lichess/repertoire'
+import { fetchStudyLines, listStudies, STUDY_READ_SCOPE, type StudyInfo } from './lichess/repertoire'
 import { STUDY_SCOPE, sendToStudy } from './lichess/study'
 import { applyLook, BOARDS, PIECE_SETS } from './look'
 import { clampLevel, estimateFor, estimates, levelFor, ownStarts, speedOf, startEstimate, updateEstimate, type Start } from './maia'
-import { compliance, openingTable, repertoireTargets, streak, type OpeningRow, type Streak } from './metrics'
+import { openingTable, streak, type OpeningRow, type Streak } from './metrics'
 import { nextAction, type Due, type Next } from './next'
 import { addCards, dueCards, learnedKeys, openingsDue, saveTreeCards } from './openings/cards'
 import { cachedPolicy, treeLevel } from './openings/policy'
@@ -24,16 +24,16 @@ import { analyzePending, forgetLichessAccount, getEngine, precertifyDue, savePro
 import { clearGame, clockOf, PlayRun, readChoices, readGame, rematch, writeChoices, type Choices } from './play'
 import { nextOpen, PracticeRun } from './practice'
 import { Replay } from './replay'
-import { weekReport, weeklyZeroHang, type WeekReport } from './report'
+import { weeklyZeroHang } from './report'
 import { corpus, exportMarks, loadMarks, saveMarks, type Mark } from './precision'
 import { sound } from './sound'
 import { timeProfiles, type TimeProfile } from './time'
 import { Countdown, timedSet } from './timed'
 import { SignInExpired } from './sync/lichess'
 import { serverSync as syncWithServer } from './sync/server'
-import { DAILY_CAP, dueQueue, dueToday, saveWhyMissed, type DayQueue } from './train'
+import { DAILY_CAP, dueQueue, dueToday, saveWhyMissed } from './train'
 
-export type Screen = 'welcome' | 'today' | 'drill' | 'replay' | 'review' | 'game' | 'games' | 'drills' | 'practice' | 'play' | 'settings' | 'precision' | 'opening' | 'learn' | 'spar'
+export type Screen = 'welcome' | 'today' | 'drill' | 'replay' | 'review' | 'game' | 'games' | 'drills' | 'practice' | 'play' | 'settings' | 'precision' | 'opening' | 'learn' | 'spar' | 'openings'
 
 // A trained opening on the Drills card: coverage and the positions still to
 // learn are filled in once its tree is counted
@@ -52,18 +52,10 @@ export interface Counts {
 }
 
 export interface TodayData {
-  queue: DayQueue
-  due: { remaining: number; doneToday: number }
   streak: Streak
-  report: WeekReport
   weeks: { games: number; clean: number }[]
-  practice: { conversion: number; defense: number; cleared: number }
   openings: OpeningRow[]
-  replayPick?: { game: Game; stops: number }
   puzzlePerf?: { now: number; delta?: number }
-  targets: string[]
-  compliance?: number
-  openingDue: number
 }
 
 // What is due now, for Today, Train and the Next button after a session
@@ -83,7 +75,7 @@ export interface ReviewRow {
 }
 
 // Screens are routed through the URL hash so the phone's back button works
-const ROUTED: Screen[] = ['today', 'review', 'games', 'drills', 'settings', 'precision']
+const ROUTED: Screen[] = ['today', 'review', 'games', 'drills', 'settings', 'precision', 'openings']
 
 export class Ctrl {
   screen: Screen = 'today'
@@ -283,15 +275,20 @@ export class Ctrl {
     const version = [games, analyzed, puzzles, reviews, journal, practice, repertoire, openings, this.profile?.band, this.profile?.repertoire?.join(), this.profile?.repertoireStudy?.id, this.openingsTouched, new Date().toDateString()].join('|')
     const key = `${this.screen}:${version}`
     if (key !== this.loadedKey) {
-      const all = ['today', 'review', 'settings', 'drills'].includes(this.screen) ? await db.games.toArray() : []
+      const all = ['today', 'review', 'settings', 'drills', 'openings'].includes(this.screen) ? await db.games.toArray() : []
       const done = all.filter(g => g.analyzedAt !== undefined)
-      if (this.screen === 'today' && this.profile) await this.loadToday(all, done, this.profile)
+      if (this.screen === 'today') {
+        await this.loadToday(all)
+        this.maiaStart = startEstimate(this.profile?.ratings, all)
+      }
       if (this.screen === 'review') await this.loadReview(done)
       if (this.screen === 'review' || this.screen === 'drills') this.timeProfiles = timeProfiles(all)
       if (this.screen === 'drills') {
         this.playStarts = ownStarts(all)
         this.maiaGames = all.filter(g => g.site === 'maia')
         this.maiaStart = startEstimate(this.profile?.ratings, all)
+      }
+      if (this.screen === 'drills' || this.screen === 'openings') {
         this.gamesOpenings = gamesOpenings(all)
         void this.countOpenings(all)
       }
@@ -309,35 +306,17 @@ export class Ctrl {
     this.redraw()
   }
 
-  // Games against Maia can be replayed from here but stay out of the
-  // opening table, the weekly report and the repertoire numbers
-  private async loadToday(all: Game[], analyzed: Game[], profile: Profile) {
-    const games = all.filter(g => g.site !== 'maia')
+  // Games against Maia stay out of the opening table
+  private async loadToday(all: Game[]) {
     const now = new Date()
     const journal = await db.journal.toArray()
-    const reviews = await db.reviews.toArray()
-    const own = await db.puzzles.filter(p => p.source !== 'lichess').toArray()
-    const stopsByGame = new Map<string, number>()
-    for (const p of own) stopsByGame.set(p.gameId, (stopsByGame.get(p.gameId) ?? 0) + 1)
-    const latest = [...analyzed].sort((a, b) => b.playedAt - a.playedAt).find(g => stopsByGame.has(g.id))
     const snaps = (await db.liPuzzle.toArray()).sort((a, b) => a.week.localeCompare(b.week))
     const [prev, last] = [snaps.at(-2), snaps.at(-1)]
-    const targets = repertoireTargets(games, profile.band, profile.repertoire)
-    const practice = await db.practice.toArray()
-    const open = (kind: string) => practice.filter(p => p.kind === kind && !p.cleared).length
     this.today = {
-      queue: await dueQueue(now),
-      due: await dueToday(now),
       streak: streak(journal),
-      report: weekReport(games, journal, reviews, profile, now),
       weeks: weeklyZeroHang(journal, now),
-      practice: { conversion: open('conversion'), defense: open('defense'), cleared: practice.filter(p => p.cleared).length },
-      openings: openingTable(games, new Map(journal.map(j => [j.gameId, j]))).slice(0, 8),
-      replayPick: latest && { game: latest, stops: stopsByGame.get(latest.id)! },
+      openings: openingTable(all.filter(g => g.site !== 'maia'), new Map(journal.map(j => [j.gameId, j]))).slice(0, 8),
       puzzlePerf: last && { now: last.global.performance, delta: prev && last.global.performance - prev.global.performance },
-      targets,
-      compliance: profile.repertoireStudy ? studyCompliance(games, profile.repertoireStudy.lines) : compliance(games, targets),
-      openingDue: (await dueCards(this.openingNames, now)).length,
     }
   }
 
@@ -387,7 +366,7 @@ export class Ctrl {
         return this.go('opening')
       case 'learn': {
         const o = this.openingStats.find(r => r.fresh)?.opening
-        return o ? this.go('learn', `${o.color}:${o.name}`) : this.go('drills')
+        return o ? this.go('learn', `${o.color}:${o.name}`) : this.go('openings')
       }
       case 'turning':
         return this.go('replay', due.latest!.game.id)

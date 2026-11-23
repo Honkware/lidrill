@@ -1,36 +1,28 @@
 import type { VNode } from 'snabbdom'
-import type { Ctrl } from '../ctrl'
+import type { Ctrl, DueNow } from '../ctrl'
 import { el } from '../el'
-import { btnClass, button, card, empty, errorLine, label, loadingBlock, plural, weekBars } from './ui'
+import type { Next } from '../next'
+import { btnClass, button, card, errorLine, icon, listRow, loadingBlock, rowList, weekBars } from './ui'
 
-// Home IA: one hero (streak), one primary action (due), then at most three
-// half cards (turning points, this week's focus, drills). Everything else
-// lives a tap away: openings and game detail in Review, the plan, Lichess
-// themes and the band rule in Settings.
+// The one next thing to do as the big button, the day's parts under it,
+// the streak, and a row each for the places that always have something
 export function todayView(ctrl: Ctrl): VNode {
-  const t = ctrl.today
-  const p = ctrl.profile
-  if (!t || !p)
-    return ctrl.ready
-      ? el('div', 'space-y-4', [
-          empty(ctrl.syncing ? 'Fetching games…' : 'No games yet.'),
-          ctrl.error ? errorLine(ctrl.error) : null,
-        ])
-      : skeleton()
-  return el('div', 'grid gap-4 md:grid-cols-2', [
-    streakCard(ctrl),
+  const d = ctrl.due
+  const n = ctrl.nextUp
+  if (!d || !n) return skeleton()
+  return el('div', 'mx-auto max-w-2xl space-y-4', [
     bandNote(ctrl),
-    dueCard(ctrl),
-    replayCard(ctrl),
-    focusCard(ctrl),
-    drillsCard(ctrl),
-    ctrl.error ? errorLine(ctrl.error, 'md:col-span-2') : null,
+    nextCard(ctrl, n),
+    dayBar(d),
+    streakLine(ctrl),
+    rows(ctrl, d),
+    ctrl.error ? errorLine(ctrl.error) : null,
   ])
 }
 
-// Grey blocks in the shape of the dashboard while the first load runs
+// Grey blocks in the shape of the page while the first load runs
 function skeleton(): VNode {
-  return el('div', 'grid gap-4 md:grid-cols-2', [loadingBlock('h-32 md:col-span-2'), loadingBlock('h-44'), loadingBlock('h-44'), loadingBlock('h-40'), loadingBlock('h-40')])
+  return el('div', 'mx-auto max-w-2xl space-y-4', [loadingBlock('h-40'), loadingBlock('h-6'), loadingBlock('h-40')])
 }
 
 // The single home of the band rule: Settings → "What counts". Other
@@ -39,93 +31,68 @@ export function whatCountsLink(): VNode {
   return el('a', 'underline decoration-dotted underline-offset-2', { attrs: { href: '#/settings' } }, 'What counts?')
 }
 
-// Hero metric. No rule text on the card.
-function streakCard(ctrl: Ctrl): VNode {
-  const { streak, weeks } = ctrl.today!
-  const played = weeks.some(w => w.games)
-  const best = Math.max(streak.best, streak.current)
+function nextCard(ctrl: Ctrl, n: Next): VNode {
   return card(
     [
-      el('div', 'flex items-end justify-between gap-4', [
-        el('div', [
-          el('p', 'font-display text-5xl leading-none tabular-nums', String(streak.current)),
-          el('p', 'mt-1 text-sm', `clean ${streak.current === 1 ? 'game' : 'games'} in a row`),
-        ]),
-        played ? el('div', 'flex flex-col items-end gap-1', [weekBars(weeks), el('p', 'text-xs text-dim', 'last 8 weeks')]) : null,
-      ]),
-      el('p', 'mt-3 text-xs text-dim', [best ? `Best ${best}. ` : '', whatCountsLink()]),
+      el('p', 'text-center font-display text-3xl', [n.label, n.count ? el('span', 'tabular-nums', ` ${n.count}`) : null]),
+      n.go === 'play' ? el('p', 'mt-1 text-center text-sm tabular-nums text-dim', { attrs: { title: 'Approximate Lichess blitz rating' } }, `about ${ctrl.maiaLevel}`) : null,
+      el('div', 'mt-5 grid', [button('Start', () => void ctrl.goNext())]),
     ],
-    'md:col-span-2',
+    'py-6 sm:py-8',
   )
 }
 
-function dueCard(ctrl: Ctrl): VNode {
-  const { queue } = ctrl.today!
-  const { remaining, doneToday } = ctrl.today!.due
-  const external = queue.puzzles.filter(x => x.source === 'lichess').length
-  return card([
-    label('Due today'),
-    el('p', 'mt-1 font-display text-3xl', plural(remaining, 'puzzle')),
-    external ? el('p', 'mt-1 text-sm text-dim', `${external} from Lichess`) : null,
-    ctrl.today!.openingDue
-      ? el('p', 'mt-1 text-sm', [`${plural(ctrl.today!.openingDue, 'opening card')} due. `, el('a', 'text-accent underline', { attrs: { href: '#/opening' } }, 'Train')])
-      : null,
-    remaining
-      ? el('div', 'mt-4 grid', [button('Start', () => ctrl.startDrill())])
-      : el(
-          'p',
-          'mt-2 text-sm text-dim',
-          doneToday
-            ? 'Done for today.'
-            : ctrl.counts.puzzles
-              ? 'Nothing due today.'
-              : ctrl.syncing
-                ? 'Analyzing games…'
-                : 'No puzzles yet. Sync your games first.',
-        ),
+// One segment per part of the day with anything scheduled, as long as its
+// share of the day's items, filled as they are done
+function dayBar(d: DueNow): VNode | null {
+  const parts = (
+    [
+      ['Puzzles', d.puzzlesDone, d.puzzlesDone + d.puzzles],
+      ['Openings', d.openingsDone, d.openingsDone + d.reviews + d.fresh],
+    ] as const
+  ).filter(([, , total]) => total > 0)
+  if (!parts.length) return null
+  return el('div', 'space-y-1 px-1', [
+    el(
+      'div',
+      'flex gap-1',
+      parts.map(([name, done, total]) =>
+        el('div', 'h-2 basis-0 overflow-hidden rounded-full bg-raised', { style: { flexGrow: String(total) }, attrs: { role: 'img', 'aria-label': `${name} ${done} of ${total}` } }, [
+          el('div', 'h-2 bg-accent', { style: { width: `${(100 * done) / total}%` } }),
+        ]),
+      ),
+    ),
+    el('p', 'flex gap-4 text-xs tabular-nums text-dim', parts.map(([name, done, total]) => el('span', `${name} ${done}/${total}`))),
   ])
 }
 
-function replayCard(ctrl: Ctrl): VNode | null {
-  const pick = ctrl.today!.replayPick
-  if (!pick) return null
-  return card([
-    label('Turning points'),
-    el('p', 'mt-1', [`Last game${pick.game.opponent ? ` vs ${pick.game.opponent}` : ''}: `, el('strong', '', plural(pick.stops, 'turning point'))]),
-    el('div', 'mt-4 grid', [button('Replay', () => ctrl.go('replay', pick.game.id), 'plain')]),
+function streakLine(ctrl: Ctrl): VNode | null {
+  const t = ctrl.today
+  if (!t) return null
+  const { streak, weeks } = t
+  const best = Math.max(streak.best, streak.current)
+  return el('div', 'flex items-center justify-between gap-4 px-1', [
+    el('p', 'text-sm', { attrs: { title: `Best ${best}` } }, [
+      el('span', 'font-display text-2xl tabular-nums', String(streak.current)),
+      ` clean ${streak.current === 1 ? 'game' : 'games'}`,
+    ]),
+    weeks.some(w => w.games) ? weekBars(weeks) : null,
   ])
 }
 
-// The week's one focus: the recurring leak if there is one, otherwise the
-// weakest area (report.focus already picks). One line of data plus one
-// action - improvement-areas style, never both a focus and a leak card.
-function focusCard(ctrl: Ctrl): VNode | null {
-  const r = ctrl.today!.report
-  const d = ctrl.today!.practice
-  const open = d.conversion + (ctrl.profile!.band === 'beginner' ? 0 : d.defense)
-  if (!r.focus) return null
-  return card([
-    label(r.leak ? 'Recurring' : 'This week'),
-    el('p', 'mt-2', r.focus),
-    r.leak
-      ? el('a', 'mt-3 inline-block text-sm text-accent', { attrs: { href: '#/review' } }, 'See the games')
-      : open
-        ? el('a', 'mt-3 inline-block text-sm text-accent', { attrs: { href: '#/drills' } }, 'Open drills')
-        : null,
-  ])
-}
+const row = (href: string, name: string, value: string) =>
+  listRow(href, [el('span', 'min-w-0 flex-1 truncate font-medium', name), el('span', 'shrink-0 text-sm tabular-nums text-dim', value), icon('next', 16)])
 
-function drillsCard(ctrl: Ctrl): VNode | null {
-  const d = ctrl.today!.practice
-  const beginner = ctrl.profile!.band === 'beginner'
-  const open = d.conversion + (beginner ? 0 : d.defense)
-  if (!open && !d.cleared) return null
-  return card([
-    label('Drills'),
-    el('p', 'mt-2', open ? `${plural(open, 'position')} to play out.` : 'All cleared.'),
-    d.cleared ? el('p', 'mt-1 text-sm text-dim', `${d.cleared} cleared.`) : null,
-    open ? el('div', 'mt-4 grid', [button('Open drills', () => ctrl.go('drills'), 'plain')]) : null,
-  ])
+function rows(ctrl: Ctrl, d: DueNow): VNode {
+  const l = d.latest
+  return rowList(
+    [
+      row('#/openings', 'Openings', `${d.reviews} due · ${d.fresh} new`),
+      l ? row(`#/replay/${encodeURIComponent(l.game.id)}`, 'Turning points', `${l.game.opponent ? `vs ${l.game.opponent} · ` : ''}${l.stops}`) : null,
+      row('#/play', 'Play Maia', `about ${ctrl.maiaLevel}`),
+    ].filter(r => r !== null),
+    'overflow-hidden rounded-xl bg-surface',
+  )
 }
 
 // One quiet note after a band change: no accent border, expires after
@@ -139,18 +106,15 @@ function bandNote(ctrl: Ctrl): VNode | null {
   const order = ['beginner', 'club', 'advanced']
   const up = order.indexOf(last.band) > order.indexOf(hist.at(-2)!.band)
   const extra = up && last.band === 'club' ? ' Defense drills unlocked.' : ''
-  return card(
-    [
-      el('div', 'flex items-start justify-between gap-3', [
-        el('p', 'text-sm', [`Level changed to ${last.band}.${extra} `, whatCountsLink()]),
-        el(
-          'button',
-          btnClass('quiet', 'icon'),
-          { attrs: { type: 'button', 'aria-label': 'Dismiss' }, on: { click: () => { localStorage.setItem(seenKey, '1'); ctrl.redraw() } } },
-          '✕',
-        ),
-      ]),
-    ],
-    'md:col-span-2',
-  )
+  return card([
+    el('div', 'flex items-start justify-between gap-3', [
+      el('p', 'text-sm', [`Level changed to ${last.band}.${extra} `, whatCountsLink()]),
+      el(
+        'button',
+        btnClass('quiet', 'icon'),
+        { attrs: { type: 'button', 'aria-label': 'Dismiss' }, on: { click: () => { localStorage.setItem(seenKey, '1'); ctrl.redraw() } } },
+        '✕',
+      ),
+    ]),
+  ])
 }
