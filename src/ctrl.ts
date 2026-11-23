@@ -15,6 +15,7 @@ import { addCards, dueCards, learnedKeys, saveTreeCards } from './openings/cards
 import { cachedPolicy, treeLevel } from './openings/policy'
 import { mastersFor, recommend } from './openings/recommend'
 import { gamesOpenings, posKey, rebuildRepertoire } from './openings/repertoire'
+import { LearnRun, learnLine } from './openings/learn'
 import { OpeningSession } from './openings/session'
 import { SparRun } from './openings/spar'
 import { buildTree, coverage, gameCards, unlearned, wentWrong, type Recommend } from './openings/tree'
@@ -31,7 +32,7 @@ import { SignInExpired } from './sync/lichess'
 import { serverSync as syncWithServer } from './sync/server'
 import { DAILY_CAP, dueQueue, dueToday, saveWhyMissed, type DayQueue } from './train'
 
-export type Screen = 'welcome' | 'today' | 'drill' | 'replay' | 'review' | 'game' | 'games' | 'drills' | 'practice' | 'play' | 'settings' | 'precision' | 'opening' | 'spar'
+export type Screen = 'welcome' | 'today' | 'drill' | 'replay' | 'review' | 'game' | 'games' | 'drills' | 'practice' | 'play' | 'settings' | 'precision' | 'opening' | 'learn' | 'spar'
 
 // A trained opening on the Drills card: coverage and the positions still to
 // learn are filled in once its tree is counted
@@ -120,8 +121,12 @@ export class Ctrl {
   openingPicking = false
   gamesOpenings: Opening[] = [] // the player's most played openings, offered beside the built-in ones
   openingSet?: OpeningSession
+  learn?: LearnRun
+  learnRound = 0
+  learnError?: string
   spar?: SparRun
   sparRound = 0
+  private openingsTouched = 0 // bumped when an opening screen closes, so the card recounts
   private counting?: Promise<void>
   private countAgain?: Game[]
   // The human precision pass: claim index and the reviewer's marks
@@ -187,6 +192,7 @@ export class Ctrl {
     else if (name === 'drill') await this.openDrill()
     else if (name === 'play') await this.openPlay()
     else if (name === 'opening') await this.openOpenings()
+    else if (name === 'learn' && arg) await this.openLearn(arg)
     else if (name === 'spar' && arg) await this.openSpar(arg)
     else this.screen = ROUTED.includes(name as Screen) ? (name as Screen) : 'today'
     if (this.screen === 'precision' && this.precisionMarks === undefined) this.precisionMarks = loadMarks()
@@ -223,8 +229,12 @@ export class Ctrl {
     this.run = undefined
     this.play?.destroy()
     this.play = undefined
+    if (this.openingSet || this.learn || this.spar) this.openingsTouched++
     this.openingSet?.board.destroy()
     this.openingSet = undefined
+    this.learn?.destroy()
+    this.learn = undefined
+    this.learnError = undefined
     this.spar?.destroy()
     this.spar = undefined
   }
@@ -255,7 +265,7 @@ export class Ctrl {
     ])
     this.counts = { games, analyzed, puzzles }
     const openings = this.profile?.openings?.map(o => `${o.color}:${o.name}`).join()
-    const version = [games, analyzed, puzzles, reviews, journal, practice, repertoire, openings, this.profile?.band, this.profile?.repertoire?.join(), this.profile?.repertoireStudy?.id, new Date().toDateString()].join('|')
+    const version = [games, analyzed, puzzles, reviews, journal, practice, repertoire, openings, this.profile?.band, this.profile?.repertoire?.join(), this.profile?.repertoireStudy?.id, this.openingsTouched, new Date().toDateString()].join('|')
     const key = `${this.screen}:${version}`
     if (key !== this.loadedKey) {
       const all = ['today', 'review', 'settings', 'drills'].includes(this.screen) ? await db.games.toArray() : []
@@ -393,6 +403,36 @@ export class Ctrl {
   private async openOpenings() {
     this.screen = 'opening'
     this.openingSet = new OpeningSession(await dueCards(this.openingNames), await this.repertoireMap(), getEngine(), this.redraw)
+  }
+
+  // The next line of an opening to learn. A count still running is waited
+  // for, since it may be finding the recommended moves this walk needs.
+  private async openLearn(arg: string) {
+    const opening = this.profile?.openings?.find(o => `${o.color}:${o.name}` === arg)
+    if (!opening) return void (this.screen = 'drills')
+    this.screen = 'learn'
+    this.learnError = undefined
+    this.redraw()
+    await this.counting
+    try {
+      const tree = await buildTree(opening, await this.repertoireMap(), cachedPolicy(this.openingLevel), this.recommender)
+      await db.repertoire.bulkPut(tree.recs)
+      await saveTreeCards(tree.nodes, opening.name)
+      const learned = await learnedKeys(tree.nodes.map(n => posKey(n.fen)))
+      const left = new Set(unlearned(tree.nodes, learned).map(n => posKey(n.fen))).size
+      this.learn = new LearnRun(opening, learnLine(opening, tree.nodes, learned), learned, left, this.redraw)
+    } catch (e) {
+      this.learnError = (e as Error).message
+    }
+  }
+
+  async learnAgain() {
+    const o = this.learn?.opening
+    this.learn?.destroy()
+    this.learn = undefined
+    this.learnRound++
+    if (o) await this.openLearn(`${o.color}:${o.name}`)
+    this.redraw()
   }
 
   // arg is 'white:Italian Game': an opening's name can come up for both colours

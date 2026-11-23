@@ -5,7 +5,7 @@ import { Rating } from 'ts-fsrs'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { SearchResult } from '../analysis/engine'
 import { db } from '../db'
-import { addCards, dueCards, judgeMove, saveTreeCards } from './cards'
+import { addCards, dueCards, grade, judgeMove, saveTreeCards } from './cards'
 import { posKey } from './repertoire'
 
 // A recall card wants the repertoire move but lets a nearly equal one pass
@@ -56,11 +56,21 @@ describe('dueCards', () => {
       { fen: at(`${line} c2c3 g8f6`), moves: `${line} c2c3 g8f6`.split(' '), reach: 0.5 },
     ]
     await saveTreeCards(nodes, 'Italian Game', new Set(), now)
+    for (const c of await db.openingCards.toArray()) await grade(c, Rating.Good, now)
     await db.openingCards.update(posKey(nodes[1].fen), { 'card.due': new Date('2026-12-01') })
     await saveTreeCards(nodes, 'Italian Game', new Set([posKey(fen)]), now)
     await addCards([{ fen, moves: [], opening: 'Italian Game' }], now)
-    const due = await dueCards(['Italian Game'], now)
+    const later = new Date('2026-11-15')
+    const due = await dueCards(['Italian Game'], later)
     expect(due.map(c => [c.id, c.reach, c.wrong])).toEqual([[posKey(fen), 0.2, true]])
-    expect(await dueCards(['Ruy Lopez'], now)).toEqual([])
+    expect(await dueCards(['Ruy Lopez'], later)).toEqual([])
+  })
+
+  it('leaves out a position until it has been learned', async () => {
+    const now = new Date('2026-11-01')
+    await saveTreeCards([{ fen, moves: line.split(' '), reach: 1 }], 'Italian Game', undefined, now)
+    expect(await dueCards(['Italian Game'], now)).toEqual([])
+    await grade((await db.openingCards.get(posKey(fen)))!, Rating.Good, now)
+    expect(await dueCards(['Italian Game'], new Date('2026-11-15'))).toHaveLength(1)
   })
 })

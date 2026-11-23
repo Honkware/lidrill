@@ -5,7 +5,7 @@ import { drillsView, practiceView } from './drills'
 import { drillView } from './drill'
 import { gameView, reviewView } from './review'
 import { gamesView } from './games'
-import { openingView, sparView } from './openings'
+import { learnView, openingView, sparView } from './openings'
 import { playView } from './play'
 import { precisionView } from './precision'
 import { replayView } from './replay'
@@ -23,9 +23,9 @@ const TABS: { screen: Screen; label: string; icon: string }[] = [
 ]
 
 // Board screens take the whole phone screen: no tab bar
-const BOARD_SCREENS: Screen[] = ['drill', 'replay', 'game', 'practice', 'play', 'opening', 'spar']
+const BOARD_SCREENS: Screen[] = ['drill', 'replay', 'game', 'practice', 'play', 'opening', 'learn', 'spar']
 
-const tabOf = (s: Screen): Screen => (s === 'game' || s === 'replay' ? 'review' : s === 'practice' || s === 'play' || s === 'opening' || s === 'spar' ? 'drills' : s === 'drill' ? 'today' : s === 'precision' ? 'settings' : s)
+const tabOf = (s: Screen): Screen => (s === 'game' || s === 'replay' ? 'review' : s === 'practice' || s === 'play' || s === 'opening' || s === 'learn' || s === 'spar' ? 'drills' : s === 'drill' ? 'today' : s === 'precision' ? 'settings' : s)
 
 export function view(ctrl: Ctrl): VNode {
   const full = BOARD_SCREENS.includes(ctrl.screen)
@@ -66,6 +66,8 @@ function screen(ctrl: Ctrl): VNode {
       return precisionView(ctrl)
     case 'opening':
       return openingView(ctrl)
+    case 'learn':
+      return learnView(ctrl)
     case 'spar':
       return sparView(ctrl)
   }

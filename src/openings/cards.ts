@@ -38,15 +38,16 @@ export async function learnedKeys(ids: string[]): Promise<Set<string>> {
 const worth = (c: OpeningCard) => c.reach * (c.wrong ? WRONG_BOOST : 1)
 
 // New positions get a card; known ones keep their schedule and take the
-// tree's current chance of being reached
-export async function saveTreeCards(nodes: TreeNode[], opening: string, wrong: Set<string>, now = new Date()): Promise<void> {
+// tree's current chance of being reached. Without wrong, known cards keep
+// their flag.
+export async function saveTreeCards(nodes: TreeNode[], opening: string, wrong?: Set<string>, now = new Date()): Promise<void> {
   const byId = new Map<string, TreeNode>()
   for (const n of nodes) if ((byId.get(posKey(n.fen))?.reach ?? -1) < n.reach) byId.set(posKey(n.fen), n)
   const old = new Map((await db.openingCards.bulkGet([...byId.keys()])).filter(c => c !== undefined).map(c => [c.id, c]))
   const rows: OpeningCard[] = []
   for (const [id, n] of byId) {
     const c = old.get(id)
-    const bad = wrong.has(id) || undefined
+    const bad = wrong ? wrong.has(id) || undefined : c?.wrong
     if (!c) rows.push({ id, opening, moves: n.moves, reach: n.reach, wrong: bad, card: createEmptyCard(now) })
     else if (c.reach !== n.reach || c.wrong !== bad) rows.push({ ...c, reach: n.reach, wrong: bad })
   }
@@ -67,7 +68,7 @@ export async function addCards(found: { fen: string; moves: string[]; opening: s
 
 export async function dueCards(openings: string[], now = new Date()): Promise<OpeningCard[]> {
   const due = await db.openingCards.where('card.due').belowOrEqual(now).toArray()
-  return due.filter(c => openings.includes(c.opening)).sort((a, b) => worth(b) - worth(a)).slice(0, SET_SIZE)
+  return due.filter(c => openings.includes(c.opening) && isLearned(c)).sort((a, b) => worth(b) - worth(a)).slice(0, SET_SIZE)
 }
 
 export async function grade(c: OpeningCard, rating: Grade, now = new Date()): Promise<void> {

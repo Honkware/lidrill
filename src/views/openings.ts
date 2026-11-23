@@ -6,7 +6,7 @@ import { el } from '../el'
 import { BUILTIN, DEPTH } from '../openings/repertoire'
 import { lineSan, type OpeningSession } from '../openings/session'
 import type { SparStep } from '../openings/spar'
-import { board, boardScreen, button, card, icon, pct, plural } from './ui'
+import { board, boardScreen, button, card, errorLine, icon, loading, pct, plural } from './ui'
 
 const side = (o: Opening) => (o.color === 'white' ? 'White' : 'Black')
 const sparArg = (o: Opening) => `${o.color}:${o.name}`
@@ -37,6 +37,7 @@ function openingRow(ctrl: Ctrl, r: OpeningStat): VNode {
       ]),
       r.error ? el('p', 'text-xs text-bad', r.error) : null,
     ]),
+    button(r.fresh ? `Learn ${r.fresh}` : 'Learn', () => ctrl.go('learn', sparArg(r.opening)), 'primary', !r.fresh),
     button('Spar', () => ctrl.go('spar', sparArg(r.opening)), 'plain'),
   ])
 }
@@ -117,6 +118,30 @@ function setDone(ctrl: Ctrl, s: OpeningSession): VNode {
     s.cards.length ? el('p', 'text-sm text-dim', `${n(Rating.Good)} good, ${n(Rating.Hard)} playable, ${n(Rating.Again)} missed`) : null,
     el('div', 'grid', [button('Back to drills', () => ctrl.go('drills'))]),
   ])
+}
+
+// The next line of an opening, from move 1
+export function learnView(ctrl: Ctrl): VNode {
+  const r = ctrl.learn
+  if (!r) return ctrl.learnError ? el('div', 'p-4', [errorLine(ctrl.learnError)]) : loading()
+  return boardScreen({
+    title: `Learn: ${r.opening.name}`,
+    back: () => ctrl.back('drills'),
+    board: board(`learn:${sparArg(r.opening)}:${ctrl.learnRound}`, e => r.mount(e)),
+    side: [
+      el('p', 'text-sm font-medium', r.name),
+      r.played.length ? el('p', 'text-sm', lineSan(r.played)) : null,
+      r.state === 'your-move'
+        ? el('p', 'text-sm', { class: { 'text-bad': r.missed, 'text-accent': !r.missed && r.isNew, 'text-dim': !r.missed && !r.isNew } }, r.missed ? 'Missed' : r.isNew ? 'New move' : 'Your move')
+        : null,
+      r.state === 'done'
+        ? el('div', 'space-y-3', [
+            el('p', 'font-display text-xl', r.line.length ? `${plural(r.taught, 'new move')} learned` : 'Nothing new to learn'),
+            el('div', 'flex flex-wrap gap-2', [r.more ? button('Next line', () => void ctrl.learnAgain()) : null, button('Back to drills', () => ctrl.go('drills'), r.more ? 'plain' : 'primary')]),
+          ])
+        : null,
+    ],
+  })
 }
 
 // "5." for White's move, "5..." for Black's, from the position it was played in
