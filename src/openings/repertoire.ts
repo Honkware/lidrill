@@ -25,6 +25,10 @@ export const BUILTIN: Opening[] = [
   { name: "Queen's Gambit Declined", color: 'black', moves: ['d2d4', 'd7d5', 'c2c4', 'e7e6'] },
 ]
 
+// An opening in a route, 'white:Italian Game': a name can come up for both
+// colours
+export const openingArg = (o: Opening) => `${o.color}:${o.name}`
+
 // The trees, the cards and sparring go through the player's 8th move: past
 // that a club game has mostly left any line a player could prepare
 export const DEPTH = 8

@@ -10,6 +10,8 @@ import { board, boardScreen, button, card, errorLine, icon, loading, pct, plural
 
 const side = (o: Opening) => (o.color === 'white' ? 'White' : 'Black')
 const sparArg = (o: Opening) => `${o.color}:${o.name}`
+// What a Learn button starts: the opening's new positions up to what is left of today's
+const learnN = (ctrl: Ctrl, r: OpeningStat) => Math.min(r.left ?? 0, ctrl.openingsToday.fresh)
 
 // TODO: replaced by the Openings page work
 export const openingsPage = (ctrl: Ctrl): VNode => el('div', 'mx-auto max-w-2xl space-y-4', [el('h1', 'font-display text-2xl', 'Openings'), openingsCard(ctrl)])
@@ -26,7 +28,7 @@ export function openingsCard(ctrl: Ctrl): VNode {
 }
 
 function openingRow(ctrl: Ctrl, r: OpeningStat): VNode {
-  const coverage = r.coverage !== undefined ? `${pct(r.coverage)} learned` : r.error ? 'not counted' : 'counting…'
+  const coverage = r.coverage !== undefined ? `${pct(r.coverage)} learned` : r.error ? 'not counted' : `checking ${pct(r.walked ?? 0)}`
   const arg = sparArg(r.opening)
   return el('li', 'py-3', [
     el('p', 'truncate font-medium', r.opening.name),
@@ -36,7 +38,7 @@ function openingRow(ctrl: Ctrl, r: OpeningStat): VNode {
     ]),
     r.error ? el('p', 'text-xs text-bad', r.error) : null,
     el('div', 'mt-2 flex flex-wrap gap-2', [
-      button(r.fresh ? `Learn ${r.fresh}` : 'Learn', () => ctrl.go('learn', arg), 'primary', !r.fresh),
+      button(learnN(ctrl, r) ? `Learn ${learnN(ctrl, r)}` : 'Learn', () => ctrl.go('learn', arg), 'primary', !learnN(ctrl, r)),
       button(`Review ${r.due}`, () => ctrl.go('opening', arg), 'plain', !r.due),
       button('Spar', () => ctrl.go('spar', arg), 'plain'),
     ]),
@@ -83,7 +85,7 @@ export function openingView(ctrl: Ctrl): VNode {
   const s = ctrl.openingSet
   if (!s) return el('p', 'p-4 text-dim', 'Loading…')
   const c = s.card
-  return boardScreen({ title: 'Openings', back: () => ctrl.back('drills'), board: board('opening-set', e => s.mount(e)), side: [c ? cardSide(s, c) : setDone(ctrl, s)] })
+  return boardScreen({ title: 'Openings', back: () => ctrl.back('drills'), board: board(`opening-set:${ctrl.openingRound}`, e => s.mount(e)), side: [c ? cardSide(s, c) : setDone(ctrl, s)] })
 }
 
 function cardSide(s: OpeningSession, c: OpeningCard): VNode {

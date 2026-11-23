@@ -15,11 +15,11 @@ import { nextAction, type Due, type Next } from './next'
 import { addCards, dueCards, freshLeft, learnedKeys, openingsDue, saveTreeCards } from './openings/cards'
 import { cachedPolicy, treeLevel } from './openings/policy'
 import { mastersFor, recommend } from './openings/recommend'
-import { gamesOpenings, posKey, rebuildRepertoire } from './openings/repertoire'
+import { gamesOpenings, openingArg, posKey, rebuildRepertoire } from './openings/repertoire'
 import { LearnRun, learnSet } from './openings/learn'
 import { OpeningSession } from './openings/session'
 import { SparRun } from './openings/spar'
-import { buildTree, coverage, gameCards, unlearned, wentWrong, type Recommend } from './openings/tree'
+import { buildTree, coverage, gameCards, unlearned, wentWrong, type Recommend, type TreeNode } from './openings/tree'
 import { analyzePending, forgetLichessAccount, getEngine, precertifyDue, saveProfile, syncAndAnalyze, warmEngine } from './pipeline'
 import { clearGame, clockOf, PlayRun, readChoices, readGame, rematch, writeChoices, type Choices } from './play'
 import { nextOpen, PracticeRun } from './practice'
@@ -36,13 +36,14 @@ import { DAILY_CAP, dueQueue, dueToday, saveWhyMissed } from './train'
 
 export type { Screen } from './routes'
 
-// A trained opening on the Openings page: coverage and the positions still to
-// learn are filled in once its tree is counted
+// A trained opening: coverage and the positions still to learn are filled
+// in once its tree is counted, and walked shows how far a count has got
 export interface OpeningStat {
   opening: Opening
   coverage?: number
-  fresh?: number
+  left?: number
   due: number
+  walked?: number
   error?: string
 }
 
@@ -122,17 +123,21 @@ export class Ctrl {
   studies?: StudyInfo[]
   playedFamilies: string[] = []
   openingStats: OpeningStat[] = []
+  openingsToday = { due: 0, fresh: 0 }
   openingPicking = false
   gamesOpenings: Opening[] = [] // the player's most played openings, offered beside the built-in ones
   openingSet?: OpeningSession
+  openingRound = 0
   learn?: LearnRun
   learnRound = 0
   learnError?: string
+  learnWalked?: number
   spar?: SparRun
   sparRound = 0
   private openingsTouched = 0 // bumped when an opening screen closes, so the card recounts
   private counting?: Promise<void>
   private countAgain?: Game[]
+  private trees = new Map<string, TreeNode[]>() // by openingArg, from the last count
   // The human precision pass: claim index and the reviewer's marks
   precisionIndex = 0
   precisionMarks?: import('./precision').Marks
@@ -396,35 +401,47 @@ export class Ctrl {
 
   // Rebuilds the repertoire, makes cards from the player's games and counts
   // each opening's tree. Maia's answers and the recommended moves are
-  // stored, so after the first time this is mostly local; the card fills in
-  // one opening at a time.
+  // stored, so after the first time this is mostly local. The due counts
+  // come first and each opening fills in as its tree is walked, keeping
+  // what the last count found until then.
   private async countOpenings(games: Game[]): Promise<void> {
     // A change while counting (an opening added) is counted straight after
     if (this.counting) return void (this.countAgain = games)
     this.counting = (async () => {
       const openings = this.profile?.openings ?? []
+      const old = new Map(this.openingStats.map(r => [openingArg(r.opening), r]))
+      this.openingStats = openings.map(opening => ({ ...old.get(openingArg(opening)), opening, due: 0 }))
+      for (const row of this.openingStats) row.due = (await dueCards([row.opening.name])).length
+      this.openingsToday = await openingsDue()
+      this.redraw()
       const rep = await rebuildRepertoire(openings, this.profile?.repertoireStudy?.lines ?? [], games.filter(g => g.site !== 'maia'))
       const analyzed = games.filter(g => g.analyzedAt !== undefined)
       const wrong = wentWrong(analyzed)
       await addCards(analyzed.flatMap(g => gameCards(g, rep, openings, wrong)))
       const policy = cachedPolicy(this.openingLevel)
       const rec = this.recommender
-      this.openingStats = openings.map(opening => ({ opening, due: 0 }))
       for (const row of this.openingStats) {
         try {
-          const tree = await buildTree(row.opening, rep, policy, rec)
+          const tree = await buildTree(row.opening, rep, policy, rec, share => {
+            row.walked = share
+            this.redraw()
+          })
+          this.trees.set(openingArg(row.opening), tree.nodes)
           await db.repertoire.bulkPut(tree.recs)
           await saveTreeCards(tree.nodes, row.opening.name, wrong)
           const learned = await learnedKeys(tree.nodes.map(n => posKey(n.fen)))
           row.coverage = coverage(tree.nodes, learned)
-          row.fresh = new Set(unlearned(tree.nodes, learned).map(n => posKey(n.fen))).size
+          row.left = new Set(unlearned(tree.nodes, learned).map(n => posKey(n.fen))).size
+          row.error = undefined
         } catch (e) {
           row.error = (e as Error).message
         }
+        row.walked = undefined
         row.due = (await dueCards([row.opening.name])).length
+        // A new tree's cards are new positions on offer
+        this.openingsToday = await openingsDue()
         this.redraw()
       }
-      this.redraw()
     })().finally(() => {
       this.counting = undefined
       const again = this.countAgain
@@ -450,40 +467,56 @@ export class Ctrl {
     return new Map((await db.repertoire.toArray()).map(r => [r.fen, r.uci]))
   }
 
-  // Due cards for every trained opening, or for one ('white:Italian Game')
+  // Due cards for every trained opening, or for one ('white:Italian Game'),
+  // or a single position again, ungraded ('pos:<id>')
   private async openOpenings(arg?: string) {
     this.screen = 'opening'
-    const names = arg ? (this.profile?.openings ?? []).filter(o => `${o.color}:${o.name}` === arg).map(o => o.name) : this.openingNames
+    this.openingRound++
     const rep = await this.repertoireMap()
+    if (arg?.startsWith('pos:')) {
+      const c = await db.openingCards.get(arg.slice(4))
+      this.openingSet = new OpeningSession(c && rep.has(c.id) ? [c] : [], rep, getEngine(), this.redraw, false)
+      return
+    }
+    const names = arg ? (this.profile?.openings ?? []).filter(o => openingArg(o) === arg).map(o => o.name) : this.openingNames
     const cards = (await dueCards(names)).filter(c => rep.has(c.id))
     this.openingSet = new OpeningSession(cards, rep, getEngine(), this.redraw)
   }
 
-  // The next line of an opening to learn. A count still running is waited
-  // for, since it may be finding the recommended moves this walk needs.
+  // Today's set of an opening's new positions. The tree from the last count
+  // is used when there is one; a count still running is waited for, since
+  // it may be finding the recommended moves the walk needs.
   private async openLearn(arg: string) {
-    const opening = this.profile?.openings?.find(o => `${o.color}:${o.name}` === arg)
+    const opening = this.profile?.openings?.find(o => openingArg(o) === arg)
     if (!opening) return void (this.screen = 'openings')
     this.screen = 'learn'
     this.learnError = undefined
     // A new board each time, even on the same route
     this.learnRound++
     this.redraw()
-    await this.counting
     try {
-      const tree = await buildTree(opening, await this.repertoireMap(), cachedPolicy(this.openingLevel), this.recommender)
-      await db.repertoire.bulkPut(tree.recs)
-      await saveTreeCards(tree.nodes, opening.name)
-      const learned = await learnedKeys(tree.nodes.map(n => posKey(n.fen)))
-      this.learn = new LearnRun(opening, learnSet(opening, tree.nodes, learned, await freshLeft()), learned, this.redraw)
+      if (!this.trees.has(arg)) await this.counting
+      let nodes = this.trees.get(arg)
+      if (!nodes) {
+        const tree = await buildTree(opening, await this.repertoireMap(), cachedPolicy(this.openingLevel), this.recommender, share => {
+          this.learnWalked = share
+          this.redraw()
+        })
+        await db.repertoire.bulkPut(tree.recs)
+        await saveTreeCards(tree.nodes, opening.name)
+        this.trees.set(arg, (nodes = tree.nodes))
+      }
+      const learned = await learnedKeys(nodes.map(n => posKey(n.fen)))
+      this.learn = new LearnRun(opening, learnSet(opening, nodes, learned, await freshLeft()), learned, this.redraw)
     } catch (e) {
       this.learnError = (e as Error).message
     }
+    this.learnWalked = undefined
   }
 
-  // arg is 'white:Italian Game': an opening's name can come up for both colours
+  // arg is 'white:Italian Game'
   private async openSpar(arg: string) {
-    const opening = this.profile?.openings?.find(o => `${o.color}:${o.name}` === arg)
+    const opening = this.profile?.openings?.find(o => openingArg(o) === arg)
     if (!opening) return void (this.screen = 'openings')
     if (!this.profile?.maia) this.maiaStart = startEstimate(this.profile?.ratings, await db.games.toArray())
     this.screen = 'spar'
@@ -497,7 +530,7 @@ export class Ctrl {
     this.spar?.destroy()
     this.spar = undefined
     this.sparRound++
-    if (o) await this.openSpar(`${o.color}:${o.name}`)
+    if (o) await this.openSpar(openingArg(o))
     this.redraw()
   }
 
