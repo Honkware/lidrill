@@ -8,6 +8,7 @@ import { material, type PlayRun } from '../play'
 import { el } from '../el'
 import { moveTable, score } from './moves'
 import { board, boardScreen, button, errorLine, jumps, judgColor, loading, plural } from './ui'
+import { playTimeLine } from './time'
 
 const RESULT = { win: 'Won', loss: 'Lost', draw: 'Draw' } as const
 
@@ -113,6 +114,7 @@ function over(ctrl: Ctrl): VNode {
       : game
         ? el('p', 'text-sm', ['Estimate against Maia: ', el('span', 'font-medium tabular-nums', `${run.opts.rating} → ${ctrl.maiaRatingAt(game.speed)}`)])
         : null,
+    game ? playTimeLine(game) : null,
     !game ? null : ids ? analysis(game, run.opts.color, ids, ctrl) : el('p', 'text-sm text-dim', ctrl.syncing ? 'Analyzing the game…' : 'Not analyzed yet. The next sync analyzes it.'),
     el('div', 'flex flex-wrap gap-2', [
       button('Rematch', () => ctrl.rematch(), solve ? 'plain' : 'primary'),

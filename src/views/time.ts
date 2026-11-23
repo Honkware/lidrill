@@ -136,3 +136,19 @@ export function timedCard(ctrl: Ctrl): VNode {
     p ? el('div', 'mt-4 flex', [button('Start', () => void ctrl.startTimed('drills'), 'plain')]) : null,
   ])
 }
+
+// After a timed game against Maia: the clock after the player's last move
+// and their slowest move
+export function playTimeLine(g: Game): VNode | null {
+  const t = gameTime(g)
+  if (!t) return null
+  const slow = slowest(t)
+  const last = t.moves[t.moves.length - 1]
+  return el('p', 'text-sm', [
+    'Clock after your last move: ',
+    el('span', 'font-medium tabular-nums', clock(last.left)),
+    '. Slowest move: ',
+    el('span', 'font-medium tabular-nums', `${secs(slow.secs)}, move ${slow.move}`),
+    '.',
+  ])
+}
