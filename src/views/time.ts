@@ -58,7 +58,7 @@ const PACE: [Pace, string][] = [
   ['slow', 'Slow, over twice the game median'],
 ]
 
-// On the Review list, under the games: where the clock goes across the
+// On Games, under the list: where the clock goes across the
 // player's recent games, and the timed puzzles built on it
 export function timeProfileCard(ctrl: Ctrl): VNode | null {
   const p = ctrl.timeProfiles[0]
@@ -75,7 +75,7 @@ export function timeProfileCard(ctrl: Ctrl): VNode | null {
       ]),
       paceTable(p),
       el('div', 'flex flex-wrap items-center gap-3', [
-        button('Move under a clock', () => void ctrl.startTimed('review'), 'plain'),
+        button('Move under a clock', () => void ctrl.startTimed('games'), 'plain'),
         el('p', 'text-xs text-dim', `${limitFor(p.think, 1)} s a move`),
       ]),
     ],

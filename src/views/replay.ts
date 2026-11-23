@@ -15,7 +15,7 @@ export function replayView(ctrl: Ctrl): VNode {
   const r = ctrl.replay
   if (!r) return loading()
   const title = `Turning points${r.game.opponent ? ` vs ${r.game.opponent}` : ''}`
-  return boardScreen({ title, back: () => ctrl.back('review'), board: board(`replay:${r.game.id}`, e => r.mount(e)), controls: r.drill && puzzleJumps(r.drill), side: [side(ctrl, r)] })
+  return boardScreen({ title, back: () => ctrl.back('games'), board: board(`replay:${r.game.id}`, e => r.mount(e)), controls: r.drill && puzzleJumps(r.drill), side: [side(ctrl, r)] })
 }
 
 const answer = (p: Puzzle) => makeSan(Chess.fromSetup(parseFen(p.fen).unwrap()).unwrap(), parseUci(p.solution[0])!)

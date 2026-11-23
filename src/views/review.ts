@@ -1,82 +1,14 @@
 import type { VNode, VNodeChildren } from 'snabbdom'
 import { accuracy } from '../analysis/accuracy'
-import type { Ctrl, ReviewRow } from '../ctrl'
+import type { Ctrl } from '../ctrl'
 import type { Game } from '../db'
 import { el } from '../el'
 import type { GameView } from '../gameview'
 import { deviation } from '../lichess/repertoire'
-import { board, boardScreen, btnClass, button, card, dateLabel, empty, icon, jumps, judgColor, judgMark, label, listRow, loading, loadingBlock, plural, resultChip, rowList } from './ui'
+import { board, boardScreen, btnClass, button, card, dateLabel, icon, jumps, judgColor, label, loading, plural } from './ui'
 import { journalHangParts } from '../server/surface'
 import { moveTable, score } from './moves'
-import { timeCard, timeProfileCard } from './time'
-
-export function reviewView(ctrl: Ctrl): VNode {
-  const rows = ctrl.reviewList
-  const openings = ctrl.today?.openings ?? []
-  return el('div', 'mx-auto max-w-2xl space-y-3', [
-    el('h1', 'font-display text-2xl', 'Review'),
-    !rows
-      ? loadingBlock('h-96')
-      : !rows.length
-        ? empty(ctrl.syncing ? 'Analyzing games…' : 'No analyzed games yet.')
-        : rowList(rows.map(r => row(r)), 'overflow-hidden rounded-xl bg-surface'),
-    rows?.length ? timeProfileCard(ctrl) : null,
-    openings.length ? openingsCard(openings) : null,
-  ])
-}
-
-// Per-opening record, moved off the home screen: win/draw/loss and how
-// often a game had something given away
-function openingsCard(rows: NonNullable<Ctrl['today']>['openings']): VNode {
-  return card(
-    [
-      label('Openings'),
-      el('div', 'mt-2 -mx-1 overflow-x-auto', [
-        el('table', 'w-full min-w-[20rem] text-sm', [
-          el('thead', [
-            el('tr', 'text-left text-xs text-dim', [
-              el('th', 'px-1 py-1 font-normal', 'Opening'),
-              el('th', 'px-1 py-1 text-right font-normal', 'Games'),
-              el('th', 'px-1 py-1 text-right font-normal', 'W / D / L'),
-              el('th', 'px-1 py-1 text-right font-normal', 'With a hang'),
-            ]),
-          ]),
-          el(
-            'tbody',
-            rows.map(r =>
-              el('tr', 'border-t border-raised', [
-                el('td', 'max-w-[12rem] truncate px-1 py-2', r.family),
-                el('td', 'px-1 py-2 text-right tabular-nums', String(r.games)),
-                el('td', 'px-1 py-2 text-right tabular-nums', `${r.win} / ${r.draw} / ${r.loss}`),
-                el('td', 'px-1 py-2 text-right tabular-nums', { class: { 'text-dim': !r.analyzed } }, r.analyzed ? `${r.hangs} of ${r.analyzed}` : 'not analyzed'),
-              ]),
-            ),
-          ),
-        ]),
-      ]),
-    ],
-  )
-}
-
-function row(r: ReviewRow): VNode {
-  const g = r.game
-  const marks = (['blunder', 'mistake', 'inaccuracy'] as const).filter(j => r[j])
-  return listRow(`#/game/${encodeURIComponent(g.id)}`, [
-    resultChip(g.result),
-    el('div', 'min-w-0 flex-1', [
-      el('p', 'truncate font-medium', [g.opponent ? `vs ${g.opponent}` : g.opening || 'Game', g.opponentRating ? el('span', 'font-normal text-dim', ` ${g.opponentRating}`) : '']),
-      el('p', 'truncate text-sm text-dim', `${g.opening ? `${g.opening.split(':')[0]} · ` : ''}${g.speed} · ${dateLabel(g.playedAt)}`),
-    ]),
-    el('div', 'flex shrink-0 flex-col items-end gap-1 text-sm', [
-      el(
-        'p',
-        'flex gap-2 tabular-nums',
-        marks.length ? marks.map(j => el('span', judgColor[j], `${r[j]}${judgMark[j]}`)) : [el('span', 'text-accent', 'clean')],
-      ),
-      r.journal && !r.journal.hung ? (marks.length ? el('p', 'text-xs text-accent', 'clean game') : null) : r.puzzles ? el('p', 'text-xs text-dim', plural(r.puzzles, 'puzzle')) : null,
-    ]),
-  ])
-}
+import { timeCard } from './time'
 
 export function gameView(ctrl: Ctrl): VNode {
   const v = ctrl.gameView
@@ -84,7 +16,7 @@ export function gameView(ctrl: Ctrl): VNode {
   const g = v.game
   return boardScreen({
     title: g.opponent ? `vs ${g.opponent}` : 'Game',
-    back: () => ctrl.back('review'),
+    back: () => ctrl.back('games'),
     board: board(g.id, e => v.mount(e)),
     controls: jumps(v.ply, 0, v.game.moves.length, ply => v.go(ply)),
     side: [

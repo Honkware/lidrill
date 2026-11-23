@@ -24,6 +24,7 @@ import { analyzePending, forgetLichessAccount, getEngine, precertifyDue, savePro
 import { clearGame, clockOf, PlayRun, readChoices, readGame, rematch, writeChoices, type Choices } from './play'
 import { nextOpen, PracticeRun } from './practice'
 import { Replay } from './replay'
+import { movedTo, pageOf, type Moved, type Screen } from './routes'
 import { weeklyZeroHang } from './report'
 import { corpus, exportMarks, loadMarks, saveMarks, type Mark } from './precision'
 import { sound } from './sound'
@@ -33,7 +34,7 @@ import { SignInExpired } from './sync/lichess'
 import { serverSync as syncWithServer } from './sync/server'
 import { DAILY_CAP, dueQueue, dueToday, saveWhyMissed } from './train'
 
-export type Screen = 'welcome' | 'today' | 'drill' | 'replay' | 'review' | 'game' | 'games' | 'drills' | 'practice' | 'play' | 'settings' | 'precision' | 'opening' | 'learn' | 'spar' | 'openings'
+export type { Screen } from './routes'
 
 // A trained opening on the Drills card: coverage and the positions still to
 // learn are filled in once its tree is counted
@@ -54,7 +55,6 @@ export interface Counts {
 export interface TodayData {
   streak: Streak
   weeks: { games: number; clean: number }[]
-  openings: OpeningRow[]
   puzzlePerf?: { now: number; delta?: number }
 }
 
@@ -74,9 +74,6 @@ export interface ReviewRow {
   blunder: number
 }
 
-// Screens are routed through the URL hash so the phone's back button works
-const ROUTED: Screen[] = ['today', 'review', 'games', 'drills', 'settings', 'precision', 'openings']
-
 export class Ctrl {
   screen: Screen = 'today'
   auth?: Auth
@@ -92,6 +89,7 @@ export class Ctrl {
   due?: DueNow
   nextUp?: Next
   reviewList?: ReviewRow[]
+  openingRows: OpeningRow[] = [] // the record per opening, under the games
   timeProfiles: TimeProfile[] = [] // blitz and rapid, the one with more games first
   practiceList?: Practice[]
   drill?: Drill
@@ -186,10 +184,13 @@ export class Ctrl {
     return !this.auth && !this.profile?.chesscomUser
   }
 
-  // #/review, #/game/<id>, #/replay/<id>, #/practice/<id>, #/drill, #/play
+  // Screens are routed through the URL hash so the phone's back button
+  // works: #/games, #/game/<id>, #/replay/<id>, #/practice/<id>, #/drill, #/play
   private async route() {
     const [name, ...rest] = location.hash.replace(/^#\/?/, '').split('/')
     const arg = decodeURIComponent(rest.join('/'))
+    const moved = movedTo(name)
+    if (moved) return location.replace(`#/${moved}`)
     this.teardown()
     if (name !== 'drill') this.timed = undefined
     if (this.signedOut) this.screen = 'welcome'
@@ -201,14 +202,14 @@ export class Ctrl {
     else if (name === 'opening') await this.openOpenings(arg || undefined)
     else if (name === 'learn' && arg) await this.openLearn(arg)
     else if (name === 'spar' && arg) await this.openSpar(arg)
-    else this.screen = ROUTED.includes(name as Screen) ? (name as Screen) : 'today'
+    else this.screen = pageOf(name)
     if (this.screen === 'precision' && this.precisionMarks === undefined) this.precisionMarks = loadMarks()
     this.redraw()
     window.scrollTo(0, 0)
     await this.refresh(true)
   }
 
-  go(screen: Screen, arg?: string) {
+  go(screen: Screen | Moved, arg?: string) {
     this.depth++
     const hash = `#/${screen}${arg ? `/${encodeURIComponent(arg)}` : ''}`
     if (location.hash === hash) this.route()
@@ -216,7 +217,7 @@ export class Ctrl {
   }
 
   // Back within the app, or to `fallback` when the screen was opened directly
-  back(fallback: Screen = 'today') {
+  back(fallback: Screen | Moved = 'today') {
     if (this.depth > 0) {
       this.depth--
       history.back()
@@ -275,14 +276,14 @@ export class Ctrl {
     const version = [games, analyzed, puzzles, reviews, journal, practice, repertoire, openings, this.profile?.band, this.profile?.repertoire?.join(), this.profile?.repertoireStudy?.id, this.openingsTouched, new Date().toDateString()].join('|')
     const key = `${this.screen}:${version}`
     if (key !== this.loadedKey) {
-      const all = ['today', 'review', 'settings', 'drills', 'openings'].includes(this.screen) ? await db.games.toArray() : []
+      const all = ['today', 'games', 'settings', 'drills', 'openings'].includes(this.screen) ? await db.games.toArray() : []
       const done = all.filter(g => g.analyzedAt !== undefined)
       if (this.screen === 'today') {
-        await this.loadToday(all)
+        await this.loadToday()
         this.maiaStart = startEstimate(this.profile?.ratings, all)
       }
-      if (this.screen === 'review') await this.loadReview(done)
-      if (this.screen === 'review' || this.screen === 'drills') this.timeProfiles = timeProfiles(all)
+      if (this.screen === 'games') await this.loadGames(all, done)
+      if (this.screen === 'games' || this.screen === 'drills') this.timeProfiles = timeProfiles(all)
       if (this.screen === 'drills') {
         this.playStarts = ownStarts(all)
         this.maiaGames = all.filter(g => g.site === 'maia')
@@ -306,8 +307,7 @@ export class Ctrl {
     this.redraw()
   }
 
-  // Games against Maia stay out of the opening table
-  private async loadToday(all: Game[]) {
+  private async loadToday() {
     const now = new Date()
     const journal = await db.journal.toArray()
     const snaps = (await db.liPuzzle.toArray()).sort((a, b) => a.week.localeCompare(b.week))
@@ -315,7 +315,6 @@ export class Ctrl {
     this.today = {
       streak: streak(journal),
       weeks: weeklyZeroHang(journal, now),
-      openings: openingTable(all.filter(g => g.site !== 'maia'), new Map(journal.map(j => [j.gameId, j]))).slice(0, 8),
       puzzlePerf: last && { now: last.global.performance, delta: prev && last.global.performance - prev.global.performance },
     }
   }
@@ -511,8 +510,10 @@ export class Ctrl {
     this.redraw()
   }
 
-  private async loadReview(analyzed: Game[]) {
+  // Games against Maia stay out of the opening table
+  private async loadGames(all: Game[], analyzed: Game[]) {
     const journal = new Map((await db.journal.toArray()).map(j => [j.gameId, j]))
+    this.openingRows = openingTable(all.filter(g => g.site !== 'maia'), journal).slice(0, 8)
     const puzzles = new Map<string, number>()
     for (const p of await db.puzzles.toArray()) if (p.gameId) puzzles.set(p.gameId, (puzzles.get(p.gameId) ?? 0) + 1)
     this.reviewList = [...analyzed]
@@ -761,7 +762,7 @@ export class Ctrl {
 
   private async openGame(id: string) {
     const game = await db.games.get(id)
-    if (!game) return void (this.screen = 'review')
+    if (!game) return void (this.screen = 'games')
     this.screen = 'game'
     this.gameView = new GameView(game, this.redraw, this.gamePly)
     this.gamePly = undefined
@@ -788,7 +789,7 @@ export class Ctrl {
   private async openReplay(id: string) {
     const game = await db.games.get(id)
     const stops = await db.puzzles.where('gameId').equals(id).toArray()
-    if (!game) return void (this.screen = 'review')
+    if (!game) return void (this.screen = 'games')
     this.screen = 'replay'
     this.replay = new Replay(game, stops, this.redraw, getEngine())
   }
