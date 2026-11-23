@@ -66,9 +66,11 @@ export const loading = () => el('p', 'p-4 text-dim', { attrs: { role: 'status' }
 // A grey block in the shape of what is loading
 export const loadingBlock = (extra: string) => el('div', `animate-pulse rounded-xl bg-surface ${extra}`)
 
+export type Mark = 'good' | 'warn' | 'bad' | undefined
+
 // One square per item in a run: coloured by result once done, grey to come,
 // outlined for the one on screen
-export const dots = (marks: ('good' | 'warn' | 'bad' | undefined)[], current: number, name: string) =>
+export const dots = (marks: Mark[], current: number, name: string) =>
   el(
     'div',
     'flex flex-wrap gap-1',

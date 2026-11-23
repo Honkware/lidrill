@@ -4,8 +4,9 @@ import type { MaiaSpeed, Practice, PracticeKind } from '../db'
 import { el } from '../el'
 import { history, MAX_LEVEL, MIN_LEVEL, startLabel } from '../maia'
 import { readGame, TIMES, type SavedGame } from '../play'
-import { CLEAR_AFTER } from '../practice'
+import { CLEAR_AFTER, nextOpen } from '../practice'
 import { openingsCard } from './openings'
+import { summary } from './summary'
 import { timedCard } from './time'
 import { board, boardScreen, btnClass, button, card, dateLabel, icon, listRow, loading, moveInput, pawns, rowList, segmented } from './ui'
 
@@ -117,7 +118,7 @@ function section(kind: PracticeKind, list?: Practice[]): VNode {
           items.slice(0, 20).map(p =>
             listRow(`#/practice/${encodeURIComponent(p.id)}`, [
               el('div', 'min-w-0 flex-1', [
-                el('p', 'font-medium', `Move ${Math.ceil(p.ply / 2)}, ${pawns(p.startCp)}`),
+                el('p', 'font-medium', positionName(p)),
                 el('p', 'text-xs text-dim', p.attempts ? `${p.attempts} ${p.attempts === 1 ? 'try' : 'tries'}` : 'Not tried yet'),
               ]),
               p.cleared
@@ -145,6 +146,7 @@ export function practiceView(ctrl: Ctrl): VNode {
   const target = p.kind === 'conversion' ? '+10' : '12 moves'
   const targetNote = p.kind === 'conversion' ? 'Reach +10 or mate; dropping below +2 ends it.' : 'Slip at most a pawn from where you started.'
   const done = run.state === 'won' || run.state === 'lost'
+  if (done) return boardScreen({ title, back: () => ctrl.back('drills'), board: board(`${p.id}:${p.attempts}`, e => run.mount(e)), side: [practiceSummary(ctrl)] })
   return boardScreen({
     title,
     back: () => ctrl.back('drills'),
@@ -157,16 +159,31 @@ export function practiceView(ctrl: Ctrl): VNode {
         el('div', [el('p', 'text-xs text-dim', 'Your moves'), el('p', 'font-medium tabular-nums', String(run.moves))]),
         run.last ? el('div', [el('p', 'text-xs text-dim', `${run.lastBy} played`), el('p', 'font-medium', run.last)]) : null,
       ]),
-      done
-        ? el('div', 'space-y-3', [
-            el('p', 'font-display text-xl', { class: { 'text-accent': run.state === 'won', 'text-bad': run.state === 'lost' } }, p.kind === 'conversion' ? (run.state === 'won' ? 'Converted' : 'Not converted') : run.state === 'won' ? 'Held' : 'Not held'),
-            el('div', 'flex gap-2', [button('Try again', () => ctrl.retryPractice()), button('All drills', () => ctrl.go('drills'), 'plain')]),
-          ])
-        : el('div', 'space-y-2', [
-            el('p', 'text-sm text-dim', run.state === 'thinking' ? `${run.opponent} is thinking…` : 'Your move.'),
-            // Same rule as the drill: typing is for keyboards
-            el('div', 'hidden md:block', [moveInput(t => run.typeMove(t))]),
-          ]),
+      el('div', 'space-y-2', [
+        el('p', 'text-sm text-dim', run.state === 'thinking' ? `${run.opponent} is thinking…` : 'Your move.'),
+        // Same rule as the drill: typing is for keyboards
+        el('div', 'hidden md:block', [moveInput(t => run.typeMove(t))]),
+      ]),
     ],
+  })
+}
+
+const RESULT = { conversion: ['Converted', 'Not converted'], defense: ['Held', 'Not held'] }
+const positionName = (p: Practice) => `Move ${Math.ceil(p.ply / 2)}, ${pawns(p.startCp)}`
+
+// The positions played one after another, this one last
+function practiceSummary(ctrl: Ctrl): VNode {
+  const run = ctrl.run!
+  const p = run.practice
+  const won = run.state === 'won'
+  const all = [...ctrl.practiceRun, { practice: p, won }]
+  const next = nextOpen(ctrl.practiceList ?? [], p.kind, p.id)
+  return summary(ctrl, {
+    score: RESULT[p.kind][won ? 0 : 1],
+    tone: won ? 'good' : 'bad',
+    marks: all.map(r => (r.won ? 'good' : 'bad')),
+    counts: [['Eval', pawns(run.cp)], ['Your moves', run.moves]],
+    missed: ctrl.practiceRun.filter(r => !r.won).map(r => ({ text: positionName(r.practice), open: `#/practice/${encodeURIComponent(r.practice.id)}` })),
+    more: [button('Try again', () => ctrl.retryPractice(), 'plain'), next ? button('Next position', () => void ctrl.nextPosition(p.kind), 'plain') : null].filter(b => b !== null),
   })
 }

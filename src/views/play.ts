@@ -8,6 +8,7 @@ import { material, type PlayRun } from '../play'
 import { el } from '../el'
 import { moveTable, score } from './moves'
 import { board, boardScreen, button, errorLine, jumps, judgColor, loading, plural } from './ui'
+import { nextButtons } from './summary'
 import { playTimeLine } from './time'
 
 const RESULT = { win: 'Won', loss: 'Lost', draw: 'Draw' } as const
@@ -116,11 +117,8 @@ function over(ctrl: Ctrl): VNode {
         : null,
     game ? playTimeLine(game) : null,
     !game ? null : ids ? analysis(game, run.opts.color, ids, ctrl) : el('p', 'text-sm text-dim', ctrl.syncing ? 'Analyzing the game…' : 'Not analyzed yet.'),
-    el('div', 'flex flex-wrap gap-2', [
-      button('Rematch', () => ctrl.rematch(), solve ? 'plain' : 'primary'),
-      game ? button('Review the game', () => ctrl.go('game', game.id), 'plain') : null,
-      button('All drills', () => ctrl.go('drills'), 'plain'),
-    ]),
+    el('div', 'flex flex-wrap gap-2', [button('Rematch', () => ctrl.rematch(), 'plain'), game ? button('Review the game', () => ctrl.go('game', game.id), 'plain') : null]),
+    nextButtons(ctrl, !solve),
   ])
 }
 

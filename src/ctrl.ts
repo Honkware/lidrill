@@ -106,6 +106,7 @@ export class Ctrl {
   drills: Drill[] = [] // this session's completed puzzles, kept for review
   review = new SessionReview()
   session: Outcome[] = [] // today's run so far
+  sessionDone = false // the run is over and its summary is on screen
   autoNext = readFlag('lidrill.autoNext')
   queueLeft = 0
   // A "Move under a clock" session: seconds per puzzle, and the screen to go
@@ -114,7 +115,12 @@ export class Ctrl {
   countdown?: Countdown
   replay?: Replay
   gameView?: GameView
+  private gamePly?: number // where the next game opens, when not at the start
   run?: PracticeRun
+  // Positions played one after another with Try again or Next position,
+  // for the squares at the end
+  practiceRun: { practice: Practice; won: boolean }[] = []
+  private keepPracticeRun = false
   play?: PlayRun
   playStarts: Start[] = [] // positions from the player's own games a Maia game can start from
   maiaGames: Game[] = [] // for the level history on the card
@@ -298,7 +304,7 @@ export class Ctrl {
       if (this.screen !== 'welcome') await this.loadDue()
     }
     // Streaks change without the count changing, and the list is small
-    if (this.screen === 'drills') this.practiceList = await db.practice.toArray()
+    if (this.screen === 'drills' || this.screen === 'practice') this.practiceList = await db.practice.toArray()
     this.ready = true
     this.redraw()
   }
@@ -654,6 +660,7 @@ export class Ctrl {
     this.timed = undefined
     this.queue = (await dueQueue()).puzzles.map(p => p.id)
     this.session = []
+    this.sessionDone = false
     this.drills = []
     this.review.reset()
     this.go('drill')
@@ -678,11 +685,11 @@ export class Ctrl {
     const id = this.queue.shift()
     this.queueLeft = this.queue.length
     const puzzle = id ? await db.puzzles.get(id) : undefined
-    if (!puzzle && this.timed) return this.endTimed()
     if (!puzzle) {
-      sound.notify() // the daily queue is done
-      this.notice = { text: 'Done for today.' }
-      return this.go('today')
+      if (!this.session.length) return this.go('today')
+      sound.notify()
+      this.sessionDone = true
+      return this.loadDue()
     }
     this.drill = new Drill(puzzle, this.redraw, {
       record: !this.timed,
@@ -713,17 +720,10 @@ export class Ctrl {
     this.timed = { from, limits: new Map(set.map(p => [p.id, p.limit])), outs: 0 }
     this.queue = set.map(p => p.id)
     this.session = []
+    this.sessionDone = false
     this.drills = []
     this.review.reset()
     this.go('drill')
-  }
-
-  private endTimed() {
-    const { from, outs } = this.timed!
-    const solved = this.session.filter(o => o === 'clean' || o === 'hinted').length
-    sound.notify()
-    this.notice = { text: `Solved in time: ${solved} of ${this.session.length}. Out of time: ${outs}.` }
-    this.go(from)
   }
 
   // The puzzle on screen: the live one, or the completed one being reviewed
@@ -739,6 +739,13 @@ export class Ctrl {
 
   sessionForward() {
     this.review.forward()
+    this.redraw()
+  }
+
+  // A missed puzzle from the summary, read-only; Next steps on from it and
+  // back to the summary after the last
+  viewPuzzle(i: number) {
+    this.review.viewing = i
     this.redraw()
   }
 
@@ -777,9 +784,15 @@ export class Ctrl {
     const game = await db.games.get(id)
     if (!game) return void (this.screen = 'review')
     this.screen = 'game'
-    this.gameView = new GameView(game, this.redraw)
+    this.gameView = new GameView(game, this.redraw, this.gamePly)
+    this.gamePly = undefined
     this.gameView.journal = await db.journal.get(id)
     this.gameView.puzzles = await db.puzzles.where('gameId').equals(id).toArray()
+  }
+
+  openGameAt(id: string, ply: number) {
+    this.gamePly = ply
+    this.go('game', id)
   }
 
   async saveJournal(patch: Partial<Pick<JournalEntry, 'note' | 'confirmed'>>) {
@@ -801,23 +814,44 @@ export class Ctrl {
     this.replay = new Replay(game, stops, this.redraw, getEngine())
   }
 
+  // The replay's own session is saved by the last stop, so by the time the
+  // score shows the turning points are no longer next
+  continueReplay() {
+    const r = this.replay!
+    r.continue()
+    if (r.state === 'done') void this.loadDue().then(this.redraw)
+  }
+
   private async openPractice(id: string) {
     const practice = await db.practice.get(id)
     if (!practice) return void (this.screen = 'drills')
     const game = await db.games.get(practice.gameId)
     const maia = game && { level: this.maiaLevel, moves: game.moves.slice(0, practice.ply).map(m => m.uci) }
     this.screen = 'practice'
+    if (!this.keepPracticeRun) this.practiceRun = []
+    this.keepPracticeRun = false
     this.run = new PracticeRun(practice, getEngine(), this.redraw, maia)
+  }
+
+  // A finished position joins the run when the next one is started from it
+  private chainPractice() {
+    const r = this.run
+    if (!r) return
+    if (r.state === 'won' || r.state === 'lost') this.practiceRun.push({ practice: r.practice, won: r.state === 'won' })
+    this.keepPracticeRun = true
   }
 
   // The next open position of a kind after the one on screen
   async nextPosition(kind: PracticeKind) {
     const p = nextOpen(await db.practice.toArray(), kind, this.run?.practice.id)
-    if (p) this.go('practice', p.id)
+    if (!p) return
+    this.chainPractice()
+    this.go('practice', p.id)
   }
 
   async retryPractice() {
     const id = this.run?.practice.id
+    this.chainPractice()
     this.run?.destroy()
     this.run = undefined
     this.redraw()
@@ -900,7 +934,7 @@ export class Ctrl {
   // stored, moves the estimate, and goes through the same analysis as an
   // imported game, which is where its puzzles come from.
   private async finishPlay(run: PlayRun) {
-    if (run.tooShort) return
+    if (run.tooShort) return void this.loadDue().then(this.redraw)
     const game = run.toGame(Date.now())
     await db.games.add(game)
     const score = run.result === 'win' ? 1 : run.result === 'draw' ? 0.5 : 0
@@ -911,6 +945,7 @@ export class Ctrl {
     this.profile = await saveProfile({ maia: { ...all, [speed]: next } })
     // Set once the profile has the new estimate, which the screen shows
     run.saved = game
+    await this.loadDue()
     this.redraw()
     await this.analyzeNow()
     if (this.play !== run) return
@@ -938,6 +973,7 @@ export class Ctrl {
     this.timed = undefined
     this.queue = [...ids]
     this.session = []
+    this.sessionDone = false
     this.drills = []
     this.review.reset()
     this.go('drill')

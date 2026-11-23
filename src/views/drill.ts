@@ -1,23 +1,49 @@
 import type { VNode } from 'snabbdom'
 import type { Ctrl } from '../ctrl'
-import type { Drill } from '../drill'
+import type { Drill, Outcome } from '../drill'
 import { el } from '../el'
 import type { BoardLink, Segment } from '../server/render'
-import { board, boardScreen, btnClass, button, dots, errorLine, icon, jumps, loading, moveInput } from './ui'
+import { board, boardScreen, btnClass, button, dots, errorLine, icon, jumps, loading, moveInput, type Mark } from './ui'
 import { drillGameLine } from '../server/surface'
+import { summary } from './summary'
 import { countdownBar } from './time'
 
 export function drillView(ctrl: Ctrl): VNode {
+  const timed = ctrl.timed
+  const title = timed ? 'Move under a clock' : "Today's puzzles"
+  const back = () => ctrl.go(timed ? timed.from : 'today')
+  const last = ctrl.drills.at(-1)
+  // The summary keeps the last puzzle's board, under its own key since that
+  // puzzle's board was destroyed when it ended
+  if (ctrl.sessionDone && last && ctrl.review.viewing === undefined)
+    return boardScreen({ title, back, board: board(`done:${last.puzzle.id}`, e => last.mount(e)), side: [sessionSummary(ctrl)] })
   const d = ctrl.displayDrill
   if (!d) return loading()
-  const timed = ctrl.timed
-  return boardScreen({
-    title: timed ? 'Move under a clock' : "Today's puzzles",
-    back: () => ctrl.go(timed ? timed.from : 'today'),
-    board: boardWithWheel(d),
-    controls: puzzleJumps(d),
-    side: [sessionRow(ctrl), countdownBar(ctrl), side(ctrl, d)],
+  return boardScreen({ title, back, board: boardWithWheel(d), controls: puzzleJumps(d), side: [sessionRow(ctrl), countdownBar(ctrl), side(ctrl, d)] })
+}
+
+const markOf = (o?: Outcome): Mark => (o === 'clean' ? 'good' : o === 'hinted' ? 'warn' : o ? 'bad' : undefined)
+
+function sessionSummary(ctrl: Ctrl): VNode {
+  const out = ctrl.session
+  const count = (o: Outcome) => out.filter(x => x === o).length
+  const solved = count('clean') + count('hinted')
+  return summary(ctrl, {
+    score: `${solved} / ${out.length}`,
+    marks: out.map(markOf),
+    counts: ctrl.timed
+      ? [['Solved', solved], ['Out of time', ctrl.timed.outs]]
+      : [['Clean', count('clean')], ['Hint', count('hinted')], ['Missed', out.length - solved]],
+    missed: ctrl.drills.flatMap((d, i) =>
+      d.outcome === 'missed' || d.outcome === 'shown' ? [{ text: puzzleName(d), move: d.sanAt(d.puzzle.solution[0]), open: () => ctrl.viewPuzzle(i) }] : [],
+    ),
   })
+}
+
+function puzzleName(d: Drill): string {
+  const p = d.puzzle
+  if (p.source === 'lichess') return p.rating ? `Lichess ${p.rating}` : 'Lichess'
+  return `${d.game?.opponent ? `vs ${d.game.opponent}, ` : ''}move ${Math.ceil(p.ply / 2)}`
 }
 
 // One square per puzzle in today's run: green solved, amber with the hint,
@@ -25,7 +51,7 @@ export function drillView(ctrl: Ctrl): VNode {
 // completed one being reviewed (chevrons step back through them read-only)
 function sessionRow(ctrl: Ctrl): VNode {
   const done = ctrl.session
-  const total = done.length + 1 + ctrl.queueLeft
+  const total = done.length + (ctrl.sessionDone ? 0 : 1) + ctrl.queueLeft
   const current = ctrl.review.viewing === undefined ? done.length : ctrl.review.viewing
   const step = (name: string, aria: string, onClick: () => void, enabled: boolean) =>
     el(
@@ -37,7 +63,7 @@ function sessionRow(ctrl: Ctrl): VNode {
   return el('div', 'flex items-center gap-1', [
     step('prev', 'Previous puzzle', () => ctrl.sessionBack(), ctrl.review.canBack),
     dots(
-      Array.from({ length: total }, (_, i) => (done[i] === 'clean' ? 'good' : done[i] === 'hinted' ? 'warn' : done[i] ? 'bad' : undefined)),
+      Array.from({ length: total }, (_, i) => markOf(done[i])),
       current,
       `${done.length} of ${total} done`,
     ),
