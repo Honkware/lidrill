@@ -5,11 +5,11 @@ import type { Game, Opening } from '../db'
 import { pgnMoves } from '../sync/pgn'
 import type { Reply } from './policy'
 import { keyOf } from './repertoire'
-import { buildTree, gameCards, rankGaps, wentWrong } from './tree'
+import { buildTree, coverage, gameCards, unlearned, wentWrong } from './tree'
 
-// Coverage and the gaps on a small tree with stated probabilities. The
-// opening runs to 6. O-O in the Giuoco Pianissimo, so Black's 6th and 7th
-// moves are the only branching before the depth (White's 8th move) is past.
+// The tree on a small opening with stated probabilities. The opening runs
+// to 6. O-O in the Giuoco Pianissimo, so Black's 6th and 7th moves are the
+// only branching before the depth (White's 8th move) is past.
 
 const opening: Opening = {
   name: 'Italian Game',
@@ -31,6 +31,7 @@ const replies: Record<string, Reply[]> = {
     { uci: 'c5a7', p: 0.4 },
   ],
   [`${o} e8h8 f1e1`]: [{ uci: 'a7a6', p: 1 }],
+  [`${o} h7h6 f1e1`]: [{ uci: 'e8h8', p: 1 }],
 }
 const policy = async (moves: string[]) => {
   const r = replies[moves.join(' ')]
@@ -45,32 +46,51 @@ const keyAfter = (ucis: string) => {
 }
 
 // 6...a6 7.a4 O-O 8.Re1 and 6...O-O 7.Re1 a6 8.a4; nothing after 6...h6 or 7...Ba7
-const rep = new Map([
-  [keyAfter(`${o} a7a6`), 'a2a4'],
-  [keyAfter(`${o} a7a6 a2a4 e8h8`), 'f1e1'],
-  [keyAfter(`${o} e8h8`), 'f1e1'],
-  [keyAfter(`${o} e8h8 f1e1 a7a6`), 'a2a4'],
-])
+const known = () =>
+  new Map([
+    [keyAfter(`${o} a7a6`), 'a2a4'],
+    [keyAfter(`${o} a7a6 a2a4 e8h8`), 'f1e1'],
+    [keyAfter(`${o} e8h8`), 'f1e1'],
+    [keyAfter(`${o} e8h8 f1e1 a7a6`), 'a2a4'],
+  ])
+
+const recs: Record<string, string> = {
+  [`${o} h7h6`]: 'f1e1',
+  [`${o} h7h6 f1e1 e8h8`]: 'a2a4',
+  [`${o} a7a6 a2a4 c5a7`]: 'f1e1',
+}
+const recommend = async (moves: string[]) => recs[moves.join(' ')]
 
 describe('buildTree', () => {
-  it('counts the share of the player\'s turns with an answer, each weighted by its chance', async () => {
-    const tree = await buildTree(opening, rep, policy)
-    // Turns reached, out of 0.97 once the 0.03 is dropped: after 6...a6 (0.5),
-    // 7...O-O (0.3) and 7...Ba7 (0.2), 6...O-O (0.3), 7...a6 (0.3) and
-    // 6...h6 (0.17). All but 7...Ba7 and 6...h6 have an answer.
-    expect(tree.coverage).toBeCloseTo(1.4 / 1.77, 6)
+  it('stops where the repertoire has no move and nothing is recommended', async () => {
+    const tree = await buildTree(opening, known(), policy)
     expect(tree.nodes).toHaveLength(6)
+    expect(tree.nodes.filter(n => !n.answer).map(n => n.moves.at(-1))).toEqual(['c5a7', 'h7h6'])
     expect(tree.nodes.some(n => n.moves.includes('e8f8'))).toBe(false)
   })
 
-  it('ranks the gaps by the chance of reaching them, and a position gone wrong before first', async () => {
-    const { nodes } = await buildTree(opening, rep, policy)
-    const gaps = rankGaps(nodes, new Set())
-    expect(gaps.map(g => g.moves.at(-1))).toEqual(['c5a7', 'h7h6'])
-    expect(gaps[0].reach).toBeCloseTo((0.5 / 0.97) * 0.4, 6)
-    expect(gaps[1].reach).toBeCloseTo(0.17 / 0.97, 6)
-    const wrong = new Set([keyAfter(`${o} h7h6`)])
-    expect(rankGaps(nodes, wrong).map(g => g.moves.at(-1))).toEqual(['h7h6', 'c5a7'])
+  it('walks on past a recommended move and keeps the ones it found', async () => {
+    const rep = known()
+    const tree = await buildTree(opening, rep, policy, recommend)
+    expect(tree.nodes).toHaveLength(7)
+    expect(tree.nodes.every(n => n.answer)).toBe(true)
+    expect(tree.recs.map(r => r.uci)).toEqual(['f1e1', 'f1e1', 'a2a4'])
+    expect(rep.get(keyAfter(`${o} h7h6 f1e1 e8h8`))).toBe('a2a4')
+  })
+})
+
+describe('coverage', () => {
+  const node = (fen: string, reach: number, answer?: string) => ({ fen, moves: [], reach, answer })
+  const nodes = [node(keyAfter('e2e4'), 0.6, 'e7e5'), node(keyAfter('d2d4'), 0.3, 'd7d5'), node(keyAfter('c2c4'), 0.1)]
+
+  it("is the learned share of the player's turns, each weighted by its chance", () => {
+    expect(coverage(nodes, new Set([keyAfter('e2e4')]))).toBeCloseTo(0.6, 6)
+    expect(coverage(nodes, new Set())).toBe(0)
+    expect(coverage([], new Set())).toBe(1)
+  })
+
+  it('leaves a learned position out of what is new, and a position with no move to learn', () => {
+    expect(unlearned(nodes, new Set([keyAfter('e2e4')])).map(n => n.answer)).toEqual(['d7d5'])
   })
 })
 

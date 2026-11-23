@@ -1,7 +1,7 @@
 import { makeFen } from 'chessops/fen'
 import { makeSan } from 'chessops/san'
 import { parseUci } from 'chessops/util'
-import { createEmptyCard, Rating, type Grade } from 'ts-fsrs'
+import { createEmptyCard, Rating, State, type Grade } from 'ts-fsrs'
 import type { Engine } from '../analysis/engine'
 import { db, type Eval, type OpeningCard } from '../db'
 import { nextCard } from '../train'
@@ -25,6 +25,15 @@ export const GOOD_CP = 50
 // view use, so an answer comes back while the player waits
 export const RECALL_DEPTH = 10
 const GAP_DEPTH = 14
+
+// A position is learned once its move has been played in a learn line,
+// which gives its card a first grade; FSRS takes it from there
+export const isLearned = (c: OpeningCard) => c.card.state !== State.New
+
+export async function learnedKeys(ids: string[]): Promise<Set<string>> {
+  const cards = await db.openingCards.bulkGet(ids)
+  return new Set(cards.filter(c => c !== undefined && isLearned(c)).map(c => c!.id))
+}
 
 const worth = (c: OpeningCard) => c.reach * (c.wrong ? WRONG_BOOST : 1)
 

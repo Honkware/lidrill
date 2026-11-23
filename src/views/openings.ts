@@ -26,13 +26,13 @@ export function openingsCard(ctrl: Ctrl): VNode {
 }
 
 function openingRow(ctrl: Ctrl, r: OpeningStat): VNode {
-  const coverage = r.coverage !== undefined ? `${pct(r.coverage)} covered` : r.error ? 'not counted' : 'counting…'
+  const coverage = r.coverage !== undefined ? `${pct(r.coverage)} learned` : r.error ? 'not counted' : 'counting…'
   return el('li', 'flex items-center gap-3 py-3', [
     el('div', 'min-w-0 flex-1', [
       el('p', 'truncate font-medium', r.opening.name),
       el('p', 'text-xs text-dim', [
         `${side(r.opening)}, `,
-        el('span', { attrs: { title: `Share of Maia's likely replies at about ${ctrl.openingLevel} you have a move for, through move ${DEPTH}` } }, coverage),
+        el('span', { attrs: { title: `Share of your moves against Maia's likely replies at about ${ctrl.openingLevel} you have learned, through move ${DEPTH}` } }, coverage),
         `, ${r.due} due`,
       ]),
       r.error ? el('p', 'text-xs text-bad', r.error) : null,

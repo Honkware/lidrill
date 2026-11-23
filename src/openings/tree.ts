@@ -1,7 +1,7 @@
 import { Chess } from 'chessops/chess'
 import { makeFen } from 'chessops/fen'
 import { parseUci } from 'chessops/util'
-import type { Game, Opening } from '../db'
+import type { Game, Opening, RepMove } from '../db'
 import { swings } from '../metrics'
 import type { Policy, Reply } from './policy'
 import { DEPTH, keyOf, posKey, startsWith } from './repertoire'
@@ -9,10 +9,10 @@ import { DEPTH, keyOf, posKey, startsWith } from './repertoire'
 // An opening's tree against the people Maia models. From the end of the
 // opening's moves, the player's turn follows their repertoire move and the
 // opponent's turn takes every reply Maia plays at least THRESHOLD of the
-// time, down to the player's DEPTH-th move. Coverage is the share of the
-// player's turns in that tree that have an answer, each weighted by the
-// chance of reaching it. A turn without an answer ends its branch, since
-// nothing past it can be known.
+// time, down to the player's DEPTH-th move. A turn without a repertoire
+// move gets the recommended one as the tree is walked. Coverage is the
+// share of the player's turns in that tree they have learned, each
+// weighted by the chance of reaching it.
 
 // Replies under 5% are dropped: one move in twenty is about the rarest a
 // player meets often enough to prepare for, and keeping them makes the tree
@@ -20,7 +20,7 @@ import { DEPTH, keyOf, posKey, startsWith } from './repertoire'
 export const THRESHOLD = 0.05
 
 // A position the player has gone wrong in before counts as twice as likely
-// when ranking what to learn next
+// when picking which due cards come first
 export const WRONG_BOOST = 2
 
 // A move that cost this much is a mistake here even where the judgment,
@@ -36,9 +36,11 @@ export interface TreeNode {
 }
 
 export interface Tree {
-  coverage: number
   nodes: TreeNode[]
+  recs: RepMove[] // recommended moves found on this walk, to store
 }
+
+export type Recommend = (moves: string[]) => Promise<string>
 
 export const kept = (replies: Reply[]) => replies.filter(r => r.p >= THRESHOLD)
 
@@ -46,8 +48,11 @@ export const kept = (replies: Reply[]) => replies.filter(r => r.p >= THRESHOLD)
 // its reply is past the depth
 export const pastDepth = (pos: Chess) => pos.fullmoves + (pos.turn === 'black' ? 1 : 0) > DEPTH
 
-export async function buildTree(opening: Opening, rep: Map<string, string>, policy: Policy): Promise<Tree> {
+// rep takes the recommended moves too, so a transposition later in the walk
+// reuses one
+export async function buildTree(opening: Opening, rep: Map<string, string>, policy: Policy, recommend?: Recommend): Promise<Tree> {
   const nodes: TreeNode[] = []
+  const recs: RepMove[] = []
   const root = Chess.default()
   for (const m of opening.moves) root.play(parseUci(m)!)
 
@@ -55,7 +60,13 @@ export async function buildTree(opening: Opening, rep: Map<string, string>, poli
     if (pos.isEnd()) return
     if (pos.turn === opening.color) {
       if (pos.fullmoves > DEPTH) return
-      const answer = rep.get(keyOf(pos))
+      const key = keyOf(pos)
+      let answer = rep.get(key)
+      if (!answer && recommend) {
+        answer = await recommend(moves)
+        rep.set(key, answer)
+        recs.push({ fen: key, uci: answer, source: 'rec' })
+      }
       nodes.push({ fen: makeFen(pos.toSetup()), moves, reach, answer })
       if (!answer) return
       const next = pos.clone()
@@ -76,18 +87,19 @@ export async function buildTree(opening: Opening, rep: Map<string, string>, poli
   }
 
   await walk(root, [...opening.moves], 1)
+  return { nodes, recs }
+}
+
+// learned holds the positions (posKey) the player has learned
+export function coverage(nodes: TreeNode[], learned: Set<string>): number {
   const all = nodes.reduce((s, n) => s + n.reach, 0)
-  const answered = nodes.reduce((s, n) => s + (n.answer ? n.reach : 0), 0)
+  const known = nodes.reduce((s, n) => s + (n.answer && learned.has(posKey(n.fen)) ? n.reach : 0), 0)
   // An opening whose own moves already reach the depth leaves nothing to learn
-  return { coverage: all ? answered / all : 1, nodes }
+  return all ? known / all : 1
 }
 
-// Positions the repertoire has no answer for, most worth learning first
-export function rankGaps(nodes: TreeNode[], wrong: Set<string>): TreeNode[] {
-  return nodes.filter(n => !n.answer).sort((a, b) => score(b, wrong) - score(a, wrong))
-}
-
-export const score = (n: { fen: string; reach: number }, wrong: Set<string>) => n.reach * (wrong.has(posKey(n.fen)) ? WRONG_BOOST : 1)
+// Positions with a move to learn that the player hasn't learned yet
+export const unlearned = (nodes: TreeNode[], learned: Set<string>) => nodes.filter(n => n.answer && !learned.has(posKey(n.fen)))
 
 // Positions in the player's games, inside the tree depth, where their move
 // was judged an inaccuracy or worse or lost a lot

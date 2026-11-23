@@ -11,12 +11,13 @@ import { STUDY_SCOPE, sendToStudy } from './lichess/study'
 import { applyLook, BOARDS, PIECE_SETS } from './look'
 import { clampLevel, estimateFor, estimates, levelFor, ownStarts, speedOf, startEstimate, updateEstimate, type Start } from './maia'
 import { compliance, openingTable, repertoireTargets, streak, type OpeningRow, type Streak } from './metrics'
-import { addCards, dueCards, saveTreeCards } from './openings/cards'
+import { addCards, dueCards, learnedKeys, saveTreeCards } from './openings/cards'
 import { cachedPolicy, treeLevel } from './openings/policy'
-import { gamesOpenings, rebuildRepertoire } from './openings/repertoire'
+import { mastersFor, recommend } from './openings/recommend'
+import { gamesOpenings, posKey, rebuildRepertoire } from './openings/repertoire'
 import { OpeningSession } from './openings/session'
 import { SparRun } from './openings/spar'
-import { buildTree, gameCards, wentWrong } from './openings/tree'
+import { buildTree, coverage, gameCards, unlearned, wentWrong, type Recommend } from './openings/tree'
 import { analyzePending, forgetLichessAccount, getEngine, precertifyDue, saveProfile, syncAndAnalyze, warmEngine } from './pipeline'
 import { clearGame, clockOf, PlayRun, readChoices, readGame, rematch, writeChoices, type Choices } from './play'
 import { PracticeRun } from './practice'
@@ -32,11 +33,12 @@ import { DAILY_CAP, dueQueue, dueToday, saveWhyMissed, type DayQueue } from './t
 
 export type Screen = 'welcome' | 'today' | 'drill' | 'replay' | 'review' | 'game' | 'games' | 'drills' | 'practice' | 'play' | 'settings' | 'precision' | 'opening' | 'spar'
 
-// A trained opening on the Drills card: coverage is filled in once its
-// tree is counted
+// A trained opening on the Drills card: coverage and the positions still to
+// learn are filled in once its tree is counted
 export interface OpeningStat {
   opening: Opening
   coverage?: number
+  fresh?: number
   due: number
   error?: string
 }
@@ -325,9 +327,16 @@ export class Ctrl {
     return treeLevel(estimateFor(estimates(this.profile?.maia), 'rapid', this.maiaStart).rating)
   }
 
+  // Masters' moves when signed in to Lichess, else Stockfish's alone
+  private get recommender(): Recommend {
+    const masters = mastersFor(this.auth?.token)
+    return moves => recommend(moves, masters, getEngine())
+  }
+
   // Rebuilds the repertoire, makes cards from the player's games and counts
-  // each opening's tree. Maia's answers are cached, so after the first time
-  // this is mostly local; the card fills in one opening at a time.
+  // each opening's tree. Maia's answers and the recommended moves are
+  // stored, so after the first time this is mostly local; the card fills in
+  // one opening at a time.
   private async countOpenings(games: Game[]): Promise<void> {
     // A change while counting (an opening added) is counted straight after
     if (this.counting) return void (this.countAgain = games)
@@ -338,12 +347,16 @@ export class Ctrl {
       const wrong = wentWrong(analyzed)
       await addCards(analyzed.flatMap(g => gameCards(g, rep, openings, wrong)))
       const policy = cachedPolicy(this.openingLevel)
+      const rec = this.recommender
       this.openingStats = openings.map(opening => ({ opening, due: 0 }))
       for (const row of this.openingStats) {
         try {
-          const tree = await buildTree(row.opening, rep, policy)
+          const tree = await buildTree(row.opening, rep, policy, rec)
+          await db.repertoire.bulkPut(tree.recs)
           await saveTreeCards(tree.nodes, row.opening.name, wrong)
-          row.coverage = tree.coverage
+          const learned = await learnedKeys(tree.nodes.map(n => posKey(n.fen)))
+          row.coverage = coverage(tree.nodes, learned)
+          row.fresh = new Set(unlearned(tree.nodes, learned).map(n => posKey(n.fen))).size
         } catch (e) {
           row.error = (e as Error).message
         }
