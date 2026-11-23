@@ -4,7 +4,7 @@ import { makeSan } from 'chessops/san'
 import { parseUci } from 'chessops/util'
 import { Rating, type Grade } from 'ts-fsrs'
 import type { Engine } from '../analysis/engine'
-import type { OpeningCard } from '../db'
+import { db, type OpeningCard } from '../db'
 import { sound } from '../sound'
 import { OpeningBoard, playMove } from './board'
 import { grade, judgeMove, type Verdict } from './cards'
@@ -12,7 +12,11 @@ import { addOwnMove, norm } from './repertoire'
 
 // A set of opening cards to review, one move each, with no arrow. A wrong
 // move shows the repertoire move and has the player play it; a playable
-// other move can become the repertoire move instead.
+// other move can become the repertoire move instead. A missed position
+// opened again from a summary is the same screen ungraded.
+
+// One square per item of a set, as ui's dots draws them
+export type Mark = 'good' | 'warn' | 'bad' | undefined
 
 export const replay = (moves: string[]): Chess => {
   const pos = Chess.default()
@@ -33,25 +37,51 @@ export function lineSan(moves: string[]): string {
   return parts.join(' ')
 }
 
+// The moves with the one to find as "?": "1. e4 e5 2. ?"
+export const lineAsk = (moves: string[]) => `${lineSan(moves)} ${moves.length % 2 ? '' : `${moves.length / 2 + 1}. `}?`.trim()
+
+// The explorer's name for the deepest position along moves that has one,
+// from the answers cached when recommended moves were looked up
+export async function variation(moves: string[]): Promise<string | undefined> {
+  for (let i = moves.length; i > 0; i--) {
+    const name = (await db.explorer.get(moves.slice(0, i).join(',')))?.opening?.name
+    if (name) return name
+  }
+}
+
+const MARK: Record<number, Mark> = { [Rating.Good]: 'good', [Rating.Hard]: 'warn', [Rating.Again]: 'bad' }
+
 export class OpeningSession {
   index = 0
   state: 'your-move' | 'judging' | 'fix' | 'judged' = 'your-move'
   verdict?: Verdict
   added = false
   grades: Grade[] = []
+  name?: string // of the card's variation
   readonly cards: OpeningCard[]
+  readonly graded: boolean
   readonly board = new OpeningBoard(uci => void this.onUci(uci))
-  private played?: string
+  played?: string
   private rep: Map<string, string>
   private engine: Pick<Engine, 'search'>
   private redraw: () => void
 
   // Every card has a move in rep
-  constructor(cards: OpeningCard[], rep: Map<string, string>, engine: Pick<Engine, 'search'>, redraw: () => void) {
+  constructor(cards: OpeningCard[], rep: Map<string, string>, engine: Pick<Engine, 'search'>, redraw: () => void, graded = true) {
     this.cards = cards
     this.rep = rep
     this.engine = engine
     this.redraw = redraw
+    this.graded = graded
+  }
+
+  get marks(): Mark[] {
+    return this.cards.map((_, i) => MARK[this.grades[i]])
+  }
+
+  // The cards missed, with their repertoire move
+  get misses(): { id: string; moves: string[]; san: string }[] {
+    return this.cards.flatMap((c, i) => (this.grades[i] === Rating.Again ? [{ id: c.id, moves: c.moves, san: makeSan(replay(c.moves), parseUci(this.rep.get(c.id)!)!) }] : []))
   }
 
   get card(): OpeningCard | undefined {
@@ -74,6 +104,18 @@ export class OpeningSession {
   mount(el: HTMLElement) {
     this.board.mount(el)
     this.show()
+    void this.nameNow()
+  }
+
+  private async nameNow() {
+    const c = this.card
+    this.name = undefined
+    if (!c) return
+    const name = await variation(c.moves)
+    if (c === this.card) {
+      this.name = name
+      this.redraw()
+    }
   }
 
   // A playable other move is shown beside the repertoire move, on the
@@ -108,7 +150,7 @@ export class OpeningSession {
     this.show()
     this.redraw()
     this.verdict = await judgeMove(makeFen(pos.toSetup()), played, this.answer, this.engine)
-    await grade(c, this.verdict.rating)
+    if (this.graded) await grade(c, this.verdict.rating)
     this.grades.push(this.verdict.rating)
     if (this.verdict.rating === Rating.Again) {
       this.played = undefined
@@ -137,5 +179,6 @@ export class OpeningSession {
     this.added = false
     this.show()
     this.redraw()
+    void this.nameNow()
   }
 }

@@ -250,6 +250,7 @@ export interface OpeningCard {
   moves: string[] // UCI from the start
   reach: number // chance of getting here from the end of the opening's moves against Maia
   wrong?: boolean // one of the player's games went wrong here
+  learnedAt?: number // when a learn line first taught it, for the daily limit
   card: Card
 }
 

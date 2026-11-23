@@ -5,7 +5,7 @@ import { Rating } from 'ts-fsrs'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { SearchResult } from '../analysis/engine'
 import { db } from '../db'
-import { addCards, dueCards, grade, judgeMove, saveTreeCards } from './cards'
+import { addCards, dueCards, grade, judgeMove, learnCard, NEW_PER_DAY, openingsDue, saveTreeCards } from './cards'
 import { posKey } from './repertoire'
 
 // Review wants the repertoire move but lets a nearly equal one pass as
@@ -65,5 +65,46 @@ describe('dueCards', () => {
     expect(await dueCards(['Italian Game'], now)).toEqual([])
     await grade((await db.openingCards.get(posKey(fen)))!, Rating.Good, now)
     expect(await dueCards(['Italian Game'], new Date('2026-11-15'))).toHaveLength(1)
+  })
+})
+
+describe('openingsDue', () => {
+  const now = new Date('2026-11-20T18:00')
+  // Positions by their card id; only the cards matter here
+  const nodes = (n: number, tag: string) => Array.from({ length: n }, (_, i) => ({ fen: `${tag}${i} w - - 0 1`, moves: [], reach: 0.1 }))
+  const learn = async (ids: string[], when: Date) => {
+    for (const id of ids) await learnCard((await db.openingCards.get(id))!, when)
+  }
+
+  beforeEach(async () => {
+    await db.openingCards.clear()
+    await db.profile.put({ id: 'me', openings: [{ name: 'Italian Game', color: 'white', moves: [] }] } as never)
+  })
+
+  it('offers at most the daily limit of new positions, however large the tree', async () => {
+    await saveTreeCards(nodes(694, 'a'), 'Italian Game', undefined, now)
+    expect(await openingsDue(now)).toEqual({ due: 0, fresh: NEW_PER_DAY })
+  })
+
+  it('counts positions learned today in any opening against the limit, and none from yesterday', async () => {
+    await saveTreeCards(nodes(20, 'a'), 'Italian Game', undefined, now)
+    await saveTreeCards(nodes(20, 'b'), 'Ruy Lopez', undefined, now)
+    await learn(['a0 w - -', 'b0 w - -', 'b1 w - -'], new Date('2026-11-20T09:00'))
+    await learn(['b2 w - -'], new Date('2026-11-19T23:00'))
+    expect((await openingsDue(now)).fresh).toBe(NEW_PER_DAY - 3)
+  })
+
+  it('offers only what is left to learn, and leaves out positions no tree reaches', async () => {
+    await saveTreeCards(nodes(2, 'a'), 'Italian Game', undefined, now)
+    await addCards([{ fen: 'g0 w - - 0 1', moves: [], opening: 'Italian Game' }], now)
+    expect((await openingsDue(now)).fresh).toBe(2)
+  })
+
+  it('counts learned cards that are due, in the chosen openings only', async () => {
+    await saveTreeCards(nodes(3, 'a'), 'Italian Game', undefined, now)
+    await saveTreeCards(nodes(1, 'b'), 'Ruy Lopez', undefined, now)
+    const before = new Date('2026-11-01')
+    await learn(['a0 w - -', 'a1 w - -', 'b0 w - -'], before)
+    expect(await openingsDue(now)).toEqual({ due: 2, fresh: 1 })
   })
 })

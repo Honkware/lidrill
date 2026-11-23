@@ -129,13 +129,14 @@ export function learnView(ctrl: Ctrl): VNode {
     side: [
       el('p', 'text-sm font-medium', r.name),
       r.played.length ? el('p', 'text-sm', lineSan(r.played)) : null,
-      r.state === 'your-move'
-        ? el('p', 'text-sm', { class: { 'text-bad': r.missed, 'text-accent': !r.missed && r.isNew, 'text-dim': !r.missed && !r.isNew } }, r.missed ? 'Missed' : r.isNew ? 'New move' : 'Your move')
+      r.playing
+        ? el('p', 'text-sm', { class: { 'text-bad': r.missed, 'text-accent': !r.missed && r.state !== 'your-move', 'text-dim': !r.missed && r.state === 'your-move' } }, r.missed ? 'Missed' : r.state === 'show' ? 'New move' : 'Your move')
         : null,
+      r.state === 'line-done' ? el('div', 'grid', [button('Next line', () => r.nextLine())]) : null,
       r.state === 'done'
         ? el('div', 'space-y-3', [
-            el('p', 'font-display text-xl', r.line.length ? `${plural(r.taught, 'new move')} learned` : 'Nothing new to learn'),
-            el('div', 'flex flex-wrap gap-2', [r.more ? button('Next line', () => void ctrl.learnAgain()) : null, button('Back to drills', () => ctrl.go('drills'), r.more ? 'plain' : 'primary')]),
+            el('p', 'font-display text-xl', r.lines.length ? `${plural(r.taught, 'new move')} learned` : 'Nothing new to learn'),
+            el('div', 'flex flex-wrap gap-2', [button('Back to drills', () => ctrl.go('drills'))]),
           ])
         : null,
     ],

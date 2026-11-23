@@ -14,6 +14,11 @@ import { WRONG_BOOST, type TreeNode } from './tree'
 // One move each, so a set stays short next to the 12 daily puzzles
 export const SET_SIZE = 10
 
+// New positions taught a day, across openings: one review set's worth, so
+// what a day teaches comes back as about a set of reviews rather than the
+// hundreds of positions in a whole tree
+export const NEW_PER_DAY = 10
+
 // A different move Stockfish puts within 30 cp of the repertoire move is
 // playable, Hard rather than Again
 export const PLAYABLE_CP = 30
@@ -28,6 +33,29 @@ export const isLearned = (c: OpeningCard) => c.card.state !== State.New
 export async function learnedKeys(ids: string[]): Promise<Set<string>> {
   const cards = await db.openingCards.bulkGet(ids)
   return new Set(cards.filter(c => c !== undefined && isLearned(c)).map(c => c!.id))
+}
+
+// Teaching a position is its first grade
+export async function learnCard(c: OpeningCard, now = new Date()): Promise<void> {
+  await db.openingCards.update(c.id, { card: nextCard(c.card, now, Rating.Good), learnedAt: now.getTime() })
+}
+
+// What is left of today's NEW_PER_DAY
+export async function freshLeft(now = new Date()): Promise<number> {
+  const from = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const taught = await db.openingCards.filter(c => (c.learnedAt ?? 0) >= from).count()
+  return Math.max(0, NEW_PER_DAY - taught)
+}
+
+// In the chosen openings: the cards due for review now, and the new
+// positions on offer today. A card with no reach is a position from a game
+// that no tree goes through, which no learn line teaches.
+export async function openingsDue(now = new Date()): Promise<{ due: number; fresh: number }> {
+  const names = ((await db.profile.get('me'))?.openings ?? []).map(o => o.name)
+  const cards = await db.openingCards.where('opening').anyOf(names).toArray()
+  const due = cards.filter(c => isLearned(c) && c.card.due <= now).length
+  const left = cards.filter(c => !isLearned(c) && c.reach > 0).length
+  return { due, fresh: Math.min(left, await freshLeft(now)) }
 }
 
 const worth = (c: OpeningCard) => c.reach * (c.wrong ? WRONG_BOOST : 1)

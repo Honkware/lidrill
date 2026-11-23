@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Opening } from '../db'
-import { learnLine } from './learn'
+import { learnLine, learnSet } from './learn'
 import type { Reply } from './policy'
 import { keyOf } from './repertoire'
 import { replay } from './session'
@@ -58,5 +58,29 @@ describe('learnLine', () => {
 
   it('is empty once every position is learned', async () => {
     expect(await lineFor([`${o} a7a6`, `${o} a7a6 a2a4 e8h8`, `${o} e8h8`, `${o} e8h8 f1e1 a7a6`])).toBe('')
+  })
+})
+
+describe('learnSet', () => {
+  // Each of the two lines has two new positions
+  const setFor = async (room: number) => {
+    const { nodes } = await buildTree(opening, rep, policy)
+    const set = learnSet(opening, nodes, new Set(), room)
+    return { lines: set.lines.map(l => l.slice(opening.moves.length).join(' ')), fresh: set.fresh }
+  }
+
+  it('takes whole lines in learning order while their new positions fit', async () => {
+    const set = await setFor(10)
+    expect(set.lines).toEqual(['a7a6 a2a4 e8h8 f1e1', 'e8h8 f1e1 a7a6 a2a4'])
+    expect(set.fresh).toEqual([`${o} a7a6`, `${o} a7a6 a2a4 e8h8`, `${o} e8h8`, `${o} e8h8 f1e1 a7a6`].map(key))
+  })
+
+  it('leaves a line for another day rather than split it', async () => {
+    expect((await setFor(3)).lines).toEqual(['a7a6 a2a4 e8h8 f1e1'])
+  })
+
+  it('cuts the first line short when it alone has more new positions than the room', async () => {
+    expect(await setFor(1)).toEqual({ lines: ['a7a6 a2a4'], fresh: [key(`${o} a7a6`)] })
+    expect(await setFor(0)).toEqual({ lines: [], fresh: [] })
   })
 })

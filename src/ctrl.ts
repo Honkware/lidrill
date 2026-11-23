@@ -12,11 +12,11 @@ import { applyLook, BOARDS, PIECE_SETS } from './look'
 import { clampLevel, estimateFor, estimates, levelFor, ownStarts, speedOf, startEstimate, updateEstimate, type Start } from './maia'
 import { openingTable, streak, type OpeningRow, type Streak } from './metrics'
 import { nextAction, type Due, type Next } from './next'
-import { addCards, dueCards, learnedKeys, openingsDue, saveTreeCards } from './openings/cards'
+import { addCards, dueCards, freshLeft, learnedKeys, openingsDue, saveTreeCards } from './openings/cards'
 import { cachedPolicy, treeLevel } from './openings/policy'
 import { mastersFor, recommend } from './openings/recommend'
 import { gamesOpenings, posKey, rebuildRepertoire } from './openings/repertoire'
-import { LearnRun, learnLine } from './openings/learn'
+import { LearnRun, learnSet } from './openings/learn'
 import { OpeningSession } from './openings/session'
 import { SparRun } from './openings/spar'
 import { buildTree, coverage, gameCards, unlearned, wentWrong, type Recommend } from './openings/tree'
@@ -466,6 +466,8 @@ export class Ctrl {
     if (!opening) return void (this.screen = 'openings')
     this.screen = 'learn'
     this.learnError = undefined
+    // A new board each time, even on the same route
+    this.learnRound++
     this.redraw()
     await this.counting
     try {
@@ -473,20 +475,10 @@ export class Ctrl {
       await db.repertoire.bulkPut(tree.recs)
       await saveTreeCards(tree.nodes, opening.name)
       const learned = await learnedKeys(tree.nodes.map(n => posKey(n.fen)))
-      const left = new Set(unlearned(tree.nodes, learned).map(n => posKey(n.fen))).size
-      this.learn = new LearnRun(opening, learnLine(opening, tree.nodes, learned), learned, left, this.redraw)
+      this.learn = new LearnRun(opening, learnSet(opening, tree.nodes, learned, await freshLeft()), learned, this.redraw)
     } catch (e) {
       this.learnError = (e as Error).message
     }
-  }
-
-  async learnAgain() {
-    const o = this.learn?.opening
-    this.learn?.destroy()
-    this.learn = undefined
-    this.learnRound++
-    if (o) await this.openLearn(`${o.color}:${o.name}`)
-    this.redraw()
   }
 
   // arg is 'white:Italian Game': an opening's name can come up for both colours
