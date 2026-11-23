@@ -2,14 +2,14 @@ import type { VNode } from 'snabbdom'
 import type { Ctrl } from '../ctrl'
 import { el } from '../el'
 import type { Replay } from '../replay'
-import { puzzleSide } from './drill'
+import { puzzleJumps, puzzleSide } from './drill'
 import { board, boardScreen, button, card, dots, label, loading, plural } from './ui'
 
 export function replayView(ctrl: Ctrl): VNode {
   const r = ctrl.replay
   if (!r) return loading()
   const title = `Turning points${r.game.opponent ? ` vs ${r.game.opponent}` : ''}`
-  return boardScreen({ title, back: () => ctrl.back('review'), board: board(`replay:${r.game.id}`, e => r.mount(e)), side: [side(ctrl, r)] })
+  return boardScreen({ title, back: () => ctrl.back('review'), board: board(`replay:${r.game.id}`, e => r.mount(e)), controls: r.drill && puzzleJumps(r.drill), side: [side(ctrl, r)] })
 }
 
 // One square per stop: green found, red missed

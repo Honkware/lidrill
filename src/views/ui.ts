@@ -148,6 +148,19 @@ export const boardScreen = (o: { title: string; back: () => void; board: VNode; 
     el('aside', '[grid-area:side] space-y-4 px-4 pb-8 pt-3 wide:px-0 wide:pt-4', o.side),
   ])
 
+// First, previous, next and last move, for the row under the board. A button
+// is disabled where it would not move, as Lichess's are at either end.
+export function jumps(at: number, first: number, last: number, go: (i: number) => void): VNode {
+  const jump = (name: string, text: string, to: number) =>
+    el('button', `${btnClass('plain', 'fill')} flex-1`, { attrs: { type: 'button', 'aria-label': text, disabled: to === at }, on: { click: () => go(to) } }, [icon(name)])
+  return el('div', 'flex gap-2', [
+    jump('first', 'First move', first),
+    jump('prev', 'Previous move', Math.max(first, at - 1)),
+    jump('next', 'Next move', Math.min(last, at + 1)),
+    jump('last', 'Last move', last),
+  ])
+}
+
 // Games per week, oldest first: the green part is zero-hang games. Empty
 // weeks keep a stub so the eight slots always read as a timeline.
 export function weekBars(weeks: { games: number; clean: number }[]): VNode {

@@ -3,13 +3,13 @@ import type { Ctrl } from '../ctrl'
 import type { Drill } from '../drill'
 import { el } from '../el'
 import type { BoardLink, Segment } from '../server/render'
-import { board, boardScreen, btnClass, button, dots, errorLine, icon, loading, moveInput } from './ui'
+import { board, boardScreen, btnClass, button, dots, errorLine, icon, jumps, loading, moveInput } from './ui'
 import { drillGameLine } from '../server/surface'
 
 export function drillView(ctrl: Ctrl): VNode {
   const d = ctrl.displayDrill
   if (!d) return loading()
-  return boardScreen({ title: "Today's puzzles", back: () => ctrl.go('today'), board: boardWithWheel(d), side: [sessionRow(ctrl), side(ctrl, d)] })
+  return boardScreen({ title: "Today's puzzles", back: () => ctrl.go('today'), board: boardWithWheel(d), controls: puzzleJumps(d), side: [sessionRow(ctrl), side(ctrl, d)] })
 }
 
 // One square per puzzle in today's run: green solved, amber with the hint,
@@ -145,11 +145,12 @@ function moveLine(d: Drill): VNode {
     )
   })
   if (d.misses.length) items.push(el('span', 'px-2 text-sm text-bad', `✗ ${d.misses.join(', ')}`))
+  if (d.evalText) items.push(el('span', 'ml-auto px-2 text-xs tabular-nums text-dim', { attrs: { title: 'Stockfish, on this device' } }, d.evalText))
   return el('div', 'flex flex-wrap items-center gap-1', items)
 }
 
-const navButton = (name: string, labelText: string, onClick: () => void) =>
-  el('button', btnClass('quiet', 'icon'), { attrs: { type: 'button', 'aria-label': labelText }, on: { click: onClick } }, [icon(name)])
+// Under the board once the puzzle is over, to step through its line
+export const puzzleJumps = (d: Drill) => (d.state === 'playing' ? null : jumps(d.cursor, d.start, d.nodes.length - 1, i => d.go(i)))
 
 // Every move mention in the explanation is a link - ref or certified text -
 // and each one behaves the same: hover with a mouse, tap on a touch screen
@@ -222,7 +223,7 @@ function whyCard(box: VNode, why: VNode | null): VNode {
 }
 
 // Over: one card with the result, the answer, the game move and "Why?";
-// one card with the line to step through and Stockfish's view
+// one card with the line and Stockfish's view
 export function puzzleSide(d: Drill, after: (VNode | null)[]): VNode {
   if (d.state === 'playing') return playing(d)
   const p = d.puzzle
@@ -239,16 +240,7 @@ export function puzzleSide(d: Drill, after: (VNode | null)[]): VNode {
   const why = d.why ? null : el('button', btnClass('plain', 'sm'), { attrs: { type: 'button' }, on: { click: () => d.explain() } }, 'Why?')
   return el('div', 'space-y-3', [
     whyCard(feedbackBox(tone, title, `${answer}${game}`.trim() || null, why), whyPart(d)),
-    el('div', 'rounded-xl bg-surface p-2', [
-      moveLine(d),
-      el('div', 'mt-1 flex items-center', [
-        navButton('first', 'Puzzle start', () => d.go(d.start)),
-        navButton('prev', 'Previous move', () => d.go(d.cursor - 1)),
-        navButton('next', 'Next move', () => d.go(d.cursor + 1)),
-        navButton('last', 'Last move', () => d.go(d.nodes.length - 1)),
-        d.evalText ? el('span', 'ml-auto pr-2 text-xs tabular-nums text-dim', { attrs: { title: 'Stockfish, on this device' } }, d.evalText) : null,
-      ]),
-    ]),
+    el('div', 'rounded-xl bg-surface p-2', [moveLine(d)]),
     ...after,
     drillContext(d),
   ])

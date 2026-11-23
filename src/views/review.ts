@@ -5,7 +5,7 @@ import type { Game } from '../db'
 import { el } from '../el'
 import type { GameView } from '../gameview'
 import { deviation } from '../lichess/repertoire'
-import { board, boardScreen, btnClass, button, card, dateLabel, empty, icon, judgColor, judgMark, label, listRow, loading, loadingBlock, plural, resultChip, rowList } from './ui'
+import { board, boardScreen, btnClass, button, card, dateLabel, empty, icon, jumps, judgColor, judgMark, label, listRow, loading, loadingBlock, plural, resultChip, rowList } from './ui'
 import { journalHangParts } from '../server/surface'
 import { moveTable, score } from './moves'
 
@@ -84,7 +84,7 @@ export function gameView(ctrl: Ctrl): VNode {
     title: g.opponent ? `vs ${g.opponent}` : 'Game',
     back: () => ctrl.back('review'),
     board: board(g.id, e => v.mount(e)),
-    controls: controls(v),
+    controls: jumps(v.ply, 0, v.game.moves.length, ply => v.go(ply)),
     side: [
       el('p', 'text-sm text-dim', `${g.result === 'win' ? 'Won' : g.result === 'loss' ? 'Lost' : 'Drew'} as ${g.color} · ${g.opening || g.eco || 'unknown opening'} · ${dateLabel(g.playedAt)}`),
       advice(v),
@@ -103,25 +103,6 @@ export function gameView(ctrl: Ctrl): VNode {
       ]),
     ],
   })
-}
-
-// Disabled when it would not move, as Lichess's are at either end
-const navButton = (name: string, labelText: string, to: number, v: GameView) =>
-  el(
-    'button',
-    `${btnClass('plain', 'fill')} flex-1`,
-    { attrs: { type: 'button', 'aria-label': labelText, disabled: to === v.ply }, on: { click: () => v.go(to) } },
-    [icon(name)],
-  )
-
-function controls(v: GameView): VNode {
-  const end = v.game.moves.length
-  return el('div', 'flex gap-2', [
-    navButton('first', 'Start position', 0, v),
-    navButton('prev', 'Previous move', Math.max(0, v.ply - 1), v),
-    navButton('next', 'Next move', Math.min(end, v.ply + 1), v),
-    navButton('last', 'Last move', end, v),
-  ])
 }
 
 const ADVICE = [
