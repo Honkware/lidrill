@@ -1,9 +1,9 @@
 // The screens, and which of them a bare name in the URL hash opens. Board
 // screens take an argument (#/game/<id>) and are opened in ctrl.ts.
 
-export type Screen = 'welcome' | 'today' | 'drill' | 'replay' | 'game' | 'games' | 'drills' | 'practice' | 'play' | 'settings' | 'precision' | 'opening' | 'learn' | 'spar' | 'openings'
+export type Screen = 'welcome' | 'today' | 'drill' | 'replay' | 'game' | 'games' | 'drills' | 'practice' | 'play' | 'settings' | 'precision' | 'opening' | 'learn' | 'spar' | 'openings' | 'maia'
 
-const PAGES: Screen[] = ['today', 'games', 'drills', 'settings', 'precision', 'openings']
+const PAGES: Screen[] = ['today', 'play', 'games', 'drills', 'settings', 'precision', 'openings']
 
 // Pages that were renamed, so old bookmarks still land
 const MOVED = { review: 'games' } as const satisfies Record<string, Screen>

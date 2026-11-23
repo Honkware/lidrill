@@ -6,7 +6,7 @@ import { drillView } from './drill'
 import { gameView } from './review'
 import { gamesView } from './games'
 import { learnView, openingsPage, openingView, sparView } from './openings'
-import { playView } from './play'
+import { playView, setupView } from './play'
 import { precisionView } from './precision'
 import { replayView } from './replay'
 import { settingsView } from './settings'
@@ -17,14 +17,15 @@ import { welcomeView } from './welcome'
 const TABS: { screen: Screen; label: string; icon: string }[] = [
   { screen: 'today', label: 'Today', icon: 'today' },
   { screen: 'drills', label: 'Drills', icon: 'drills' },
+  { screen: 'play', label: 'Play', icon: 'play' },
   { screen: 'games', label: 'Games', icon: 'games' },
   { screen: 'settings', label: 'Settings', icon: 'settings' },
 ]
 
 // Board screens take the whole phone screen: no tab bar
-const BOARD_SCREENS: Screen[] = ['drill', 'replay', 'game', 'practice', 'play', 'opening', 'learn', 'spar']
+const BOARD_SCREENS: Screen[] = ['drill', 'replay', 'game', 'practice', 'maia', 'opening', 'learn', 'spar']
 
-const tabOf = (s: Screen): Screen => (s === 'game' || s === 'replay' ? 'games' : s === 'practice' || s === 'play' || s === 'opening' || s === 'learn' || s === 'spar' || s === 'openings' ? 'drills' : s === 'drill' ? 'today' : s === 'precision' ? 'settings' : s)
+const tabOf = (s: Screen): Screen => (s === 'game' || s === 'replay' ? 'games' : s === 'maia' ? 'play' : s === 'practice' || s === 'opening' || s === 'learn' || s === 'spar' || s === 'openings' ? 'drills' : s === 'drill' ? 'today' : s === 'precision' ? 'settings' : s)
 
 export function view(ctrl: Ctrl): VNode {
   const full = BOARD_SCREENS.includes(ctrl.screen)
@@ -56,6 +57,8 @@ function screen(ctrl: Ctrl): VNode {
     case 'practice':
       return practiceView(ctrl)
     case 'play':
+      return setupView(ctrl)
+    case 'maia':
       return playView(ctrl)
     case 'settings':
       return settingsView(ctrl)
@@ -113,7 +116,7 @@ function tabBar(ctrl: Ctrl): VNode {
     [
       el(
         'div',
-        'grid grid-cols-4',
+        'grid grid-cols-5',
         TABS.map(t => {
           const active = tabOf(ctrl.screen) === t.screen
           return el(

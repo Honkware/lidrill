@@ -113,11 +113,10 @@ export class Ctrl {
   private keepPracticeRun = false
   play?: PlayRun
   playStarts: Start[] = [] // positions from the player's own games a Maia game can start from
-  maiaGames: Game[] = [] // for the level history on the card
+  maiaGames: Game[] = [] // for the level history on Play
   playLevel?: number // a level picked by hand; undefined follows the estimate
   playChoices = readChoices()
   playPuzzles?: string[] // ids of the puzzles the last finished Maia game produced, once analyzed
-  playPicking = false // the list of own-game starts is open on the card
   private playFrom: Start | boolean = false
   private maiaStart = 1000
   studies?: StudyInfo[]
@@ -198,7 +197,7 @@ export class Ctrl {
     else if (name === 'replay' && arg) await this.openReplay(arg)
     else if (name === 'practice' && arg) await this.openPractice(arg)
     else if (name === 'drill') await this.openDrill()
-    else if (name === 'play') await this.openPlay()
+    else if (name === 'maia') await this.openMaia()
     else if (name === 'opening') await this.openOpenings(arg || undefined)
     else if (name === 'learn' && arg) await this.openLearn(arg)
     else if (name === 'spar' && arg) await this.openSpar(arg)
@@ -276,7 +275,7 @@ export class Ctrl {
     const version = [games, analyzed, puzzles, reviews, journal, practice, repertoire, openings, this.profile?.band, this.profile?.repertoire?.join(), this.profile?.repertoireStudy?.id, this.openingsTouched, new Date().toDateString()].join('|')
     const key = `${this.screen}:${version}`
     if (key !== this.loadedKey) {
-      const all = ['today', 'games', 'settings', 'drills', 'openings'].includes(this.screen) ? await db.games.toArray() : []
+      const all = ['today', 'games', 'settings', 'drills', 'openings', 'play'].includes(this.screen) ? await db.games.toArray() : []
       const done = all.filter(g => g.analyzedAt !== undefined)
       if (this.screen === 'today') {
         await this.loadToday()
@@ -284,7 +283,7 @@ export class Ctrl {
       }
       if (this.screen === 'games') await this.loadGames(all, done)
       if (this.screen === 'games' || this.screen === 'drills') this.timeProfiles = timeProfiles(all)
-      if (this.screen === 'drills') {
+      if (this.screen === 'play') {
         this.playStarts = ownStarts(all)
         this.maiaGames = all.filter(g => g.site === 'maia')
         this.maiaStart = startEstimate(this.profile?.ratings, all)
@@ -358,7 +357,7 @@ export class Ctrl {
     const due = this.due!
     switch (this.nextUp!.go) {
       case 'game':
-        return this.go('play')
+        return this.go('maia')
       case 'puzzles':
         return this.startDrill()
       case 'reviews':
@@ -843,7 +842,7 @@ export class Ctrl {
 
   // --- games against Maia ---
 
-  // The speed of the time control picked on the card, and its estimate
+  // The speed of the time control picked on Play, and its estimate
   get maiaSpeed(): MaiaSpeed {
     return speedOf(this.playChoices.time)
   }
@@ -859,7 +858,7 @@ export class Ctrl {
   }
 
   // The estimate at the speed of a given time control ("10+0", "untimed"),
-  // which after a game can differ from the one picked on the card
+  // which after a game can differ from the one picked on Play
   maiaRatingAt(time: string): number {
     return estimateFor(estimates(this.profile?.maia), speedOf(time), this.maiaStart).rating
   }
@@ -880,22 +879,16 @@ export class Ctrl {
     this.redraw()
   }
 
-  // A new game from the Drills card replaces one left unfinished. from is a
-  // start from the player's games, true for any of them, false for move 1.
+  // A new game from Play replaces one left unfinished. from is a start from
+  // the player's games, true for any of them, false for move 1.
   startPlay(from: Start | boolean) {
     clearGame()
     this.playFrom = from
-    this.playPicking = false
-    this.go('play')
+    this.go('maia')
   }
 
-  togglePlayPicking() {
-    this.playPicking = !this.playPicking
-    this.redraw()
-  }
-
-  private async openPlay() {
-    this.screen = 'play'
+  private async openMaia() {
+    this.screen = 'maia'
     this.playPuzzles = undefined
     if (!this.profile?.maia) this.maiaStart = startEstimate(this.profile?.ratings, await db.games.toArray())
     const saved = readGame()
@@ -937,7 +930,7 @@ export class Ctrl {
     this.redraw()
   }
 
-  // Straight from the finished game, without going back to the Drills card
+  // Straight from the finished game, without going back to Play
   rematch() {
     const o = this.play!.opts
     const opts = rematch(o, this.maiaRatingAt(o.clock ? `${o.clock.base / 60}+${o.clock.inc}` : 'untimed'))
