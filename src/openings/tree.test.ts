@@ -53,10 +53,12 @@ const rep = new Map([
 ])
 
 describe('buildTree', () => {
-  it('weights each reply by how often Maia plays it and multiplies down the tree', async () => {
+  it('counts the share of the player\'s turns with an answer, each weighted by its chance', async () => {
     const tree = await buildTree(opening, rep, policy)
-    // (0.5 × 0.6 + 0.3 × 1 + 0.17 × 0) / 0.97, the 0.03 dropped
-    expect(tree.coverage).toBeCloseTo(0.6 / 0.97, 6)
+    // Turns reached, out of 0.97 once the 0.03 is dropped: after 6...a6 (0.5),
+    // 7...O-O (0.3) and 7...Ba7 (0.2), 6...O-O (0.3), 7...a6 (0.3) and
+    // 6...h6 (0.17). All but 7...Ba7 and 6...h6 have an answer.
+    expect(tree.coverage).toBeCloseTo(1.4 / 1.77, 6)
     expect(tree.nodes).toHaveLength(6)
     expect(tree.nodes.some(n => n.moves.includes('e8f8'))).toBe(false)
   })

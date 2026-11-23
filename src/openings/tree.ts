@@ -9,10 +9,10 @@ import { DEPTH, keyOf, posKey, startsWith } from './repertoire'
 // An opening's tree against the people Maia models. From the end of the
 // opening's moves, the player's turn follows their repertoire move and the
 // opponent's turn takes every reply Maia plays at least THRESHOLD of the
-// time, down to the player's DEPTH-th move. Coverage is the share of those
-// replies the player has an answer for, each reply weighted by how often it
-// comes and multiplied down the tree: an answer to a reply only counts as
-// far as the answers to what comes after it.
+// time, down to the player's DEPTH-th move. Coverage is the share of the
+// player's turns in that tree that have an answer, each weighted by the
+// chance of reaching it. A turn without an answer ends its branch, since
+// nothing past it can be known.
 
 // Replies under 5% are dropped: one move in twenty is about the rarest a
 // player meets often enough to prepare for, and keeping them makes the tree
@@ -51,34 +51,35 @@ export async function buildTree(opening: Opening, rep: Map<string, string>, poli
   const root = Chess.default()
   for (const m of opening.moves) root.play(parseUci(m)!)
 
-  const walk = async (pos: Chess, moves: string[], reach: number): Promise<number> => {
-    if (pos.isEnd()) return 1
+  const walk = async (pos: Chess, moves: string[], reach: number): Promise<void> => {
+    if (pos.isEnd()) return
     if (pos.turn === opening.color) {
-      if (pos.fullmoves > DEPTH) return 1
+      if (pos.fullmoves > DEPTH) return
       const answer = rep.get(keyOf(pos))
       nodes.push({ fen: makeFen(pos.toSetup()), moves, reach, answer })
-      if (!answer) return 0
+      if (!answer) return
       const next = pos.clone()
       next.play(parseUci(answer)!)
       return walk(next, [...moves, answer], reach)
     }
-    if (pastDepth(pos)) return 1
+    if (pastDepth(pos)) return
     // A position where every move is under the cut (rare: it takes twenty
     // or more moves about equally likely) keeps Maia's favourite
     const all = await policy(moves)
     const replies = kept(all).length ? kept(all) : all.slice(0, 1)
     const total = replies.reduce((s, r) => s + r.p, 0)
-    let covered = 0
     for (const r of replies) {
       const next = pos.clone()
       next.play(parseUci(r.uci)!)
-      covered += (r.p / total) * (await walk(next, [...moves, r.uci], (reach * r.p) / total))
+      await walk(next, [...moves, r.uci], (reach * r.p) / total)
     }
-    return covered
   }
 
-  const coverage = await walk(root, [...opening.moves], 1)
-  return { coverage, nodes }
+  await walk(root, [...opening.moves], 1)
+  const all = nodes.reduce((s, n) => s + n.reach, 0)
+  const answered = nodes.reduce((s, n) => s + (n.answer ? n.reach : 0), 0)
+  // An opening whose own moves already reach the depth leaves nothing to learn
+  return { coverage: all ? answered / all : 1, nodes }
 }
 
 // Positions the repertoire has no answer for, most worth learning first
