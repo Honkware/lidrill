@@ -18,3 +18,22 @@ jobs:
       - run: bun run build
       - run: bun run test
       - run: bun run gate:offline
+
+  # The site and the Worker go out once main passes. The Maia server on the
+  # VM is still updated by hand (git pull and a restart), since a restart
+  # drops any game in progress.
+  deploy:
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # A newer push waits for the deploy before it instead of racing it
+    concurrency: deploy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - run: bun run deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
