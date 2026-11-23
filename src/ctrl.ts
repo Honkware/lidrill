@@ -24,6 +24,7 @@ import { Replay } from './replay'
 import { weekReport, weeklyZeroHang, type WeekReport } from './report'
 import { corpus, exportMarks, loadMarks, saveMarks, type Mark } from './precision'
 import { sound } from './sound'
+import { timeProfiles, type TimeProfile } from './time'
 import { SignInExpired } from './sync/lichess'
 import { serverSync as syncWithServer } from './sync/server'
 import { dueQueue, dueToday, saveWhyMissed, type DayQueue } from './train'
@@ -85,6 +86,7 @@ export class Ctrl {
   notice?: { text: string; href?: string }
   today?: TodayData
   reviewList?: ReviewRow[]
+  timeProfiles: TimeProfile[] = [] // blitz and rapid, the one with more games first
   practiceList?: Practice[]
   drill?: Drill
   drills: Drill[] = [] // this session's completed puzzles, kept for review
@@ -250,6 +252,7 @@ export class Ctrl {
       const done = all.filter(g => g.analyzedAt !== undefined)
       if (this.screen === 'today' && this.profile) await this.loadToday(all, done, this.profile)
       if (this.screen === 'review') await this.loadReview(done)
+      if (this.screen === 'review') this.timeProfiles = timeProfiles(all)
       if (this.screen === 'drills') {
         this.playStarts = ownStarts(all)
         this.maiaGames = all.filter(g => g.site === 'maia')

@@ -8,6 +8,7 @@ import { deviation } from '../lichess/repertoire'
 import { board, boardScreen, btnClass, button, card, dateLabel, empty, icon, jumps, judgColor, judgMark, label, listRow, loading, loadingBlock, plural, resultChip, rowList } from './ui'
 import { journalHangParts } from '../server/surface'
 import { moveTable, score } from './moves'
+import { timeCard, timeProfileCard } from './time'
 
 export function reviewView(ctrl: Ctrl): VNode {
   const rows = ctrl.reviewList
@@ -19,6 +20,7 @@ export function reviewView(ctrl: Ctrl): VNode {
       : !rows.length
         ? empty(ctrl.syncing ? 'Analyzing games. Each one appears here when done.' : 'No analyzed games yet.')
         : rowList(rows.map(r => row(r)), 'overflow-hidden rounded-xl bg-surface'),
+    rows?.length ? timeProfileCard(ctrl) : null,
     openings.length ? openingsCard(openings) : null,
   ])
 }
@@ -88,6 +90,7 @@ export function gameView(ctrl: Ctrl): VNode {
     side: [
       el('p', 'text-sm text-dim', `${g.result === 'win' ? 'Won' : g.result === 'loss' ? 'Lost' : 'Drew'} as ${g.color} · ${g.opening || g.eco || 'unknown opening'} · ${dateLabel(g.playedAt)}`),
       advice(v),
+      timeCard(g),
       studyNote(ctrl, v),
       moveList(v),
       journalCard(ctrl, v),
