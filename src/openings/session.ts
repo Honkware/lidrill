@@ -4,19 +4,26 @@ import { makeSan } from 'chessops/san'
 import { parseUci } from 'chessops/util'
 import { Rating, type Grade } from 'ts-fsrs'
 import type { Engine } from '../analysis/engine'
-import { db, type OpeningCard } from '../db'
-import { sound } from '../sound'
-import { OpeningBoard, playMove } from './board'
-import { grade, judgeMove, type Verdict } from './cards'
-import { addOwnMove, norm } from './repertoire'
+import type { OpeningCard } from '../db'
+import { grade, judgeMove } from './cards'
+import { LinePlay, type Resolved } from './line'
+import { addOwnMove, keyOf, norm } from './repertoire'
 
-// A set of opening cards to review, one move each, with no arrow. A wrong
-// move shows the repertoire move and has the player play it; a playable
-// other move can become the repertoire move instead. A missed position
-// opened again from a summary is the same screen ungraded.
+// A set of due opening cards to review, played as lines from move 1 with
+// no arrow: the moves before a due position play themselves, quickly, and
+// each due position is asked with the retries and hint ladder of a learn
+// line's practice. A playable other move can become the repertoire move
+// instead. A missed position opened again from a summary is the same
+// screen ungraded.
 
 // One square per item of a set, as ui's dots draws them
 export type Mark = 'good' | 'warn' | 'bad' | undefined
+
+export const MARK: Record<number, Mark> = { [Rating.Good]: 'good', [Rating.Hard]: 'warn', [Rating.Again]: 'bad' }
+
+// Moves that play themselves in review come quicker than in Learn, since
+// the player has seen them before
+const REVIEW_MS = 300
 
 export const replay = (moves: string[]): Chess => {
   const pos = Chess.default()
@@ -40,145 +47,130 @@ export function lineSan(moves: string[]): string {
 // The moves with the one to find as "?": "1. e4 e5 2. ?"
 export const lineAsk = (moves: string[]) => `${lineSan(moves)} ${moves.length % 2 ? '' : `${moves.length / 2 + 1}. `}?`.trim()
 
-// The explorer's name for the deepest position along moves that has one,
-// from the answers cached when recommended moves were looked up
-export async function variation(moves: string[]): Promise<string | undefined> {
-  for (let i = moves.length; i > 0; i--) {
-    const name = (await db.explorer.get(moves.slice(0, i).join(',')))?.opening?.name
-    if (name) return name
-  }
+export interface ReviewLine {
+  moves: string[]
+  asks: string[] // the due positions on it, in order
 }
 
-const MARK: Record<number, Mark> = { [Rating.Good]: 'good', [Rating.Hard]: 'warn', [Rating.Again]: 'bad' }
+// Due cards grouped into lines from move 1. The deepest card's moves and
+// its repertoire move make a line, and every other due card whose position
+// comes up on that line with its repertoire move played there is asked on
+// it too. Lines come in the order of their first card in cards.
+export function reviewLines(cards: OpeningCard[], rep: Map<string, string>): ReviewLine[] {
+  const left = new Map(cards.map((c, i) => [c.id, i]))
+  const out: (ReviewLine & { first: number })[] = []
+  for (const c of [...cards].sort((a, b) => b.moves.length - a.moves.length)) {
+    if (!left.has(c.id)) continue
+    const moves = [...c.moves, rep.get(c.id)!]
+    const asks: string[] = []
+    const pos = Chess.default()
+    for (const m of moves) {
+      const k = keyOf(pos)
+      if (left.has(k) && rep.get(k) === norm(pos, m)) asks.push(k)
+      pos.play(parseUci(m)!)
+    }
+    out.push({ moves, asks, first: Math.min(...asks.map(k => left.get(k)!)) })
+    for (const k of asks) left.delete(k)
+  }
+  return out.sort((a, b) => a.first - b.first).map(({ moves, asks }) => ({ moves, asks }))
+}
 
 export class OpeningSession {
-  index = 0
-  state: 'your-move' | 'judging' | 'fix' | 'judged' = 'your-move'
-  verdict?: Verdict
-  added = false
-  grades: Grade[] = []
-  name?: string // of the card's variation
-  readonly cards: OpeningCard[]
+  index = 0 // of the line on the board
+  state: 'playing' | 'line-done' | 'done' = 'playing'
+  added = false // the last playable move was made the repertoire move
+  readonly grades = new Map<string, Grade>() // by card id
+  readonly cards: OpeningCard[] // in the order they come up
+  readonly lines: ReviewLine[]
   readonly graded: boolean
-  readonly board = new OpeningBoard(uci => void this.onUci(uci))
-  played?: string
+  readonly play: LinePlay
   private rep: Map<string, string>
-  private engine: Pick<Engine, 'search'>
   private redraw: () => void
 
   // Every card has a move in rep
   constructor(cards: OpeningCard[], rep: Map<string, string>, engine: Pick<Engine, 'search'>, redraw: () => void, graded = true) {
-    this.cards = cards
     this.rep = rep
-    this.engine = engine
     this.redraw = redraw
     this.graded = graded
+    this.lines = reviewLines(cards, rep)
+    const byId = new Map(cards.map(c => [c.id, c]))
+    this.cards = this.lines.flatMap(l => l.asks.map(k => byId.get(k)!))
+    this.play = new LinePlay({
+      turn: pos => (this.line.asks.includes(keyOf(pos)) && !this.grades.has(keyOf(pos)) ? 'ask' : 'auto'),
+      wait: REVIEW_MS,
+      judge: (fen, uci, answer) => judgeMove(fen, uci, answer, engine),
+      resolved: r => this.resolved(r),
+      end: () => {
+        this.state = 'line-done'
+        redraw()
+      },
+      redraw,
+    })
+    if (!this.lines.length) this.state = 'done'
+  }
+
+  get line(): ReviewLine {
+    return this.lines[this.index]
+  }
+
+  // The player's side in the line on the board
+  get color(): 'white' | 'black' {
+    return replay(this.cards.find(c => c.id === this.line.asks[0])!.moves).turn
   }
 
   get marks(): Mark[] {
-    return this.cards.map((_, i) => MARK[this.grades[i]])
+    return this.cards.map(c => MARK[this.grades.get(c.id) ?? 0])
+  }
+
+  get progress(): number {
+    return this.cards.length ? this.grades.size / this.cards.length : 1
   }
 
   // The cards missed, with their repertoire move
   get misses(): { id: string; moves: string[]; san: string }[] {
-    return this.cards.flatMap((c, i) => (this.grades[i] === Rating.Again ? [{ id: c.id, moves: c.moves, san: makeSan(replay(c.moves), parseUci(this.rep.get(c.id)!)!) }] : []))
-  }
-
-  get card(): OpeningCard | undefined {
-    return this.cards[this.index]
-  }
-
-  private get answer(): string {
-    return this.rep.get(this.card!.id)!
-  }
-
-  get answerSan(): string | undefined {
-    return this.card && makeSan(replay(this.card.moves), parseUci(this.answer)!)
-  }
-
-  get offerSan(): string | undefined {
-    const offer = this.verdict?.offer
-    return offer && this.card ? makeSan(replay(this.card.moves), parseUci(offer)!) : undefined
+    return this.cards.flatMap(c => (this.grades.get(c.id) === Rating.Again ? [{ id: c.id, moves: c.moves, san: makeSan(replay(c.moves), parseUci(this.rep.get(c.id)!)!) }] : []))
   }
 
   mount(el: HTMLElement) {
-    this.board.mount(el)
-    this.show()
-    void this.nameNow()
+    this.play.board.mount(el)
+    this.begin()
   }
 
-  private async nameNow() {
-    const c = this.card
-    this.name = undefined
-    if (!c) return
-    const name = await variation(c.moves)
-    if (c === this.card) {
-      this.name = name
-      this.redraw()
-    }
+  begin() {
+    if (this.lines.length) this.play.start(this.line.moves, this.color)
   }
 
-  // A playable other move is shown beside the repertoire move, on the
-  // position it was played from
-  private show() {
-    const c = this.card
-    if (!c) return
-    const pos = replay(c.moves)
-    const color = pos.turn
-    if (this.state === 'fix') return this.board.show(pos, color, c.moves.at(-1), true, [[this.answer, 'green']])
-    if (this.state === 'judged' && this.verdict?.offer) return this.board.show(pos, color, c.moves.at(-1), false, [[this.answer, 'green'], [this.verdict.offer, 'yellow']])
-    if (this.played) playMove(pos, this.played)
-    this.board.show(pos, color, this.played ?? c.moves.at(-1), this.state === 'your-move')
+  destroy() {
+    this.play.destroy()
   }
 
-  private async onUci(uci: string) {
-    const c = this.card
-    if (!c) return
-    const pos = replay(c.moves)
-    const played = norm(pos, uci)
-    if (this.state === 'fix') {
-      if (played === this.answer) {
-        this.played = played
-        this.state = 'judged'
-      } else sound.bad()
-      this.show()
-      return this.redraw()
-    }
-    if (this.state !== 'your-move') return
-    this.played = played
-    this.state = 'judging'
-    this.show()
-    this.redraw()
-    this.verdict = await judgeMove(makeFen(pos.toSetup()), played, this.answer, this.engine)
-    if (this.graded) await grade(c, this.verdict.rating)
-    this.grades.push(this.verdict.rating)
-    if (this.verdict.rating === Rating.Again) {
-      this.played = undefined
-      this.state = 'fix'
-      sound.bad()
-    } else this.state = 'judged'
-    this.show()
-    this.redraw()
+  private async resolved(r: Resolved) {
+    this.added = false
+    const c = this.cards.find(x => x.id === r.key)!
+    if (this.graded) await grade(c, r.grade)
+    this.grades.set(r.key, r.grade)
   }
 
+  // Makes the playable move just judged the repertoire move. The line on
+  // the board goes on with the move it was built from.
   async add() {
-    const c = this.card
-    const offer = this.verdict?.offer
-    if (!c || !offer || this.added) return
-    await addOwnMove(makeFen(replay(c.moves).toSetup()), offer)
-    this.rep.set(c.id, offer)
+    const last = this.play.last
+    if (!last?.offer || this.added) return
+    const c = this.cards.find(x => x.id === last.key)!
+    await addOwnMove(makeFen(replay(c.moves).toSetup()), last.offer)
+    this.rep.set(c.id, last.offer)
     this.added = true
     this.redraw()
   }
 
-  next() {
+  nextLine() {
+    if (this.state !== 'line-done') return
+    if (this.index === this.lines.length - 1) {
+      this.state = 'done'
+      return this.redraw()
+    }
     this.index++
-    this.state = 'your-move'
-    this.verdict = undefined
-    this.played = undefined
-    this.added = false
-    this.show()
-    this.redraw()
-    void this.nameNow()
+    this.state = 'playing'
+    this.play.start(this.line.moves, this.color)
   }
 }

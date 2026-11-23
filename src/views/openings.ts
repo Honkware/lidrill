@@ -5,6 +5,7 @@ import type { Opening } from '../db'
 import { el } from '../el'
 import { NEW_PER_DAY, SET_SIZE } from '../openings/cards'
 import type { LearnRun } from '../openings/learn'
+import { FIRST_TRY, HELPED, type LinePlay, type Resolved } from '../openings/line'
 import { BUILTIN, DEPTH, openingArg, posKey } from '../openings/repertoire'
 import { lineAsk, lineSan, type Mark, type OpeningSession } from '../openings/session'
 import type { SparRun } from '../openings/spar'
@@ -173,6 +174,34 @@ const prompt = (text: string) => el('p', 'text-sm text-dim', text)
 
 const next = (text: string, go: () => void) => el('div', 'grid', [button(text, go)])
 
+// The last asked move: how it was found, as its grade reads
+function resolvedBox(r?: Resolved): VNode | null {
+  if (!r) return null
+  if (r.offer) return result('warn', 'Playable', r.san)
+  if (r.skipped) return result('bad', 'Skipped', r.san)
+  return r.grade === FIRST_TRY ? result('good', 'First try', r.san) : r.grade === HELPED ? result('warn', 'Retried', r.san) : result('bad', 'Shown', r.san)
+}
+
+// The box for an asked move, the same in Learn's practice and in Review
+function askBox(p: LinePlay): VNode | null {
+  if (p.state === 'judging') return el('p', 'animate-pulse text-sm text-dim', 'Checking…')
+  if (p.state === 'solution') return result('bad', 'Solution', p.answerSan)
+  if (p.state === 'your-move' && p.tried) return result('bad', 'Try again', p.tried)
+  if (p.asking) return prompt(p.help >= 2 ? 'Play the arrow' : 'Your move')
+  return resolvedBox(p.last)
+}
+
+// Hint, then Hint again for the arrow, then Show solution; Skip beside it
+function ladder(p: LinePlay): VNode | null {
+  if (!p.offered) return null
+  return el('div', 'grid grid-cols-2 gap-2', [
+    p.canHelp
+      ? el('button', btnClass('plain', 'sm'), { attrs: { type: 'button' }, class: { 'text-warn': p.help > 0 }, on: { click: () => p.hint() } }, [icon('hint', 18), p.help < 2 ? 'Hint' : 'Show solution'])
+      : el('span'),
+    el('button', btnClass('quiet', 'sm'), { attrs: { type: 'button' }, on: { click: () => p.skip() } }, 'Skip'),
+  ])
+}
+
 // The last few moves before a position, for a row
 const tail = (line: string[]) => {
   const parts = lineAsk(line).split(' ')
@@ -221,83 +250,88 @@ function summary(ctrl: Ctrl, o: { title: string; big: string; tip?: string; mark
   ])
 }
 
-// Review: a set of due cards, one move each
+// Review: a set of due cards, played as lines from move 1
 export function openingView(ctrl: Ctrl): VNode {
   const s = ctrl.openingSet
   if (!s) return loading()
-  const c = s.card
-  if (!c) return reviewDone(ctrl, s)
-  const v = s.verdict
-  const asking = s.state === 'your-move' || s.state === 'fix'
+  if (s.state === 'done') return reviewDone(ctrl, s)
+  const p = s.play
+  const c = s.cards.find(x => x.id === s.line.asks[0])!
+  const at = s.cards.findIndex(x => !s.grades.has(x.id))
   return trainerScreen({
-    title: 'Openings',
-    count: `${s.index + 1} / ${s.cards.length}`,
+    title: 'Review',
+    count: `Line ${s.index + 1} of ${s.lines.length}`,
     back: () => ctrl.back('openings'),
     board: board(`opening-set:${ctrl.openingRound}`, e => s.mount(e)),
     side: [
-      names(c.opening, c.moves.length % 2 ? 'Black' : 'White', s.name),
-      moves(asking || !s.played ? lineAsk(c.moves) : lineSan([...c.moves, s.played])),
-      s.state === 'your-move' ? prompt('Your move') : s.state === 'judging' ? el('p', 'animate-pulse text-sm text-dim', 'Checking…') : null,
-      v?.rating === Rating.Good ? result('good', 'Good', s.answerSan) : null,
-      v?.rating === Rating.Hard ? result('warn', 'Playable', s.offerSan) : null,
-      v?.rating === Rating.Again ? result('bad', 'Missed', s.answerSan) : null,
-      v?.rating === Rating.Hard ? el('p', 'text-sm', [el('span', 'text-dim', 'Repertoire '), s.answerSan ?? '']) : null,
-      v?.offer
-        ? s.added
-          ? el('p', 'flex items-center gap-1 text-sm text-accent', [icon('check', 16), `${s.offerSan} added`])
-          : el('div', 'grid', [button(`Use ${s.offerSan} instead`, () => void s.add(), 'plain')])
-        : null,
-      s.state === 'judged' ? next(s.index === s.cards.length - 1 ? 'Finish' : 'Next', () => s.next()) : null,
-      s.cards.length > 1 ? dots(s.marks, s.index, `Card ${s.index + 1} of ${s.cards.length}`) : null,
+      names(c.opening, s.color === 'white' ? 'White' : 'Black', p.name),
+      moves(p.asking ? lineAsk(p.played) : lineSan(p.played)),
+      askBox(p),
+      ladder(p),
+      ...(p.state === 'offer' ? offer(s) : []),
+      s.state === 'line-done' ? next(s.index === s.lines.length - 1 ? 'Finish' : 'Next line', () => s.nextLine()) : null,
+      s.cards.length > 1 ? dots(s.marks, at, `Card ${at + 1} of ${s.cards.length}`) : null,
     ],
   })
 }
 
+// A playable other move: the repertoire move beside it, and the choice to keep it
+function offer(s: OpeningSession): VNode[] {
+  const san = s.play.last!.san
+  return [
+    el('p', 'text-sm', [el('span', 'text-dim', 'Repertoire '), s.play.answerSan ?? '']),
+    s.added ? el('p', 'flex items-center gap-1 text-sm text-accent', [icon('check', 16), `${san} added`]) : el('div', 'grid', [button(`Use ${san} instead`, () => void s.add(), 'plain')]),
+    next('Continue', () => s.play.next()),
+  ]
+}
+
 function reviewDone(ctrl: Ctrl, s: OpeningSession): VNode {
-  const n = (r: Rating) => s.grades.filter(g => g === r).length
-  if (!s.cards.length) return summary(ctrl, { title: 'Openings', big: 'Nothing due', marks: [], stats: [], missed: [] })
+  const n = (r: Rating) => [...s.grades.values()].filter(g => g === r).length
+  if (!s.cards.length) return summary(ctrl, { title: 'Review', big: 'Nothing due', marks: [], stats: [], missed: [] })
   return summary(ctrl, {
-    title: 'Openings',
+    title: 'Review',
     big: `${n(Rating.Good) + n(Rating.Hard)} / ${s.cards.length}`,
     marks: s.marks,
     stats: [
-      ['Good', n(Rating.Good)],
-      ['Playable', n(Rating.Hard)],
+      ['First try', n(Rating.Good)],
+      ['Hard', n(Rating.Hard)],
       ['Missed', n(Rating.Again)],
     ],
     missed: s.misses,
   })
 }
 
-// Learn: today's set of an opening's new positions, a line at a time
+// Learn: today's set of an opening's new positions, a line at a time, each
+// played with arrows and then practised without
 export function learnView(ctrl: Ctrl): VNode {
   const r = ctrl.learn
   if (!r) return ctrl.learnError ? el('div', 'p-4', [errorLine(ctrl.learnError)]) : walking(ctrl)
   if (r.state === 'done') return learnDone(ctrl, r)
+  const p = r.play
+  const practice = r.pass === 'practice'
   return trainerScreen({
-    title: `Learn: ${r.opening.name}`,
-    count: `${Math.min(r.taught + 1, r.fresh.length)} / ${r.fresh.length}`,
+    title: `${practice ? 'Practice' : 'Learn'}: ${r.opening.name}`,
+    count: `Line ${r.index + 1} of ${r.lines.length}`,
     back: () => ctrl.back('openings'),
     board: board(`learn:${openingArg(r.opening)}:${ctrl.learnRound}`, e => r.mount(e)),
     side: [
-      names(r.opening.name, side(r.opening), r.name),
-      moves(r.playing ? lineAsk(r.played) : lineSan(r.played)),
-      learnBox(r),
-      r.state === 'line-done' ? next('Next', () => r.nextLine()) : null,
+      names(r.opening.name, side(r.opening), p.name),
+      moves(p.state === 'your-move' ? lineAsk(p.played) : lineSan(p.played)),
+      practice ? askBox(p) : showBox(r),
+      practice ? ladder(p) : null,
+      r.state === 'shown' ? next('Practice the line', () => r.practise()) : null,
+      r.state === 'line-done' ? next(r.index === r.lines.length - 1 ? 'Finish' : 'Next line', () => r.nextLine()) : null,
       dots(r.marks, r.taught, `${r.taught} of ${r.fresh.length} learned`),
-      el('p', 'text-xs tabular-nums text-dim', `Line ${r.index + 1} of ${r.lines.length}`),
     ],
   })
 }
 
-// A new position shows its move, then asks for it from memory
-function learnBox(r: LearnRun): VNode | null {
-  const res = r.result
-  if (r.missed && res) return result('bad', 'Missed', res.san)
-  if (r.state === 'show') return result('new', 'New move', r.newSan)
-  if (r.state === 'recall') return prompt('From memory')
-  if (r.state === 'your-move') return prompt('Your move')
-  return res ? result(res.ok ? 'good' : 'bad', res.ok ? 'Correct' : 'Missed', res.san) : null
+// Playing the line with arrows: a wrong move only snaps back
+function showBox(r: LearnRun): VNode | null {
+  const p = r.play
+  if (p.state !== 'your-move') return null
+  if (p.tried) return result('bad', 'Try again', p.tried)
+  return r.isNew ? result('new', 'New move', p.answerSan) : prompt('Your move')
 }
 
 // Until the set is ready: the tree being walked, if one is

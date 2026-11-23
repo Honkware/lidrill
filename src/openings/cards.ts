@@ -9,7 +9,7 @@ import { WRONG_BOOST, type TreeNode } from './tree'
 
 // Opening cards, one per position with the player to move, on the same FSRS
 // schedule as the puzzles. A card is taught first, in a learn line, and
-// reviewed after; review asks for the repertoire move without a hint.
+// reviewed after, in the lines its position sits on, with no arrow.
 
 // One move each, so a set stays short next to the 12 daily puzzles
 export const SET_SIZE = 10
@@ -26,8 +26,8 @@ export const PLAYABLE_CP = 30
 // view use, so an answer comes back while the player waits
 export const RECALL_DEPTH = 10
 
-// A position is learned once its move has been played in a learn line,
-// which gives its card a first grade; FSRS takes it from there
+// A position is learned once its line has been practised after it was
+// taught, which gives its card a first grade; FSRS takes it from there
 export const isLearned = (c: OpeningCard) => c.card.state !== State.New
 
 export async function learnedKeys(ids: string[]): Promise<Set<string>> {
@@ -35,9 +35,9 @@ export async function learnedKeys(ids: string[]): Promise<Set<string>> {
   return new Set(cards.filter(c => c !== undefined && isLearned(c)).map(c => c!.id))
 }
 
-// Teaching a position is its first grade
-export async function learnCard(c: OpeningCard, now = new Date()): Promise<void> {
-  await db.openingCards.update(c.id, { card: nextCard(c.card, now, Rating.Good), learnedAt: now.getTime() })
+// A taught position's first grade, from the practice run after its line
+export async function learnCard(c: OpeningCard, now = new Date(), rating: Grade = Rating.Good): Promise<void> {
+  await db.openingCards.update(c.id, { card: nextCard(c.card, now, rating), learnedAt: now.getTime() })
 }
 
 // What is left of today's NEW_PER_DAY

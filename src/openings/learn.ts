@@ -1,23 +1,21 @@
 import { Chess } from 'chessops/chess'
-import { makeSan } from 'chessops/san'
 import { parseUci } from 'chessops/util'
 import { Rating } from 'ts-fsrs'
 import { db, type Opening } from '../db'
-import { sound } from '../sound'
-import { OpeningBoard, playMove } from './board'
 import { grade, isLearned, learnCard } from './cards'
-import { keyOf, norm, posKey, startsWith } from './repertoire'
-import { variation, type Mark } from './session'
+import { LinePlay, type Resolved } from './line'
+import { keyOf, posKey, startsWith } from './repertoire'
+import { MARK, type Mark } from './session'
 import type { TreeNode } from './tree'
 
 // Learning an opening a line at a time, from move 1, the way a person
-// learns one from a book. The player plays their side and the opponent's
-// moves play themselves. A new position shows its move as an arrow, then
-// asks for it again without one, and only that recall teaches it: its card
-// gets a first grade and from then on comes back in review. A learned
-// position on the way is asked without the arrow, so each line also goes
-// over what came before. A day teaches up to NEW_PER_DAY new positions, in
-// a set of lines.
+// learns one from a book. The player plays their side with each move shown
+// as an arrow, and the opponent's moves play themselves. Then the same line
+// is practised from move 1 with no arrows, with retries and the hint
+// ladder, and only that practice run teaches a new position: how its move
+// was found is its card's first grade, and from then on it comes back in
+// review. A learned position on the way that needed its move shown is due
+// again. A day teaches up to NEW_PER_DAY new positions, in a set of lines.
 
 // The opponent's move waits this long, so it can be seen landing
 const OPPONENT_MS = 500
@@ -83,26 +81,19 @@ export function learnSet(opening: Opening, nodes: TreeNode[], learned: Set<strin
 }
 
 export class LearnRun {
-  // show: the move's arrow is on the board; recall: the same position again
-  // without it; your-move: a position already learned, or the opening's
-  // own moves after the first line
-  state: 'show' | 'recall' | 'your-move' | 'thinking' | 'line-done' | 'done' = 'thinking'
-  missed = false // a wrong move at the position on the board
-  result?: { ok: boolean; san: string } // the player's last move, or the right one after a miss
-  name: string
+  // playing: a pass over the line is on the board; shown: the line has
+  // been played with arrows and its practice run is next
+  state: 'playing' | 'shown' | 'line-done' | 'done' = 'playing'
+  pass: 'show' | 'practice' = 'show'
   index = 0 // of the line on the board
-  readonly marks: Mark[] // per new position: good when recalled first time
+  readonly marks: Mark[] // per new position, from its practice run
   readonly misses: { id: string; moves: string[]; san: string }[] = []
   readonly opening: Opening
   readonly lines: string[][]
   readonly fresh: string[]
-  readonly board = new OpeningBoard(uci => void this.onUci(uci))
-  private pos = Chess.default()
-  private ply = 0
+  readonly play: LinePlay
   private learned: Set<string>
-  private first: boolean
   private redraw: () => void
-  private timer?: ReturnType<typeof setTimeout>
 
   constructor(opening: Opening, set: { lines: string[][]; fresh: string[] }, learned: Set<string>, redraw: () => void) {
     this.opening = opening
@@ -111,10 +102,13 @@ export class LearnRun {
     this.marks = set.fresh.map(() => undefined)
     this.learned = new Set(learned)
     this.redraw = redraw
-    this.name = opening.name
-    // The opening's own moves have no cards: they are shown on the first
-    // line ever and asked on the rest
-    this.first = learned.size === 0
+    this.play = new LinePlay({
+      turn: () => (this.pass === 'show' ? 'show' : 'ask'),
+      wait: OPPONENT_MS,
+      resolved: r => this.resolved(r),
+      end: () => this.ended(),
+      redraw,
+    })
     if (!this.lines.length) this.state = 'done'
   }
 
@@ -122,120 +116,69 @@ export class LearnRun {
     return this.lines[this.index] ?? []
   }
 
-  get played(): string[] {
-    return this.line.slice(0, this.ply)
-  }
-
   get taught(): number {
     return this.fresh.filter(k => this.learned.has(k)).length
   }
 
-  get playing(): boolean {
-    return this.state === 'show' || this.state === 'recall' || this.state === 'your-move'
+  // Is the position on the board new in this set?
+  get isNew(): boolean {
+    const pos = Chess.default()
+    for (const m of this.play.played) pos.play(parseUci(m)!)
+    return this.fresh.includes(keyOf(pos)) && !this.learned.has(keyOf(pos))
   }
 
-  // The new position's move while its arrow is up, for the panel
-  get newSan(): string | undefined {
-    return this.state === 'show' ? makeSan(this.pos, parseUci(this.line[this.ply])!) : undefined
-  }
-
-  private get teaching(): boolean {
-    return this.ply < this.opening.moves.length ? this.first && this.index === 0 : this.fresh.includes(keyOf(this.pos)) && !this.learned.has(keyOf(this.pos))
+  // Share of the set done: each line is played twice
+  get progress(): number {
+    if (this.state === 'done') return 1
+    const pass = this.state === 'playing' ? (this.pass === 'practice' ? 1 : 0) + this.play.ply / this.line.length : this.state === 'shown' ? 1 : 2
+    return (this.index * 2 + pass) / (this.lines.length * 2)
   }
 
   mount(el: HTMLElement) {
-    this.board.mount(el)
-    if (this.lines.length) this.step()
+    this.play.board.mount(el)
+    this.begin()
+  }
+
+  begin() {
+    if (this.lines.length) this.play.start(this.line, this.opening.color)
   }
 
   destroy() {
-    clearTimeout(this.timer)
-    this.board.destroy()
+    this.play.destroy()
+  }
+
+  practise() {
+    if (this.state !== 'shown') return
+    this.pass = 'practice'
+    this.state = 'playing'
+    this.play.start(this.line, this.opening.color)
   }
 
   nextLine() {
     if (this.state !== 'line-done') return
-    this.index++
-    this.pos = Chess.default()
-    this.ply = 0
-    this.result = undefined
-    this.step()
-  }
-
-  private sync() {
-    const hint = this.state === 'show' || (this.state === 'your-move' && this.missed)
-    this.board.show(this.pos, this.opening.color, this.line[this.ply - 1], this.playing, hint ? [[this.line[this.ply], 'green']] : [])
-  }
-
-  private step() {
-    this.missed = false
-    if (this.ply >= this.line.length) this.state = this.index < this.lines.length - 1 ? 'line-done' : 'done'
-    else if (this.pos.turn === this.opening.color) this.state = this.teaching ? 'show' : 'your-move'
-    else {
-      this.state = 'thinking'
-      this.timer = setTimeout(() => this.play(this.line[this.ply]), OPPONENT_MS)
+    if (this.index === this.lines.length - 1) {
+      this.state = 'done'
+      return this.redraw()
     }
-    this.sync()
+    this.index++
+    this.pass = 'show'
+    this.state = 'playing'
+    this.play.start(this.line, this.opening.color)
+  }
+
+  private ended() {
+    this.state = this.pass === 'show' ? 'shown' : 'line-done'
     this.redraw()
   }
 
-  private play(uci: string) {
-    this.pos = this.pos.clone()
-    playMove(this.pos, uci)
-    this.ply++
-    void this.nameNow()
-    this.step()
-  }
-
-  private async nameNow() {
-    const name = await variation(this.played)
-    if (name) {
-      this.name = name
-      this.redraw()
-    }
-  }
-
-  private miss(key: string, san: string) {
-    this.missed = true
-    this.result = { ok: false, san }
-    if (!this.misses.some(m => m.id === key)) this.misses.push({ id: key, moves: this.played, san })
-    sound.bad()
-  }
-
-  private async onUci(uci: string) {
-    if (!this.playing) return
-    const want = this.line[this.ply]
-    const key = keyOf(this.pos)
-    const san = makeSan(this.pos, parseUci(want)!)
-    const at = this.fresh.indexOf(key)
-    if (norm(this.pos, uci) !== want) {
-      if (this.state === 'show') sound.bad()
-      else if (this.state === 'recall') {
-        this.marks[at] = 'bad'
-        this.miss(key, san)
-        this.state = 'show'
-      } else {
-        // A learned position missed here is due again
-        const card = await db.openingCards.get(key)
-        if (!this.missed && card && isLearned(card)) await grade(card, Rating.Again)
-        this.miss(key, san)
-      }
-      this.sync()
-      return this.redraw()
-    }
-    if (this.state === 'show' && at >= 0) {
-      this.state = 'recall'
-      this.result = undefined
-      this.sync()
-      return this.redraw()
-    }
-    if (this.state === 'recall') {
-      const card = await db.openingCards.get(key)
-      if (card && !isLearned(card)) await learnCard(card)
-      this.learned.add(key)
-      this.marks[at] ??= 'good'
-    }
-    this.result = { ok: !this.missed, san }
-    this.play(want)
+  private async resolved(r: Resolved) {
+    const card = await db.openingCards.get(r.key)
+    const at = this.fresh.indexOf(r.key)
+    if (at >= 0 && !this.learned.has(r.key)) {
+      if (card && !isLearned(card)) await learnCard(card, new Date(), r.grade)
+      this.learned.add(r.key)
+      this.marks[at] = MARK[r.grade]
+    } else if (r.grade === Rating.Again && card && isLearned(card)) await grade(card, Rating.Again)
+    if (r.grade === Rating.Again && card && !this.misses.some(m => m.id === r.key)) this.misses.push({ id: r.key, moves: r.moves, san: r.san })
   }
 }

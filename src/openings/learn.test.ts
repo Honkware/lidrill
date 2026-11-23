@@ -1,12 +1,14 @@
-import { describe, expect, it } from 'vitest'
-import type { Opening } from '../db'
-import { learnLine, learnSet } from './learn'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { db, type Opening } from '../db'
+import { isLearned, saveTreeCards } from './cards'
+import { LearnRun, learnLine, learnSet } from './learn'
 import type { Reply } from './policy'
 import { keyOf } from './repertoire'
 import { replay } from './session'
 import { buildTree } from './tree'
 
-// The order a line is learned in, on a small tree: the opening runs to
+// The order a line is learned in, and the practice that follows it, on a
+// small tree: the opening runs to
 // 6. O-O in the Giuoco Pianissimo and Black's 6th move is 6...a6 (60%) or
 // 6...O-O (40%), each with one reply after White's 7th.
 
@@ -82,5 +84,57 @@ describe('learnSet', () => {
   it('cuts the first line short when it alone has more new positions than the room', async () => {
     expect(await setFor(1)).toEqual({ lines: ['a7a6 a2a4'], fresh: [key(`${o} a7a6`)] })
     expect(await setFor(0)).toEqual({ lines: [], fresh: [] })
+  })
+})
+
+describe('LearnRun', () => {
+  beforeEach(async () => {
+    await db.openingCards.clear()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  })
+  afterEach(() => vi.useRealTimers())
+
+  // The first line cut after its first new position, 6...a6 7. a4
+  const run = async () => {
+    const { nodes } = await buildTree(opening, rep, policy)
+    await saveTreeCards(nodes, opening.name)
+    const r = new LearnRun(opening, learnSet(opening, nodes, new Set(), 1), new Set(), () => {})
+    r.begin()
+    return r
+  }
+  // White's moves from move 1, with a wrong try first at ply wrongAt
+  const playLine = async (r: LearnRun, wrongAt?: number) => {
+    for (const [i, m] of r.line.entries()) {
+      if (i % 2) {
+        await vi.advanceTimersByTimeAsync(500)
+        continue
+      }
+      if (i === wrongAt) await r.play.move('h2h3')
+      await r.play.move(m)
+    }
+  }
+  const fresh = async () => (await db.openingCards.get(key(`${o} a7a6`)))!
+
+  it('shows the line, then practises it from move 1, and only the practice grades the new position', async () => {
+    const r = await run()
+    expect(r.play.turn).toBe('show')
+    await playLine(r, 12)
+    expect([r.state, r.marks, isLearned(await fresh())]).toEqual(['shown', [undefined], false])
+    r.practise()
+    expect([r.pass, r.play.ply, r.play.turn]).toEqual(['practice', 0, 'ask'])
+    await playLine(r)
+    expect([r.state, r.marks, isLearned(await fresh())]).toEqual(['line-done', ['good'], true])
+    r.nextLine()
+    expect(r.state).toBe('done')
+  })
+
+  it('takes the first grade from how the move was found in practice', async () => {
+    const r = await run()
+    await playLine(r)
+    r.practise()
+    await playLine(r, 12)
+    const c = await fresh()
+    expect([r.marks, c.card.reps, r.misses]).toEqual([['warn'], 1, []])
+    expect(c.learnedAt).toBeDefined()
   })
 })

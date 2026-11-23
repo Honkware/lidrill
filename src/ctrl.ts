@@ -244,7 +244,7 @@ export class Ctrl {
     this.play?.destroy()
     this.play = undefined
     if (this.openingSet || this.learn || this.spar) this.openingsTouched++
-    this.openingSet?.board.destroy()
+    this.openingSet?.destroy()
     this.openingSet = undefined
     this.learn?.destroy()
     this.learn = undefined
