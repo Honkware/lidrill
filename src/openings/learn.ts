@@ -127,7 +127,7 @@ export class LearnRun {
   }
 
   get taught(): number {
-    return this.marks.filter(m => m).length
+    return this.fresh.filter(k => this.learned.has(k)).length
   }
 
   get playing(): boolean {

@@ -230,6 +230,8 @@ export class Ctrl {
     } else this.go(fallback)
   }
 
+  goNext() { this.go('today') } // TODO: replaced by the flow work
+
   private teardown() {
     this.drill?.destroy()
     this.drill = undefined

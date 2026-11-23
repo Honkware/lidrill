@@ -55,7 +55,7 @@ export class SparRun {
   private pos = Chess.default()
   private moves: string[] = []
   private rep: Map<string, string>
-  private cards: Map<string, OpeningCard>
+  readonly cards: Map<string, OpeningCard>
   private policy: Policy
   private engine: Pick<Engine, 'search'>
   private redraw: () => void
