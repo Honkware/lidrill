@@ -6,7 +6,7 @@ import { el } from '../el'
 import { BUILTIN, DEPTH } from '../openings/repertoire'
 import { lineSan, type OpeningSession } from '../openings/session'
 import type { SparStep } from '../openings/spar'
-import { board, button, card, icon, pct, plural, topBar } from './ui'
+import { board, boardScreen, button, card, icon, pct, plural } from './ui'
 
 const side = (o: Opening) => (o.color === 'white' ? 'White' : 'Black')
 const sparArg = (o: Opening) => `${o.color}:${o.name}`
@@ -87,12 +87,8 @@ const TONE: Record<number, ['good' | 'warn' | 'bad', string]> = {
 export function openingView(ctrl: Ctrl): VNode {
   const s = ctrl.openingSet
   if (!s) return el('p', 'p-4 text-dim', 'Loading…')
-  const top = topBar('Openings', () => ctrl.back('drills'))
   const c = s.card
-  return el('div', 'md:grid md:grid-cols-[auto_minmax(0,1fr)] md:gap-6 md:pt-4', [
-    el('div', [el('div', 'md:hidden', [top]), board('opening-set', e => s.mount(e))]),
-    el('aside', 'space-y-4 px-4 pb-8 pt-3 md:px-0 md:pt-0', [el('div', 'hidden md:block', [top]), c ? cardSide(s, c) : setDone(ctrl, s)]),
-  ])
+  return boardScreen({ title: 'Openings', back: () => ctrl.back('drills'), board: board('opening-set', e => s.mount(e)), side: [c ? cardSide(s, c) : setDone(ctrl, s)] })
 }
 
 function cardSide(s: OpeningSession, c: OpeningCard): VNode {
@@ -145,12 +141,12 @@ function stepLine(s: SparStep): VNode {
 export function sparView(ctrl: Ctrl): VNode {
   const r = ctrl.spar
   if (!r) return el('p', 'p-4 text-dim', 'Loading…')
-  const top = topBar(`Spar: ${r.opening.name}`, () => ctrl.back('drills'))
   const miss = r.steps.find(s => !s.known)
-  return el('div', 'md:grid md:grid-cols-[auto_minmax(0,1fr)] md:gap-6 md:pt-4', [
-    el('div', [el('div', 'md:hidden', [top]), board(`spar:${sparArg(r.opening)}:${ctrl.sparRound}`, e => r.mount(e))]),
-    el('aside', 'space-y-4 px-4 pb-8 pt-3 md:px-0 md:pt-0', [
-      el('div', 'hidden md:block', [top]),
+  return boardScreen({
+    title: `Spar: ${r.opening.name}`,
+    back: () => ctrl.back('drills'),
+    board: board(`spar:${sparArg(r.opening)}:${ctrl.sparRound}`, e => r.mount(e)),
+    side: [
       el('p', 'text-xs text-dim', `${side(r.opening)} against Maia at about ${ctrl.openingLevel}, through move ${DEPTH}`),
       r.line.length ? el('p', 'text-sm', lineSan(r.line)) : null,
       r.state === 'done'
@@ -162,6 +158,6 @@ export function sparView(ctrl: Ctrl): VNode {
             el('div', 'flex flex-wrap gap-2', [button('Spar again', () => ctrl.sparAgain()), button('Back to drills', () => ctrl.go('drills'), 'plain')]),
           ])
         : el('p', 'text-sm text-dim', r.state === 'thinking' ? 'Maia is thinking…' : 'Your move.'),
-    ]),
-  ])
+    ],
+  })
 }

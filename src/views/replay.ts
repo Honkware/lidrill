@@ -3,16 +3,13 @@ import type { Ctrl } from '../ctrl'
 import { el } from '../el'
 import type { Replay } from '../replay'
 import { puzzleSide } from './drill'
-import { board, button, card, dots, label, loading, plural, topBar } from './ui'
+import { board, boardScreen, button, card, dots, label, loading, plural } from './ui'
 
 export function replayView(ctrl: Ctrl): VNode {
   const r = ctrl.replay
   if (!r) return loading()
   const title = `Turning points${r.game.opponent ? ` vs ${r.game.opponent}` : ''}`
-  return el('div', 'md:grid md:grid-cols-[auto_minmax(0,1fr)] md:gap-6 md:pt-4', [
-    el('div', [el('div', 'md:hidden', [topBar(title, () => ctrl.back('review'))]), board(`replay:${r.game.id}`, e => r.mount(e))]),
-    el('aside', 'space-y-4 px-4 pb-8 pt-3 md:px-0 md:pt-0', [el('div', 'hidden md:block', [topBar(title, () => ctrl.back('review'))]), side(ctrl, r)]),
-  ])
+  return boardScreen({ title, back: () => ctrl.back('review'), board: board(`replay:${r.game.id}`, e => r.mount(e)), side: [side(ctrl, r)] })
 }
 
 // One square per stop: green found, red missed

@@ -3,17 +3,13 @@ import type { Ctrl } from '../ctrl'
 import type { Drill } from '../drill'
 import { el } from '../el'
 import type { BoardLink, Segment } from '../server/render'
-import { board, btnClass, button, dots, errorLine, icon, loading, moveInput, topBar } from './ui'
+import { board, boardScreen, btnClass, button, dots, errorLine, icon, loading, moveInput } from './ui'
 import { drillGameLine } from '../server/surface'
 
 export function drillView(ctrl: Ctrl): VNode {
   const d = ctrl.displayDrill
   if (!d) return loading()
-  const top = topBar("Today's puzzles", () => ctrl.go('today'))
-  return el('div', 'md:grid md:grid-cols-[auto_minmax(0,1fr)] md:gap-6 md:pt-4', [
-    el('div', [el('div', 'md:hidden', [top]), boardWithWheel(d)]),
-    el('aside', 'space-y-4 px-4 pb-8 pt-3 md:px-0 md:pt-0', [el('div', 'hidden md:block', [top]), sessionRow(ctrl), side(ctrl, d)]),
-  ])
+  return boardScreen({ title: "Today's puzzles", back: () => ctrl.go('today'), board: boardWithWheel(d), side: [sessionRow(ctrl), side(ctrl, d)] })
 }
 
 // One square per puzzle in today's run: green solved, amber with the hint,

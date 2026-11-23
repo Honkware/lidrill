@@ -7,7 +7,7 @@ import type { Game } from '../db'
 import { material, type PlayRun } from '../play'
 import { el } from '../el'
 import { moveTable, score } from './moves'
-import { board, button, errorLine, judgColor, loading, plural, topBar } from './ui'
+import { board, boardScreen, button, errorLine, judgColor, loading, plural } from './ui'
 
 const RESULT = { win: 'Won', loss: 'Lost', draw: 'Draw' } as const
 
@@ -15,18 +15,15 @@ export function playView(ctrl: Ctrl): VNode {
   const run = ctrl.play
   if (!run) return loading()
   const { level, start, color } = run.opts
-  const bar = () => topBar('Play Maia', () => ctrl.back('drills'))
   const m = material(run.fen)
   const moves = run.moves.length ? moveTable(run.moves, run.viewPly, ply => run.go(ply), run.result && score(run.result, color)) : null
-  return el('div', 'md:grid md:grid-cols-[auto_minmax(0,1fr)] md:gap-6 md:pt-4', [
-    el('div', 'play-board', [
-      el('div', 'md:hidden', [bar()]),
-      player(run, m, opposite(color), `Maia, about ${level}`),
-      board(run.key, e => run.mount(e)),
-      player(run, m, color, 'You'),
-    ]),
-    el('aside', 'space-y-4 px-4 pb-8 pt-3 md:px-0 md:pt-0', [
-      el('div', 'hidden md:block', [bar()]),
+  return boardScreen({
+    title: 'Play Maia',
+    back: () => ctrl.back('drills'),
+    above: player(run, m, opposite(color), `Maia, about ${level}`),
+    board: board(run.key, e => run.mount(e)),
+    below: player(run, m, color, 'You'),
+    side: [
       // Once it is over the summary comes first, in view under the board on a phone
       ...(run.state === 'over'
         ? [over(ctrl), moves]
@@ -40,8 +37,8 @@ export function playView(ctrl: Ctrl): VNode {
             moves,
             live(ctrl),
           ]),
-    ]),
-  ])
+    ],
+  })
 }
 
 // m:ss, with tenths under ten seconds as on Lichess
@@ -55,7 +52,7 @@ function clockText(ms: number): string {
 function player(run: PlayRun, m: ReturnType<typeof material>, color: Color, name: string): VNode {
   const lead = color === 'white' ? m.diff : -m.diff
   const ms = run.clock(color)
-  return el('div', 'flex h-10 items-center gap-2 px-2 md:px-0', [
+  return el('div', 'flex h-10 items-center gap-2 px-2 wide:px-0', [
     el('span', 'shrink-0 text-sm font-medium', { attrs: name === 'You' ? {} : { title: 'Approximate Lichess blitz rating' } }, name),
     el('span', 'mat flex min-w-0 flex-1 items-center overflow-hidden', [
       ...m[color].map(role => el('span', `piece-preview ${opposite(color)} ${role}`)),

@@ -5,7 +5,7 @@ import type { Game } from '../db'
 import { el } from '../el'
 import type { GameView } from '../gameview'
 import { deviation } from '../lichess/repertoire'
-import { board, btnClass, button, card, dateLabel, empty, icon, judgColor, judgMark, label, listRow, loading, loadingBlock, plural, resultChip, rowList, topBar } from './ui'
+import { board, boardScreen, btnClass, button, card, dateLabel, empty, icon, judgColor, judgMark, label, listRow, loading, loadingBlock, plural, resultChip, rowList } from './ui'
 import { journalHangParts } from '../server/surface'
 import { moveTable, score } from './moves'
 
@@ -80,14 +80,12 @@ export function gameView(ctrl: Ctrl): VNode {
   const v = ctrl.gameView
   if (!v) return loading()
   const g = v.game
-  return el('div', 'md:grid md:grid-cols-[auto_minmax(0,1fr)] md:gap-6 md:pt-4', [
-    el('div', [
-      el('div', 'md:hidden', [topBar(g.opponent ? `vs ${g.opponent}` : 'Game', () => ctrl.back('review'))]),
-      board(g.id, e => v.mount(e)),
-      controls(v),
-    ]),
-    el('aside', 'space-y-4 px-4 pb-8 pt-2 md:px-0 md:pt-0', [
-      el('div', 'hidden md:block', [topBar(g.opponent ? `vs ${g.opponent}` : 'Game', () => ctrl.back('review'))]),
+  return boardScreen({
+    title: g.opponent ? `vs ${g.opponent}` : 'Game',
+    back: () => ctrl.back('review'),
+    board: board(g.id, e => v.mount(e)),
+    controls: controls(v),
+    side: [
       el('p', 'text-sm text-dim', `${g.result === 'win' ? 'Won' : g.result === 'loss' ? 'Lost' : 'Drew'} as ${g.color} · ${g.opening || g.eco || 'unknown opening'} · ${dateLabel(g.playedAt)}`),
       advice(v),
       studyNote(ctrl, v),
@@ -103,8 +101,8 @@ export function gameView(ctrl: Ctrl): VNode {
             ])
           : null,
       ]),
-    ]),
-  ])
+    ],
+  })
 }
 
 // Disabled when it would not move, as Lichess's are at either end
@@ -118,7 +116,7 @@ const navButton = (name: string, labelText: string, to: number, v: GameView) =>
 
 function controls(v: GameView): VNode {
   const end = v.game.moves.length
-  return el('div', 'flex gap-2 px-4 pt-3 md:px-0', [
+  return el('div', 'flex gap-2', [
     navButton('first', 'Start position', 0, v),
     navButton('prev', 'Previous move', Math.max(0, v.ply - 1), v),
     navButton('next', 'Next move', Math.min(end, v.ply + 1), v),

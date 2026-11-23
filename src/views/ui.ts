@@ -132,12 +132,20 @@ export const icon = (name: string, size = 22) =>
 export const board = (key: string, mount: (el: HTMLElement) => void): VNode =>
   el('div', 'board', [el('div', 'cg-wrap', { key, hook: { insert: v => mount(v.elm as HTMLElement) } })])
 
-// Top bar for the full-screen board screens
-export const topBar = (title: string, onBack: () => void, right?: VNode | null) =>
+const topBar = (title: string, onBack: () => void) =>
   el('div', 'flex items-center gap-2 px-2 py-2 sm:px-0', [
     el('button', btnClass('quiet', 'icon'), { attrs: { 'aria-label': 'Back', type: 'button' }, on: { click: onBack } }, [icon('back')]),
     el('h1', 'min-w-0 flex-1 truncate font-display text-lg', title),
-    right ?? null,
+  ])
+
+// A full-screen board screen. The column holds the board with an optional
+// bar above and below it and a control row under it; the grid that places
+// it beside the top bar and side panel is .board-screen in index.css.
+export const boardScreen = (o: { title: string; back: () => void; board: VNode; above?: VNode; below?: VNode; controls?: VNode | null; side: VNodeChildren }) =>
+  el('div', 'board-screen', { class: { 'with-bars': !!o.above } }, [
+    el('div', '[grid-area:top]', [topBar(o.title, o.back)]),
+    el('div', '[grid-area:board]', [o.above ?? null, o.board, o.below ?? null, o.controls ? el('div', 'px-4 pt-3 wide:px-0', [o.controls]) : null]),
+    el('aside', '[grid-area:side] space-y-4 px-4 pb-8 pt-3 wide:px-0 wide:pt-4', o.side),
   ])
 
 // Games per week, oldest first: the green part is zero-hang games. Empty

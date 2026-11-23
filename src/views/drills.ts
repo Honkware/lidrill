@@ -6,7 +6,7 @@ import { history, MAX_LEVEL, MIN_LEVEL, startLabel } from '../maia'
 import { readGame, TIMES, type SavedGame } from '../play'
 import { CLEAR_AFTER } from '../practice'
 import { openingsCard } from './openings'
-import { board, btnClass, button, card, dateLabel, icon, listRow, loading, moveInput, pawns, rowList, segmented, topBar } from './ui'
+import { board, boardScreen, btnClass, button, card, dateLabel, icon, listRow, loading, moveInput, pawns, rowList, segmented } from './ui'
 
 const ABOUT: Record<PracticeKind, { title: string; text: string }> = {
   conversion: {
@@ -168,10 +168,11 @@ export function practiceView(ctrl: Ctrl): VNode {
   const target = p.kind === 'conversion' ? '+10' : '12 moves'
   const targetNote = p.kind === 'conversion' ? 'Reach +10 or mate; dropping below +2 ends it.' : 'Slip at most a pawn from where you started.'
   const done = run.state === 'won' || run.state === 'lost'
-  return el('div', 'md:grid md:grid-cols-[auto_minmax(0,1fr)] md:gap-6 md:pt-4', [
-    el('div', [el('div', 'md:hidden', [topBar(title, () => ctrl.back('drills'))]), board(`${p.id}:${p.attempts}`, e => run.mount(e))]),
-    el('aside', 'space-y-4 px-4 pb-8 pt-3 md:px-0 md:pt-0', [
-      el('div', 'hidden md:block', [topBar(title, () => ctrl.back('drills'))]),
+  return boardScreen({
+    title,
+    back: () => ctrl.back('drills'),
+    board: board(`${p.id}:${p.attempts}`, e => run.mount(e)),
+    side: [
       el('p', 'text-sm', goal),
       el('div', 'flex gap-6 text-sm', [
         el('div', [el('p', 'text-xs text-dim', 'Target'), el('p', 'font-medium tabular-nums', { attrs: { title: targetNote } }, target)]),
@@ -189,6 +190,6 @@ export function practiceView(ctrl: Ctrl): VNode {
             // Same rule as the drill: typing is for keyboards
             el('div', 'hidden md:block', [moveInput(t => run.typeMove(t))]),
           ]),
-    ]),
-  ])
+    ],
+  })
 }
