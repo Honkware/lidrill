@@ -23,7 +23,7 @@ export const PLAYABLE_CP = 30
 export const GOOD_CP = 50
 // The interactive engine at the depths the practice drills and the puzzle
 // view use, so an answer comes back while the player waits
-const RECALL_DEPTH = 10
+export const RECALL_DEPTH = 10
 const GAP_DEPTH = 14
 
 const worth = (c: OpeningCard) => c.reach * (c.wrong ? WRONG_BOOST : 1)
@@ -71,12 +71,12 @@ export interface Verdict {
   offer?: string // a move to add to the repertoire
 }
 
-type Search = Pick<Engine, 'search'>
+export type Search = Pick<Engine, 'search'>
 
-const cpOf = (e: Eval) => (e.mate !== undefined ? (e.mate > 0 ? 10000 : -10000) : (e.cp ?? 0))
+export const cpOf = (e: Eval) => (e.mate !== undefined ? (e.mate > 0 ? 10000 : -10000) : (e.cp ?? 0))
 
 // The position after uci, for the player who played it
-async function after(engine: Search, fen: string, uci: string, depth: number): Promise<number> {
+export async function after(engine: Search, fen: string, uci: string, depth: number): Promise<number> {
   const pos = fromFen(fen)
   pos.play(parseUci(uci)!)
   if (pos.isCheckmate()) return 10000

@@ -55,6 +55,16 @@ describe('repertoireMoves', () => {
     expect(repertoireMoves([italian], study, twice, []).find(m => m.fen === at)).toEqual({ fen: at, uci: 'c2c3', source: 'study' })
   })
 
+  it("lets the player's games and own choice replace a recommended move", () => {
+    const twice = [game('1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. d3 Nf6'), game('1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. d3 d6')]
+    const at = after(['e2e4', 'e7e5', 'g1f3', 'b8c6', 'f1c4', 'f8c5'])
+    const rec = { fen: at, uci: 'c2c3', source: 'rec' as const }
+    const own = { fen: at, uci: 'e1h1', source: 'own' as const }
+    expect(repertoireMoves([italian], [], [], [rec]).find(m => m.fen === at)).toEqual(rec)
+    expect(repertoireMoves([italian], [], twice, [rec]).find(m => m.fen === at)?.uci).toBe('d2d3')
+    expect(repertoireMoves([italian], [], twice, [own]).find(m => m.fen === at)).toEqual(own)
+  })
+
   it('leaves out a game move played once or judged a mistake, and a study line for another opening', () => {
     const once = [game('1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. d3 Nf6')]
     const judged = [0, 1].map(() => game('1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. d3 Nf6'))

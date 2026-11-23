@@ -7,8 +7,10 @@ import { familyOf, openingTable } from '../metrics'
 // The player's repertoire: their move in each position they reach on their
 // own side. It comes from the openings they pick (a built-in list, or their
 // most played openings), their own most played moves in those openings, a
-// Lichess study, and moves they add while training. Everything but the
-// added moves is rebuilt from those sources when they change.
+// Lichess study, moves they add while training, and where none of those
+// has a move, the trainer's recommendation (recommend.ts). Everything but
+// the added and recommended moves is rebuilt from those sources when they
+// change.
 
 export const BUILTIN: Opening[] = [
   { name: 'Italian Game', color: 'white', moves: ['e2e4', 'e7e5', 'g1f3', 'b8c6', 'f1c4'] },
@@ -27,7 +29,7 @@ export const BUILTIN: Opening[] = [
 // that a club game has mostly left any line a player could prepare
 export const DEPTH = 8
 
-const RANK: Record<RepSource, number> = { games: 0, builtin: 1, own: 2, study: 3 }
+const RANK: Record<RepSource, number> = { rec: 0, games: 1, builtin: 2, own: 3, study: 4 }
 
 // A game repeats a position by a different move order; the counters differ,
 // the position doesn't
@@ -85,11 +87,11 @@ function gameMoves(games: Game[], o: Opening): RepMove[] {
 
 // Every source's moves, best source per position. A study line counts for
 // the trained openings it starts with, on that opening's side.
-export function repertoireMoves(openings: Opening[], study: string[][], games: Game[], own: RepMove[]): RepMove[] {
+export function repertoireMoves(openings: Opening[], study: string[][], games: Game[], kept: RepMove[]): RepMove[] {
   const all = [
     ...openings.flatMap(o => gameMoves(games, o)),
     ...openings.flatMap(o => sideMoves(o.moves, o.color, 'builtin')),
-    ...own,
+    ...kept,
     ...openings.flatMap(o => study.filter(line => startsWith(line, o.moves)).flatMap(line => sideMoves(line, o.color, 'study'))),
   ]
   const best = new Map<string, RepMove>()
@@ -104,7 +106,7 @@ export function repertoireMoves(openings: Opening[], study: string[][], games: G
 // change so the sync queue carries just those
 export async function rebuildRepertoire(openings: Opening[], study: string[][], games: Game[]): Promise<Map<string, string>> {
   const stored = await db.repertoire.toArray()
-  const next = repertoireMoves(openings, study, games, stored.filter(r => r.source === 'own'))
+  const next = repertoireMoves(openings, study, games, stored.filter(r => r.source === 'own' || r.source === 'rec'))
   const old = new Map(stored.map(r => [r.fen, r]))
   const changed = next.filter(m => old.get(m.fen)?.uci !== m.uci || old.get(m.fen)?.source !== m.source)
   const keep = new Set(next.map(m => m.fen))

@@ -230,8 +230,9 @@ export interface Opening {
 
 // Highest rank wins a position: a Lichess study the player keeps, then a
 // move they added here, then a built-in opening's moves, then what they
-// most often play in their games
-export type RepSource = 'games' | 'builtin' | 'own' | 'study'
+// most often play in their games, and last the move the trainer recommends
+// where the player has none of their own
+export type RepSource = 'rec' | 'games' | 'builtin' | 'own' | 'study'
 
 // The player's move in a position on their own side. fen has no move
 // counters, so a position reached by two move orders is one entry.
@@ -313,7 +314,7 @@ class LidrillDb extends Dexie {
   profile!: EntityTable<Profile, 'id'>
   reviews!: EntityTable<Review, 'id'>
   auth!: EntityTable<Auth, 'id'>
-  explorer!: EntityTable<{ key: string; moves: Record<string, number> }, 'key'>
+  explorer!: EntityTable<{ key: string; moves: Record<string, number>; opening?: { eco: string; name: string } }, 'key'>
   journal!: EntityTable<JournalEntry, 'gameId'>
   liPuzzle!: EntityTable<PuzzleDashboardSnapshot, 'week'>
   practice!: EntityTable<Practice, 'id'>
