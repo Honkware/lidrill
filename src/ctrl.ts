@@ -647,6 +647,9 @@ export class Ctrl {
 
   private async openDrill() {
     this.screen = 'drill'
+    // Back from a game opened off the summary: the run stays over, where a
+    // fresh queue would backfill past the day's cap
+    if (this.sessionDone) return
     if (!this.queue.length) this.queue = (await dueQueue()).puzzles.map(p => p.id)
     await this.nextPuzzle()
   }
