@@ -15,7 +15,7 @@ export function gamesView(ctrl: Ctrl): VNode {
       [
         label('Lichess'),
         ctrl.auth
-          ? el('p', 'text-sm', `Signed in as ${ctrl.auth.username}. New games sync each time lidrill opens.`)
+          ? el('p', 'text-sm', `Signed in as ${ctrl.auth.username}.`)
           : el('div', 'space-y-2', [el('p', 'text-sm text-dim', 'Sign in to add your Lichess games.'), button('Sign in with Lichess', () => ctrl.signIn())]),
         el('div', 'flex gap-3', [
           button(ctrl.syncing ? 'Syncing…' : 'Sync now', () => ctrl.sync(), 'primary', ctrl.syncing),
@@ -36,13 +36,7 @@ export function gamesView(ctrl: Ctrl): VNode {
     card(
       [
         label('Chess.com'),
-        el(
-          'p',
-          'text-sm text-dim',
-          p?.chesscomUser
-            ? `Importing games for ${p.chesscomUser}. Clear the name to stop.`
-            : 'Add a username to import and drill those games too.',
-        ),
+        p?.chesscomUser ? el('p', 'text-sm text-dim', `Importing games for ${p.chesscomUser}.`) : null,
         chesscomField(ctrl, p?.chesscomUser ? 'Save' : 'Add'),
       ],
       'space-y-3',

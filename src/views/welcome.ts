@@ -19,17 +19,12 @@ export const chesscomField = (ctrl: Ctrl, label: string) =>
 export function welcomeView(ctrl: Ctrl): VNode {
   return el('section', 'mx-auto max-w-md space-y-5 pt-6 sm:pt-12', [
     el('h1', 'font-display text-3xl', 'Puzzles from your own mistakes'),
-    el(
-      'p',
-      'text-dim',
-      'lidrill goes through your Lichess games with Stockfish, finds the moves that cost you, and gives them back as a few puzzles a day.',
-    ),
     el('div', 'grid', [button('Sign in with Lichess', () => ctrl.signIn())]),
     ctrl.status ? errorLine(ctrl.status) : null,
-    el('p', 'text-sm text-dim', 'Your games and puzzles stay in this browser. lidrill has no account of its own.'),
+    el('p', 'text-sm text-dim', 'Your games and puzzles stay in this browser.'),
     el('details', 'text-sm', [
       el('summary', 'cursor-pointer py-2 text-dim', 'Chess.com only'),
-      el('div', 'mt-2 space-y-2', [el('p', 'text-dim', 'Chess.com games are public, so a username is enough.'), chesscomField(ctrl, 'Import')]),
+      el('div', 'mt-2', [chesscomField(ctrl, 'Import')]),
     ]),
   ])
 }

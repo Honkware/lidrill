@@ -80,7 +80,6 @@ export function settingsView(ctrl: Ctrl): VNode {
     card(
       [
         label('Openings plan'),
-        el('p', 'text-sm text-dim', 'Pick up to four of the openings you play, or leave them all off and lidrill picks for you.'),
         ctrl.playedFamilies.length
           ? el(
               'div',
@@ -105,7 +104,7 @@ export function settingsView(ctrl: Ctrl): VNode {
       ? card(
           [
             label('Lichess'),
-            el('p', 'text-sm', `Signed in as ${ctrl.auth.username}. Games, ratings and the opening book need no extra permission.`),
+            el('p', 'text-sm', `Signed in as ${ctrl.auth.username}.`),
             perf
               ? el('p', 'text-sm', [
                   `Puzzle performance ${perf.now}`,
@@ -115,7 +114,7 @@ export function settingsView(ctrl: Ctrl): VNode {
               : null,
             weak.length
               ? el('div', [
-                  el('p', 'text-sm text-dim', 'Weakest themes, which get extra puzzles:'),
+                  el('p', 'text-sm text-dim', 'Weakest themes'),
                   el('div', 'mt-2 flex flex-wrap gap-2', weak.slice(0, 6).map(w => el('span', 'rounded-full bg-raised px-3 py-1 text-sm', `${w.name} ${w.performance}`))),
                 ])
               : null,
@@ -126,7 +125,6 @@ export function settingsView(ctrl: Ctrl): VNode {
                 el('li', [el('span', 'font-mono text-xs text-dim', s), el('p', '', SCOPE_WHY[s] ?? '')]),
               ),
             ),
-            el('p', 'text-xs text-dim', 'Other permissions are asked for only when you use the feature that needs them.'),
             button('Sign out', () => ctrl.signOut(), 'plain'),
           ],
           'space-y-3',
@@ -136,7 +134,6 @@ export function settingsView(ctrl: Ctrl): VNode {
     card(
       [
         label('Your data'),
-        el('p', 'text-sm text-dim', 'Everything lives in this browser; export keeps a copy, and the Lichess sign-in is never in the file.'),
         el('p', 'text-sm text-dim', '"Why?" after a puzzle sends that position and Stockfish\'s lines, nothing else, through lidrill\'s server to an AI model (via OpenRouter).'),
         el('div', 'flex flex-wrap gap-2', [
           button('Export', () => ctrl.exportFile(), 'plain'),
@@ -168,7 +165,7 @@ export function settingsView(ctrl: Ctrl): VNode {
 function studyPicker(ctrl: Ctrl): VNode {
   const current = ctrl.profile?.repertoireStudy
   return el('div', 'space-y-2 border-t border-raised pt-3', [
-    el('p', 'text-sm', current ? `Repertoire from your study "${current.name}" (${current.lines.length} lines).` : 'Or use one of your Lichess studies as your repertoire.'),
+    current ? el('p', 'text-sm', `Repertoire from your study "${current.name}" (${current.lines.length} lines).`) : null,
     ctrl.studies
       ? rowList(
           ctrl.studies.map(st => listRow(() => ctrl.useStudy(st), [el('span', 'text-sm', st.name)])),
