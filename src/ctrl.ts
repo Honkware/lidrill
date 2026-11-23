@@ -230,8 +230,6 @@ export class Ctrl {
     } else this.go(fallback)
   }
 
-  goNext() { this.go('today') } // TODO: replaced by the flow work
-
   private teardown() {
     this.drill?.destroy()
     this.drill = undefined
@@ -367,7 +365,7 @@ export class Ctrl {
       case 'reviews':
         return this.go('opening')
       case 'learn': {
-        const o = this.openingStats.find(r => r.fresh)?.opening
+        const o = this.openingStats.find(r => r.left)?.opening
         return o ? this.go('learn', `${o.color}:${o.name}`) : this.go('openings')
       }
       case 'turning':

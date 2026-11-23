@@ -94,11 +94,6 @@ export async function dueCards(openings: string[], now = new Date()): Promise<Op
   return due.filter(c => openings.includes(c.opening) && isLearned(c)).sort((a, b) => worth(b) - worth(a)).slice(0, SET_SIZE)
 }
 
-// TODO: replaced by the Openings page work
-export async function openingsDue(now = new Date()): Promise<{ due: number; fresh: number }> {
-  return { due: await db.openingCards.where('card.due').belowOrEqual(now).filter(isLearned).count(), fresh: 0 }
-}
-
 export async function grade(c: OpeningCard, rating: Grade, now = new Date()): Promise<void> {
   await db.openingCards.update(c.id, { card: nextCard(c.card, now, rating) })
 }

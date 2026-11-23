@@ -1,6 +1,6 @@
 import type { VNode, VNodeChildren } from 'snabbdom'
 import { Rating } from 'ts-fsrs'
-import { OPENINGS, type Ctrl, type OpeningStat } from '../ctrl'
+import type { Ctrl, OpeningStat } from '../ctrl'
 import type { Opening } from '../db'
 import { el } from '../el'
 import { NEW_PER_DAY, SET_SIZE } from '../openings/cards'
@@ -194,7 +194,7 @@ interface Miss {
 // missed (each opens again, ungraded), and where to go next
 function summary(ctrl: Ctrl, o: { title: string; big: string; tip?: string; marks: Mark[]; stats: [string, number | string][]; missed: Miss[]; extra?: (VNode | null)[] }): VNode {
   return el('div', 'mx-auto max-w-xl space-y-5 pb-8 wide:pt-4', [
-    topBar(o.title, () => ctrl.back(OPENINGS)),
+    topBar(o.title, () => ctrl.back('openings')),
     el('div', 'space-y-5 px-4 sm:px-0', [
       el('p', 'text-center font-display text-4xl tabular-nums', { attrs: { title: o.tip ?? '' } }, o.big),
       o.marks.length ? el('div', 'flex justify-center', [dots(o.marks, -1, o.big)]) : null,
@@ -220,7 +220,7 @@ function summary(ctrl: Ctrl, o: { title: string; big: string; tip?: string; mark
             ),
           ])
         : null,
-      el('div', 'grid gap-2 sm:grid-cols-2', [button('Next', () => ctrl.goNext()), button('Openings', () => ctrl.go(OPENINGS), 'plain')]),
+      el('div', 'grid gap-2 sm:grid-cols-2', [button('Next', () => ctrl.goNext()), button('Openings', () => ctrl.go('openings'), 'plain')]),
       ...(o.extra ?? []),
     ]),
   ])
@@ -237,7 +237,7 @@ export function openingView(ctrl: Ctrl): VNode {
   return trainerScreen({
     title: 'Openings',
     count: `${s.index + 1} / ${s.cards.length}`,
-    back: () => ctrl.back(OPENINGS),
+    back: () => ctrl.back('openings'),
     board: board(`opening-set:${ctrl.openingRound}`, e => s.mount(e)),
     side: [
       names(c.opening, c.moves.length % 2 ? 'Black' : 'White', s.name),
@@ -282,7 +282,7 @@ export function learnView(ctrl: Ctrl): VNode {
   return trainerScreen({
     title: `Learn: ${r.opening.name}`,
     count: `${Math.min(r.taught + 1, r.fresh.length)} / ${r.fresh.length}`,
-    back: () => ctrl.back(OPENINGS),
+    back: () => ctrl.back('openings'),
     board: board(`learn:${openingArg(r.opening)}:${ctrl.learnRound}`, e => r.mount(e)),
     side: [
       names(r.opening.name, side(r.opening), r.name),
@@ -341,7 +341,7 @@ export function sparView(ctrl: Ctrl): VNode {
   return trainerScreen({
     title: `Spar: ${r.opening.name}`,
     count: `${Math.min(mine + (r.state === 'your-move' ? 1 : 0), DEPTH)} / ${DEPTH}`,
-    back: () => ctrl.back(OPENINGS),
+    back: () => ctrl.back('openings'),
     board: board(`spar:${openingArg(r.opening)}:${ctrl.sparRound}`, e => r.mount(e)),
     side: [
       names(r.opening.name, side(r.opening), undefined, `Against Maia at about ${ctrl.openingLevel}, through move ${DEPTH}`),
