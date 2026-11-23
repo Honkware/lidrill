@@ -30,7 +30,7 @@ export interface PlayOptions {
   pace: Pace // human waits as long as Maia says a person would have taken
 }
 
-// What the Play Maia card was last set to, kept per browser
+// What Play was last set to, kept per browser
 export interface Choices {
   time: string
   color: 'white' | 'black' | 'random'

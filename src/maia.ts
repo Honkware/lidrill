@@ -43,7 +43,7 @@ export type Estimates = Partial<Record<MaiaSpeed, Estimate>>
 
 const SPEEDS: MaiaSpeed[] = ['blitz', 'rapid', 'untimed']
 
-// time is a time control as text, '5+3', and anything else (the card's
+// time is a time control as text, '5+3', and anything else (Play's
 // 'unlimited', a stored game's 'untimed') has no clock. Lichess's rule:
 // under 8 minutes of base time plus 40 moves of increment is blitz.
 export function speedOf(time: string): MaiaSpeed {
