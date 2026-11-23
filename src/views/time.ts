@@ -2,8 +2,8 @@ import { h, type VNode } from 'snabbdom'
 import type { Ctrl } from '../ctrl'
 import type { Game } from '../db'
 import { el } from '../el'
-import { AFTER_MOVE, gameTime, MIN_GAMES, RECENT, slowest, TROUBLE, type GameTime, type Pace, type TimeProfile } from '../time'
-import { CEILING, FLOOR, limitFor } from '../timed'
+import { AFTER_MOVE, gameTime, MIN_GAMES, slowest, TROUBLE, type GameTime, type Pace, type TimeProfile } from '../time'
+import { limitFor } from '../timed'
 import { button, card, label, pct } from './ui'
 
 const secs = (s: number) => `${s < 10 ? s.toFixed(1) : Math.round(s)} s`
@@ -25,6 +25,8 @@ function bars(t: GameTime): VNode {
     ...t.moves.map((m, i) =>
       h('rect', { attrs: { x: i * 4, y: y(m.secs), width: 3, height: ht - y(m.secs), class: m.judg ? FILL[m.judg] : 'fill-dim opacity-40' } }, [h('title', `Move ${m.move}: ${secs(m.secs)}`)]),
     ),
+    // Over the gaps between bars; a bar shows its own title
+    h('title', `Seconds per move from move 2; the dashed line is your median, ${secs(t.median)}`),
     h('line', { attrs: { x1: 0, x2: w, y1: y(t.median), y2: y(t.median), class: 'stroke-fg', 'stroke-width': 1, 'stroke-dasharray': '3 3', 'vector-effect': 'non-scaling-stroke' } }),
   ])
 }
@@ -39,7 +41,6 @@ export function timeCard(g: Game): VNode | null {
     [
       label('Time'),
       bars(t),
-      el('p', 'text-xs text-dim', `Seconds per move from move 2. Inaccuracies, mistakes and blunders in their colours; the dashed line is your median, ${secs(t.median)}.`),
       el('div', 'grid grid-cols-3 gap-3 text-sm', [
         fact('Used by move 15', t.usedBy15 === undefined ? '–' : pct(t.usedBy15)),
         fact('Slowest move', `${secs(slow.secs)}, move ${slow.move}`),
@@ -65,7 +66,7 @@ export function timeProfileCard(ctrl: Ctrl): VNode | null {
   return card(
     [
       label('Time'),
-      el('p', 'text-sm text-dim', `${p.speed === 'blitz' ? 'Blitz' : 'Rapid'}, your last ${p.games} analyzed games with clocks${p.games === RECENT ? '' : ` (up to ${RECENT})`}.`),
+      el('p', 'text-sm text-dim', `${p.speed === 'blitz' ? 'Blitz' : 'Rapid'}, last ${p.games} games`),
       el('div', 'grid grid-cols-2 gap-3 text-sm', [
         fact('Used by move 15, on average', p.usedBy15 === undefined ? '–' : pct(p.usedBy15)),
         fact(`Median time per move after move ${AFTER_MOVE}`, secs(p.think)),
@@ -75,7 +76,7 @@ export function timeProfileCard(ctrl: Ctrl): VNode | null {
       paceTable(p),
       el('div', 'flex flex-wrap items-center gap-3', [
         button('Move under a clock', () => void ctrl.startTimed('review'), 'plain'),
-        el('p', 'text-xs text-dim', `Your own puzzles, ${limitFor(p.think, 1)} s a move.`),
+        el('p', 'text-xs text-dim', `${limitFor(p.think, 1)} s a move`),
       ]),
     ],
     'space-y-3',
@@ -111,12 +112,14 @@ function paceTable(p: TimeProfile): VNode {
 export function countdownBar(ctrl: Ctrl): VNode | null {
   const c = ctrl.countdown
   if (!ctrl.timed || !c || ctrl.review.viewing !== undefined) return null
-  return el('div', 'space-y-1', [
-    el('div', 'flex items-baseline justify-between gap-3', [
-      el('p', 'font-display text-2xl tabular-nums', { class: { 'text-bad': c.out } }, c.out ? 'Out of time' : `${Math.ceil(c.left / 1000)} s`),
-      el('p', 'text-xs text-dim', `${c.limit} s for this puzzle`),
-    ]),
-    el('p', 'text-xs text-dim', "Running out of time is a miss in this session only. The puzzle's schedule does not change."),
+  return el('div', 'flex items-baseline justify-between gap-3', [
+    el(
+      'p',
+      'font-display text-2xl tabular-nums',
+      { attrs: { title: "Running out does not change the puzzle's schedule" }, class: { 'text-bad': c.out } },
+      c.out ? 'Out of time' : `${Math.ceil(c.left / 1000)} s`,
+    ),
+    el('p', 'text-xs text-dim', `${c.limit} s for this puzzle`),
   ])
 }
 
@@ -125,14 +128,7 @@ export function timedCard(ctrl: Ctrl): VNode {
   const p = ctrl.timeProfiles[0]
   return card([
     el('h2', 'font-display text-lg', 'Move under a clock'),
-    el('p', 'mt-1 text-sm text-dim', 'Your own puzzles against a countdown set from how long you take over a move in your games.'),
-    el(
-      'p',
-      'mt-2 text-sm',
-      p
-        ? `${limitFor(p.think, 1)} s a move: your ${p.speed} median after move ${AFTER_MOVE} is ${secs(p.think)}, kept between ${FLOOR} and ${CEILING} s.`
-        : `Needs ${MIN_GAMES} analyzed blitz or rapid games with clocks.`,
-    ),
+    el('p', 'mt-1 text-sm', p ? `${limitFor(p.think, 1)} s a move` : `Needs ${MIN_GAMES} analyzed blitz or rapid games with clocks.`),
     p ? el('div', 'mt-4 flex', [button('Start', () => void ctrl.startTimed('drills'), 'plain')]) : null,
   ])
 }

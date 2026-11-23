@@ -14,16 +14,9 @@ const sparArg = (o: Opening) => `${o.color}:${o.name}`
 // The Openings card at the top of Drills
 export function openingsCard(ctrl: Ctrl): VNode {
   const rows = ctrl.openingStats
-  const study = ctrl.profile?.repertoireStudy
   return card([
     el('h2', 'font-display text-lg', 'Openings'),
-    el(
-      'p',
-      'mt-1 text-sm text-dim',
-      `Your openings against what Maia plays at about ${ctrl.openingLevel}. Coverage is the share of its likely replies you have a move for, through move ${DEPTH}.`,
-    ),
     rows.length ? el('ul', 'mt-3 divide-y divide-raised', rows.map(r => openingRow(ctrl, r))) : el('p', 'mt-3 text-sm text-dim', 'No openings chosen yet.'),
-    study ? el('p', 'mt-2 text-xs text-dim', `Where your Lichess study "${study.name}" has a move, its move is the one trained.`) : null,
     el('div', 'mt-4 flex flex-wrap gap-2', [
       ctrl.openingDue ? button(`Train ${plural(ctrl.openingDue, 'card')}`, () => ctrl.go('opening')) : null,
       button(ctrl.openingPicking ? 'Close the list' : 'Add or remove openings', () => ctrl.toggleOpeningPicking(), 'plain'),
@@ -37,7 +30,11 @@ function openingRow(ctrl: Ctrl, r: OpeningStat): VNode {
   return el('li', 'flex items-center gap-3 py-3', [
     el('div', 'min-w-0 flex-1', [
       el('p', 'truncate font-medium', r.opening.name),
-      el('p', 'text-xs text-dim', `${side(r.opening)}, ${coverage}, ${r.due} due`),
+      el('p', 'text-xs text-dim', [
+        `${side(r.opening)}, `,
+        el('span', { attrs: { title: `Share of Maia's likely replies at about ${ctrl.openingLevel} you have a move for, through move ${DEPTH}` } }, coverage),
+        `, ${r.due} due`,
+      ]),
       r.error ? el('p', 'text-xs text-bad', r.error) : null,
     ]),
     button('Spar', () => ctrl.go('spar', sparArg(r.opening)), 'plain'),
@@ -70,11 +67,7 @@ function picker(ctrl: Ctrl): VNode {
           }),
       ),
     ])
-  return el('div', [
-    group('white'),
-    group('black'),
-    ctrl.gamesOpenings.length ? el('p', 'mt-2 text-xs text-dim', 'The list also has the openings you play most in your games.') : null,
-  ])
+  return el('div', [group('white'), group('black')])
 }
 
 const TONE: Record<number, ['good' | 'warn' | 'bad', string]> = {

@@ -9,16 +9,7 @@ import { openingsCard } from './openings'
 import { timedCard } from './time'
 import { board, boardScreen, btnClass, button, card, dateLabel, icon, listRow, loading, moveInput, pawns, rowList, segmented } from './ui'
 
-const ABOUT: Record<PracticeKind, { title: string; text: string }> = {
-  conversion: {
-    title: 'Conversion',
-    text: "Positions where you were winning on material and didn't win. Play them out against Maia at about your level until you convert three times in a row. Stockfish judges the result.",
-  },
-  defense: {
-    title: 'Defense',
-    text: "Positions where you were worse and saved the game. Hold them against Maia at about your level for 12 moves, three times in a row. Stockfish judges the result.",
-  },
-}
+const TITLE: Record<PracticeKind, string> = { conversion: 'Conversion', defense: 'Defense' }
 
 export function drillsView(ctrl: Ctrl): VNode {
   const list = ctrl.practiceList
@@ -31,7 +22,7 @@ export function drillsView(ctrl: Ctrl): VNode {
     section('conversion', list),
     band === 'beginner'
       ? card([
-          el('h2', 'font-display text-lg', ABOUT.defense.title),
+          el('h2', 'font-display text-lg', TITLE.defense),
           el('p', 'mt-1 text-sm text-dim', 'Unlocks at club level (rated 1000+).'),
         ])
       : section('defense', list),
@@ -44,7 +35,6 @@ function maiaCard(ctrl: Ctrl): VNode {
   const level = ctrl.maiaLevel
   const { time, color, pace } = ctrl.playChoices
   const speed = ctrl.maiaSpeed
-  const { from, games } = ctrl.maiaEstimate
   const saved = readGame()
   const step = (by: number) =>
     el(
@@ -55,32 +45,19 @@ function maiaCard(ctrl: Ctrl): VNode {
     )
   return card([
     el('h2', 'font-display text-lg', 'Play Maia'),
-    el(
-      'p',
-      'mt-1 text-sm text-dim',
-      'A whole game against Maia-3, a model that plays like a person of a given rating. The level follows your results and stays a little above you. Afterwards your mistakes become puzzles.',
-    ),
-    el('div', 'mt-4 text-center', [
-      el('p', 'font-display text-2xl tabular-nums', `about ${level}`),
-      el('p', 'text-xs text-dim', 'approximate Lichess blitz rating'),
-    ]),
+    el('p', 'mt-4 text-center font-display text-2xl tabular-nums', { attrs: { title: 'Approximate Lichess blitz rating' } }, `about ${level}`),
     levelLine(ctrl, speed),
     el('div', 'mt-3 grid grid-cols-6 gap-2', [-100, -10, -1, 1, 10, 100].map(step)),
-    el('p', 'mt-2 text-center text-xs text-dim', [
-      ctrl.playLevel === undefined
-        ? from === speed
-          ? `Set from your ${games === 1 ? `${speed} game` : `${games} ${speed} games`} against Maia.`
-          : from
-            ? `Set from your ${from} games against Maia, as you have no ${speed} games yet.`
-            : 'Set from your rating until you have played a game.'
-        : // A link in the line of text, so not a button()
+    ctrl.playLevel === undefined
+      ? null
+      : el('p', 'mt-2 text-center text-xs text-dim', [
+          // A link in the line of text, so not a button()
           el('button', 'underline', { attrs: { type: 'button' }, on: { click: () => ctrl.stepMaiaLevel(0) } }, 'Back to the level that follows your results'),
-    ]),
+        ]),
     // Seven times fit a phone's card only with the symbol for unlimited
     segments('Time', TIMES.map(t => (t === 'unlimited' ? [t, '∞', 'Unlimited'] : [t, t])), time, t => ctrl.setPlayChoice({ time: t })),
     segments('Colour', [['white', 'White'], ['black', 'Black'], ['random', 'Random']], color, c => ctrl.setPlayChoice({ color: c })),
-    segments('Pace', [['human', 'Human'], ['instant', 'Instant']], pace, p => ctrl.setPlayChoice({ pace: p })),
-    el('p', 'mt-1 text-xs text-dim', pace === 'human' ? 'Maia takes about as long over a move as a person would.' : 'Maia moves as soon as it has a reply.'),
+    segments('Pace', [['human', 'Human'], ['instant', 'Instant']], pace, p => ctrl.setPlayChoice({ pace: p }), 'Human takes about as long as a person; Instant replies at once'),
     el('div', 'mt-4 flex flex-wrap gap-2', [
       saved ? button('Continue game', () => ctrl.go('play')) : null,
       button('New game', () => ctrl.startPlay(false), saved ? 'plain' : 'primary'),
@@ -127,15 +104,14 @@ function savedText({ opts, moves }: SavedGame): string {
 }
 
 // [value, text, a spoken name when the text is a symbol]
-function segments<T extends string>(name: string, opts: [T, string, string?][], current: T, pick: (v: T) => void): VNode {
-  return el('div', 'mt-3 space-y-1', [el('p', 'text-xs text-dim', name), segmented(name, opts, current, pick)])
+function segments<T extends string>(name: string, opts: [T, string, string?][], current: T, pick: (v: T) => void, title?: string): VNode {
+  return el('div', 'mt-3 space-y-1', [el('p', 'text-xs text-dim', title ? { attrs: { title } } : {}, name), segmented(name, opts, current, pick)])
 }
 
 function section(kind: PracticeKind, list?: Practice[]): VNode {
   const items = (list ?? []).filter(p => p.kind === kind).sort((a, b) => Number(a.cleared) - Number(b.cleared) || b.ply - a.ply)
   return card([
-    el('h2', 'font-display text-lg', ABOUT[kind].title),
-    el('p', 'mt-1 text-sm text-dim', ABOUT[kind].text),
+    el('h2', 'font-display text-lg', TITLE[kind]),
     items.length
       ? rowList(
           items.slice(0, 20).map(p =>
@@ -163,9 +139,8 @@ export function practiceView(ctrl: Ctrl): VNode {
   const run = ctrl.run
   if (!run) return loading()
   const p = run.practice
-  const title = ABOUT[p.kind].title
-  // The rule is stated once, on the list page (ABOUT). Here: one line, and
-  // the numbers live in the side stats, not in sentences.
+  const title = TITLE[p.kind]
+  // One line, and the numbers live in the side stats, not in sentences
   const goal = p.kind === 'conversion' ? 'Win from here.' : 'Hold.'
   const target = p.kind === 'conversion' ? '+10' : '12 moves'
   const targetNote = p.kind === 'conversion' ? 'Reach +10 or mate; dropping below +2 ends it.' : 'Slip at most a pawn from where you started.'
