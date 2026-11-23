@@ -7,7 +7,7 @@ import type { Engine } from '../analysis/engine'
 import { db, type Opening, type OpeningCard } from '../db'
 import { pawns } from '../format'
 import { OpeningBoard, playMove } from './board'
-import { addCards, grade } from './cards'
+import { grade, isLearned } from './cards'
 import type { Policy, Reply } from './policy'
 import { keyOf, norm, posKey, startsWith } from './repertoire'
 import { kept, pastDepth } from './tree'
@@ -139,17 +139,15 @@ export class SparRun {
     this.redraw()
   }
 
-  // The first position the player didn't know becomes a card: an existing
-  // card is graded Again, and a position with no repertoire move gets a new
-  // card due now
+  // The first position the player didn't know is due for review again when
+  // it was learned; one not learned yet is still in its learn line
   private async finish() {
     this.state = 'done'
     this.sync()
     this.redraw()
     const miss = this.steps.find(s => !s.known)
     const old = miss && (await db.openingCards.get(posKey(miss.fen)))
-    if (old && miss.answer) await grade(old, Rating.Again)
-    else if (miss && !old) await addCards([{ fen: miss.fen, moves: miss.moves, opening: this.opening.name }])
+    if (old && miss.answer && isLearned(old)) await grade(old, Rating.Again)
     if (!this.pos.isEnd()) {
       const r = await this.engine.search(makeFen(this.pos.toSetup()), 14)
       const cp = r.eval.mate !== undefined ? (r.eval.mate > 0 ? 10000 : -10000) : (r.eval.cp ?? 0)

@@ -117,7 +117,6 @@ export class Ctrl {
   studies?: StudyInfo[]
   playedFamilies: string[] = []
   openingStats: OpeningStat[] = []
-  openingDue = 0
   openingPicking = false
   gamesOpenings: Opening[] = [] // the player's most played openings, offered beside the built-in ones
   openingSet?: OpeningSession
@@ -373,7 +372,6 @@ export class Ctrl {
         row.due = (await dueCards([row.opening.name])).length
         this.redraw()
       }
-      this.openingDue = (await dueCards(this.openingNames)).length
       this.redraw()
     })().finally(() => {
       this.counting = undefined

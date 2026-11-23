@@ -17,28 +17,26 @@ export function openingsCard(ctrl: Ctrl): VNode {
   return card([
     el('h2', 'font-display text-lg', 'Openings'),
     rows.length ? el('ul', 'mt-3 divide-y divide-raised', rows.map(r => openingRow(ctrl, r))) : el('p', 'mt-3 text-sm text-dim', 'No openings chosen yet.'),
-    el('div', 'mt-4 flex flex-wrap gap-2', [
-      ctrl.openingDue ? button(`Train ${plural(ctrl.openingDue, 'card')}`, () => ctrl.go('opening')) : null,
-      button(ctrl.openingPicking ? 'Close the list' : 'Add or remove openings', () => ctrl.toggleOpeningPicking(), 'plain'),
-    ]),
+    el('div', 'mt-4 flex flex-wrap gap-2', [button(ctrl.openingPicking ? 'Close the list' : 'Add or remove openings', () => ctrl.toggleOpeningPicking(), 'plain')]),
     ctrl.openingPicking ? picker(ctrl) : null,
   ])
 }
 
 function openingRow(ctrl: Ctrl, r: OpeningStat): VNode {
   const coverage = r.coverage !== undefined ? `${pct(r.coverage)} learned` : r.error ? 'not counted' : 'counting…'
-  return el('li', 'flex items-center gap-3 py-3', [
-    el('div', 'min-w-0 flex-1', [
-      el('p', 'truncate font-medium', r.opening.name),
-      el('p', 'text-xs text-dim', [
-        `${side(r.opening)}, `,
-        el('span', { attrs: { title: `Share of your moves against Maia's likely replies at about ${ctrl.openingLevel} you have learned, through move ${DEPTH}` } }, coverage),
-        `, ${r.due} due`,
-      ]),
-      r.error ? el('p', 'text-xs text-bad', r.error) : null,
+  const arg = sparArg(r.opening)
+  return el('li', 'py-3', [
+    el('p', 'truncate font-medium', r.opening.name),
+    el('p', 'text-xs text-dim', [
+      `${side(r.opening)}, `,
+      el('span', { attrs: { title: `Share of your moves against Maia's likely replies at about ${ctrl.openingLevel} you have learned, through move ${DEPTH}` } }, coverage),
     ]),
-    button(r.fresh ? `Learn ${r.fresh}` : 'Learn', () => ctrl.go('learn', sparArg(r.opening)), 'primary', !r.fresh),
-    button('Spar', () => ctrl.go('spar', sparArg(r.opening)), 'plain'),
+    r.error ? el('p', 'text-xs text-bad', r.error) : null,
+    el('div', 'mt-2 flex flex-wrap gap-2', [
+      button(r.fresh ? `Learn ${r.fresh}` : 'Learn', () => ctrl.go('learn', arg), 'primary', !r.fresh),
+      button(`Review ${r.due}`, () => ctrl.go('opening', arg), 'plain', !r.due),
+      button('Spar', () => ctrl.go('spar', arg), 'plain'),
+    ]),
   ])
 }
 
@@ -168,7 +166,7 @@ export function sparView(ctrl: Ctrl): VNode {
         ? el('div', 'space-y-3', [
             r.error ? el('p', 'text-sm text-bad', r.error) : null,
             el('ul', 'divide-y divide-raised', r.steps.map(stepLine)),
-            miss ? el('p', 'text-sm text-dim', `${moveNo(miss.fen)} ${miss.san} is now a card to train.`) : el('p', 'text-sm text-dim', 'Every move was from your repertoire.'),
+            miss ? null : el('p', 'text-sm text-dim', 'Every move was from your repertoire.'),
             r.evalText ? el('p', 'text-sm', [el('span', 'text-dim', 'Stockfish at the end: '), el('span', 'font-medium tabular-nums', r.evalText)]) : null,
             el('div', 'flex flex-wrap gap-2', [button('Spar again', () => ctrl.sparAgain()), button('Back to drills', () => ctrl.go('drills'), 'plain')]),
           ])
