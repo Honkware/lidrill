@@ -1,6 +1,6 @@
 import type { Game, Result } from '../db'
 import { FIRST_SYNC_MAX } from './lichess'
-import { pgnHeader, pgnMoves } from './pgn'
+import { pgnClocks, pgnHeader, pgnMoves } from './pgn'
 
 interface ChesscomPlayer {
   username: string
@@ -49,6 +49,7 @@ export function fromChesscom(g: ChesscomGame, user: string): Game | null {
     playedAt: g.end_time * 1000,
     moves,
     termination: result === 'win' ? theirs : mine,
+    clocks: pgnClocks(g.pgn),
   }
 }
 

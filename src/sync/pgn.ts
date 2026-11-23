@@ -1,4 +1,4 @@
-import { parsePgn, startingPosition } from 'chessops/pgn'
+import { parseComment, parsePgn, startingPosition } from 'chessops/pgn'
 import { parseSan } from 'chessops/san'
 import { makeUci } from 'chessops/util'
 import type { Move } from '../db'
@@ -19,6 +19,20 @@ export function pgnMoves(pgn: string): Move[] | null {
     pos.play(move)
   }
   return moves
+}
+
+// Centiseconds left after each mainline move, from the [%clk h:mm:ss.s]
+// comments, or undefined unless every move has one
+export function pgnClocks(pgn: string): number[] | undefined {
+  const game = parsePgn(pgn)[0]
+  if (!game) return undefined
+  const clocks: number[] = []
+  for (const node of game.moves.mainline()) {
+    const clock = (node.comments ?? []).map(c => parseComment(c).clock).find(c => c !== undefined)
+    if (clock === undefined) return undefined
+    clocks.push(Math.round(clock * 100))
+  }
+  return clocks.length ? clocks : undefined
 }
 
 export function pgnHeader(pgn: string, name: string): string | undefined {

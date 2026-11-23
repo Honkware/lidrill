@@ -47,6 +47,18 @@ describe('chess.com', () => {
     expect(g.moves.length).toBeGreaterThan(10)
   })
 
+  it('reads the clock after each move from the %clk comments', () => {
+    const g = fromChesscom(chesscom.games[0], 'Hikaru')!
+    expect(g.clocks!.length).toBe(g.moves.length)
+    // 1. e4 {[%clk 0:04:53.5]} 1... c5 {[%clk 0:04:54.8]}
+    expect(g.clocks!.slice(0, 2)).toEqual([29350, 29480])
+  })
+
+  it('leaves the clocks out when a move has none', () => {
+    const pgn = chesscom.games[0].pgn.replace(' {[%clk 0:04:54.8]}', '')
+    expect(fromChesscom({ ...chesscom.games[0], pgn }, 'Hikaru')!.clocks).toBeUndefined()
+  })
+
   it('skips variants', () => {
     expect(fromChesscom({ ...chesscom.games[0], rules: 'chess960' }, 'hikaru')).toBeNull()
   })
