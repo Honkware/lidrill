@@ -133,17 +133,20 @@ function playing(d: Drill): VNode {
     // it never shifts the layout (the packet is precomputed at sync,
     // so the hint is ready the moment a try fails - gating is only whose
     // turn it is)
-    el(
-      'button',
-      btnClass('plain', 'sm'),
-      {
-        attrs: { type: 'button', disabled: !d.yourTurn, 'aria-hidden': available ? 'false' : 'true' },
-        class: { 'text-warn': d.showHint, invisible: !available },
-        on: { click: () => d.hint() },
-      },
-      [icon('hint', 18), d.showHint ? 'Hide hint' : 'Hint'],
-    ),
-    d.canViewSolution ? button('View the solution', () => d.viewSolution(), 'plain') : null,
+    // One row, so space-y on the column can't push the second button down
+    el('div', 'flex flex-wrap gap-2', [
+      el(
+        'button',
+        btnClass('plain'),
+        {
+          attrs: { type: 'button', disabled: !d.yourTurn, 'aria-hidden': available ? 'false' : 'true' },
+          class: { 'text-warn': d.showHint, invisible: !available },
+          on: { click: () => d.hint() },
+        },
+        [icon('hint', 18), d.showHint ? 'Hide hint' : 'Hint'],
+      ),
+      d.canViewSolution ? button('View the solution', () => d.viewSolution(), 'plain') : null,
+    ]),
     // Typing moves is for keyboards; on a phone it's clutter
     el('div', 'hidden md:block', [moveInput(t => d.typeMove(t))]),
     drillContext(d),
