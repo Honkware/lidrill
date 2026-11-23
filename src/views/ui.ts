@@ -140,11 +140,13 @@ const topBar = (title: string, onBack: () => void) =>
 
 // A full-screen board screen. The column holds the board with an optional
 // bar above and below it and a control row under it; the grid that places
-// it beside the top bar and side panel is .board-screen in index.css.
+// it beside the top bar and side panel is .board-screen in index.css. On a
+// phone on its side the board fills the height, so it stays put while the
+// panel scrolls.
 export const boardScreen = (o: { title: string; back: () => void; board: VNode; above?: VNode; below?: VNode; controls?: VNode | null; side: VNodeChildren }) =>
   el('div', 'board-screen', { class: { 'with-bars': !!o.above } }, [
     el('div', '[grid-area:top]', [topBar(o.title, o.back)]),
-    el('div', '[grid-area:board]', [o.above ?? null, o.board, o.below ?? null, o.controls ? el('div', 'px-4 pt-3 wide:px-0', [o.controls]) : null]),
+    el('div', '[grid-area:board] short:sticky short:top-0 short:self-start', [o.above ?? null, o.board, o.below ?? null, o.controls ? el('div', 'px-4 pt-3 wide:px-0', [o.controls]) : null]),
     el('aside', '[grid-area:side] space-y-4 px-4 pb-8 pt-3 wide:px-0 wide:pt-4', o.side),
   ])
 

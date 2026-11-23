@@ -90,25 +90,40 @@ cg-board square.hint { box-shadow: inset 0 0 0 4px var(--color-warn); }
 @media (min-width: 640px) { .bottom-notice-tabs { bottom: 1.5rem; } }
 
 /* Board screens (boardScreen in src/views/ui.ts): the top bar, the board
-   column and the side panel in one column on a phone, the board beside the
-   other two from 768px wide. */
-@custom-variant wide (@media (min-width: 768px));
+   column and the side panel in one column on a phone held upright, the
+   board beside the other two from 768px wide or on a phone held sideways.
+   Sideways is landscape from 640px wide, which takes in phones from 667x375
+   up: there the board is fitted to the height (303px at 375px high) and the
+   panel keeps about 290px beside it. The variant takes two blocks because
+   Tailwind's one-line form keeps only the first query of a list. */
+@custom-variant wide {
+  @media (min-width: 768px) { @slot; }
+  @media (orientation: landscape) and (min-width: 640px) { @slot; }
+}
+/* The sideways phone among those: under 500px high, with no height to spare
+   for the header above a board screen */
+@custom-variant short (@media (orientation: landscape) and (min-width: 640px) and (max-height: 500px));
 .board-screen {
   display: grid;
   grid-template: 'top' 'board' 'side' / minmax(0, 1fr);
+  /* Clear of the notch on a phone held sideways */
+  padding-inline: env(safe-area-inset-left) env(safe-area-inset-right);
+  --room: 8rem;
   @variant wide { grid-template: 'board top' auto 'board side' 1fr / auto minmax(0, 1fr); column-gap: 1.5rem; padding-top: 1rem; }
+  @variant short { --room: 4.5rem; }
 }
 /* Against Maia a 2.5rem bar sits above and below the board */
 .board-screen.with-bars { --bars: 5rem; }
 
 /* The board fills the phone's width but leaves room for the top bar, bars
    and controls; 15rem covers all of them. Beside the side panel it gives up
-   8rem for the header, the gap above it and the control row below, plus
-   the bars. An auto-width grid column would shrink a percentage width to
-   nothing, so that width is set outright. */
+   --room for the header (3.5rem, none on a phone on its side), the 1rem gap
+   above it and the 3.5rem control row below, plus the bars. An auto-width
+   grid column would shrink a percentage width to nothing, so that width is
+   set outright. */
 .board {
   width: 100%; max-width: min(100vw, calc(100dvh - 15rem)); aspect-ratio: 1; margin-inline: auto;
-  @variant wide { width: min(40rem, calc(100dvh - 8rem - var(--bars, 0rem)), 58vw); max-width: none; margin: 0; }
+  @variant wide { width: min(40rem, calc(100dvh - var(--room) - var(--bars, 0rem)), 58vw); max-width: none; margin: 0; }
 }
 .board .cg-wrap { width: 100%; height: 100%; }
 /* Taken pieces in Play Maia's bars, overlapping as on Lichess */

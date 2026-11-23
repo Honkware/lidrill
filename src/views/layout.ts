@@ -72,10 +72,10 @@ function screen(ctrl: Ctrl): VNode {
 }
 
 // Desktop: logo, nav and account. Phone: logo and sync state only, and none
-// at all on board screens.
+// at all on board screens, upright or sideways.
 function header(ctrl: Ctrl, full: boolean): VNode | null {
   const signedIn = ctrl.screen !== 'welcome'
-  return el('header', 'pt-safe border-b border-raised', { class: { 'max-sm:hidden': full } }, [
+  return el('header', 'pt-safe border-b border-raised', { class: { 'max-sm:hidden': full, 'short:hidden': full } }, [
     el('div', 'mx-auto flex h-12 max-w-5xl items-center gap-6 px-4 sm:h-14 sm:px-6', [
       el('a', 'font-display text-xl font-bold', { attrs: { href: signedIn ? '#/today' : '#' } }, 'lidrill'),
       signedIn
