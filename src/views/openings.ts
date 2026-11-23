@@ -5,7 +5,7 @@ import type { Opening } from '../db'
 import { el } from '../el'
 import { NEW_PER_DAY, SET_SIZE } from '../openings/cards'
 import type { LearnRun } from '../openings/learn'
-import { FIRST_TRY, HELPED, type LinePlay, type Resolved } from '../openings/line'
+import { FIRST_TRY, HELPED, type LinePlay, type NoteRow, type Resolved } from '../openings/line'
 import { BUILTIN, DEPTH, openingArg, posKey } from '../openings/repertoire'
 import { lineAsk, lineSan, type Mark, type OpeningSession } from '../openings/session'
 import type { SparRun } from '../openings/spar'
@@ -19,9 +19,9 @@ const learnN = (ctrl: Ctrl, r: OpeningStat) => Math.min(r.left ?? 0, ctrl.openin
 const LIMIT_TIP = `Up to ${NEW_PER_DAY} new positions a day, across openings`
 const BUILD_TIP = "Maia's likely replies and Stockfish's check of each recommended move, once per opening"
 
-const bar = (share: number, building: boolean, tip: string) =>
-  el('div', 'h-2 overflow-hidden rounded bg-raised', { attrs: { title: tip, role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': Math.round(share * 100), 'aria-label': tip } }, [
-    el('div', 'h-2 rounded transition-[width]', { class: { 'bg-accent': !building, 'bg-dim': building, 'animate-pulse': building }, style: { width: `${share * 100}%` } }),
+const bar = (share: number, building: boolean, tip: string, size = 'h-2 rounded') =>
+  el('div', `${size} overflow-hidden bg-raised`, { attrs: { title: tip, role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': Math.round(share * 100), 'aria-label': tip } }, [
+    el('div', 'h-full rounded transition-[width]', { class: { 'bg-accent': !building, 'bg-dim': building, 'animate-pulse': building }, style: { width: `${share * 100}%` } }),
   ])
 
 // #/openings: the next step, one row per chosen opening, and the chooser
@@ -142,13 +142,19 @@ const topBar = (title: string, back: () => void, count?: string) =>
     count ? el('span', 'shrink-0 pr-2 text-sm tabular-nums text-dim', count) : null,
   ])
 
-// boardScreen's layout with a count at the right of the top bar
+// boardScreen's layout with a count at the right of the top bar and, for a
+// set, a thin bar across the top for how much of it is done. The bar sits
+// above the grid so it spans the screen beside the board too, and takes
+// 4px of the room the board leaves for controls these screens don't have.
 // TODO: make the count an option of boardScreen once ui.ts is free to change
-const trainerScreen = (o: { title: string; count?: string; back: () => void; board: VNode; side: VNodeChildren }) =>
-  el('div', 'board-screen', [
-    el('div', '[grid-area:top]', [topBar(o.title, o.back, o.count)]),
-    el('div', '[grid-area:board] short:sticky short:top-0 short:self-start', [o.board]),
-    el('aside', '[grid-area:side] space-y-4 px-4 pb-8 pt-3 wide:px-0 wide:pt-4', o.side),
+const trainerScreen = (o: { title: string; count?: string; progress?: number; back: () => void; board: VNode; side: VNodeChildren }) =>
+  el('div', [
+    o.progress === undefined ? null : bar(o.progress, false, 'Done in this set', 'h-1'),
+    el('div', 'board-screen', [
+      el('div', '[grid-area:top]', [topBar(o.title, o.back, o.count)]),
+      el('div', '[grid-area:board] short:sticky short:top-0 short:self-start', [o.board]),
+      el('aside', '[grid-area:side] space-y-4 px-4 pb-8 pt-3 wide:px-0 wide:pt-4', o.side),
+    ]),
   ])
 
 // "Italian Game · White", with the explorer's name for the variation under it
@@ -201,6 +207,23 @@ function ladder(p: LinePlay): VNode | null {
     el('button', btnClass('quiet', 'sm'), { attrs: { type: 'button' }, on: { click: () => p.skip() } }, 'Skip'),
   ])
 }
+
+// What the moves played so far do, the newest last
+const noteList = (rows: NoteRow[]) =>
+  rows.length
+    ? el(
+        'ol',
+        'space-y-1.5 border-l-2 border-raised pl-3 text-sm',
+        rows.map(r => el('li', [el('span', 'font-medium tabular-nums', r.move), r.text ? ` ${r.text}` : null, r.name ? el('span', 'block text-xs text-dim', r.name) : null])),
+      )
+    : null
+
+// The squares of a set and, while moves are asked, the run of first tries
+const marksRow = (marks: Mark[], current: number, name: string, streak?: number) =>
+  el('div', 'flex items-center gap-3', [
+    el('div', 'min-w-0 flex-1', [dots(marks, current, name)]),
+    streak === undefined ? null : el('span', 'shrink-0 text-xs tabular-nums text-dim', { attrs: { title: 'Moves found on the first try in a row' } }, `In a row ${streak}`),
+  ])
 
 // The last few moves before a position, for a row
 const tail = (line: string[]) => {
@@ -261,6 +284,7 @@ export function openingView(ctrl: Ctrl): VNode {
   return trainerScreen({
     title: 'Review',
     count: `Line ${s.index + 1} of ${s.lines.length}`,
+    progress: s.progress,
     back: () => ctrl.back('openings'),
     board: board(`opening-set:${ctrl.openingRound}`, e => s.mount(e)),
     side: [
@@ -270,7 +294,8 @@ export function openingView(ctrl: Ctrl): VNode {
       ladder(p),
       ...(p.state === 'offer' ? offer(s) : []),
       s.state === 'line-done' ? next(s.index === s.lines.length - 1 ? 'Finish' : 'Next line', () => s.nextLine()) : null,
-      s.cards.length > 1 ? dots(s.marks, at, `Card ${at + 1} of ${s.cards.length}`) : null,
+      noteList(p.noteRows),
+      s.cards.length > 1 ? marksRow(s.marks, at, `Card ${at + 1} of ${s.cards.length}`, p.streak) : null,
     ],
   })
 }
@@ -312,6 +337,7 @@ export function learnView(ctrl: Ctrl): VNode {
   return trainerScreen({
     title: `${practice ? 'Practice' : 'Learn'}: ${r.opening.name}`,
     count: `Line ${r.index + 1} of ${r.lines.length}`,
+    progress: r.progress,
     back: () => ctrl.back('openings'),
     board: board(`learn:${openingArg(r.opening)}:${ctrl.learnRound}`, e => r.mount(e)),
     side: [
@@ -321,7 +347,8 @@ export function learnView(ctrl: Ctrl): VNode {
       practice ? ladder(p) : null,
       r.state === 'shown' ? next('Practice the line', () => r.practise()) : null,
       r.state === 'line-done' ? next(r.index === r.lines.length - 1 ? 'Finish' : 'Next line', () => r.nextLine()) : null,
-      dots(r.marks, r.taught, `${r.taught} of ${r.fresh.length} learned`),
+      noteList(p.noteRows),
+      marksRow(r.marks, r.taught, `${r.taught} of ${r.fresh.length} learned`, practice ? p.streak : undefined),
     ],
   })
 }
