@@ -28,11 +28,6 @@ export function openingsPage(ctrl: Ctrl): VNode {
   return el('div', 'mx-auto max-w-2xl space-y-4', [el('h1', 'font-display text-2xl', 'Openings'), ...body(ctrl)])
 }
 
-// The same on Drills, until the page replaces it there
-export function openingsCard(ctrl: Ctrl): VNode {
-  return card([el('h2', 'font-display text-lg', 'Openings'), ...body(ctrl)], 'space-y-4')
-}
-
 function body(ctrl: Ctrl): (VNode | null)[] {
   const rows = ctrl.openingStats
   const picking = ctrl.openingPicking || !ctrl.profile?.openings?.length
