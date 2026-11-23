@@ -18,7 +18,7 @@ export function reviewView(ctrl: Ctrl): VNode {
     !rows
       ? loadingBlock('h-96')
       : !rows.length
-        ? empty(ctrl.syncing ? 'Analyzing games. Each one appears here when done.' : 'No analyzed games yet.')
+        ? empty(ctrl.syncing ? 'Analyzing games…' : 'No analyzed games yet.')
         : rowList(rows.map(r => row(r)), 'overflow-hidden rounded-xl bg-surface'),
     rows?.length ? timeProfileCard(ctrl) : null,
     openings.length ? openingsCard(openings) : null,
@@ -164,7 +164,7 @@ function journalCard(ctrl: Ctrl, v: GameView): VNode | null {
   // The move is part of the sentence, so its button is drawn as a link
   const hangRow: VNodeChildren = hang
     ? [hang[0], el('button', 'underline', { attrs: { type: 'button' }, on: { click: () => v.go(j.hung!.ply) } }, hang[1]), hang[2]]
-    : 'Nothing given away. Counts toward your streak.'
+    : 'Nothing given away.'
   return card(
     [
       label('Journal'),

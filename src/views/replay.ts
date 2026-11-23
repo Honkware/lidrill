@@ -26,7 +26,6 @@ function side(ctrl: Ctrl, r: Replay): VNode {
     return el('div', 'space-y-4', [
       progressDots(r),
       el('p', 'font-display text-2xl', `${score} of ${n} found`),
-      score < n ? el('p', 'text-sm text-dim', 'Missed ones join your puzzle queue.') : null,
       card(
         [
           label('Journal'),
@@ -48,7 +47,7 @@ function side(ctrl: Ctrl, r: Replay): VNode {
     ])
   return el('div', 'space-y-4', [
     progressDots(r),
-    el('p', 'text-sm text-dim', `Replaying the game. ${plural(n, 'turning point')} to find.`),
+    el('p', 'text-sm text-dim', `${plural(n, 'turning point')} to find`),
     button(r.current ? 'Skip to the next turning point' : 'Skip to the end', () => r.skip(), 'quiet'),
   ])
 }

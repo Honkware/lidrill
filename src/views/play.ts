@@ -31,7 +31,7 @@ export function playView(ctrl: Ctrl): VNode {
         ? [over(ctrl), moves]
         : [
             run.promoting ? promotion(run) : null,
-            el('p', 'text-sm', start ? `From move ${Math.floor(start.moves.length / 2) + 1} of an earlier game${start.opening ? `, ${start.opening.split(':')[0]}` : ''}.` : 'A game from the first move.'),
+            start ? el('p', 'text-sm', `From move ${Math.floor(start.moves.length / 2) + 1} of an earlier game${start.opening ? `, ${start.opening.split(':')[0]}` : ''}.`) : null,
             el('div', 'flex gap-6 text-sm', [
               el('div', [el('p', 'text-xs text-dim', 'You play'), el('p', 'font-medium', color)]),
               run.last ? el('div', [el('p', 'text-xs text-dim', 'Maia played'), el('p', 'font-medium', run.last)]) : null,
@@ -115,7 +115,7 @@ function over(ctrl: Ctrl): VNode {
         ? el('p', 'text-sm', ['Estimate against Maia: ', el('span', 'font-medium tabular-nums', `${run.opts.rating} → ${ctrl.maiaRatingAt(game.speed)}`)])
         : null,
     game ? playTimeLine(game) : null,
-    !game ? null : ids ? analysis(game, run.opts.color, ids, ctrl) : el('p', 'text-sm text-dim', ctrl.syncing ? 'Analyzing the game…' : 'Not analyzed yet. The next sync analyzes it.'),
+    !game ? null : ids ? analysis(game, run.opts.color, ids, ctrl) : el('p', 'text-sm text-dim', ctrl.syncing ? 'Analyzing the game…' : 'Not analyzed yet.'),
     el('div', 'flex flex-wrap gap-2', [
       button('Rematch', () => ctrl.rematch(), solve ? 'plain' : 'primary'),
       game ? button('Review the game', () => ctrl.go('game', game.id), 'plain') : null,

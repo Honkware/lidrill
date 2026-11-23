@@ -2,7 +2,6 @@ import type { VNode } from 'snabbdom'
 import type { Ctrl } from '../ctrl'
 import { el } from '../el'
 import { btnClass, button, card, empty, errorLine, label, loadingBlock, plural, weekBars } from './ui'
-import { thresholdWords } from '../server/surface'
 
 // Home IA: one hero (streak), one primary action (due), then at most three
 // half cards (turning points, this week's focus, drills). Everything else
@@ -40,16 +39,11 @@ export function whatCountsLink(): VNode {
   return el('a', 'underline decoration-dotted underline-offset-2', { attrs: { href: '#/settings' } }, 'What counts?')
 }
 
-// Hero metric. With no streak yet the copy points at the next game,
-// never at the zero. No rule text on the card.
+// Hero metric. No rule text on the card.
 function streakCard(ctrl: Ctrl): VNode {
   const { streak, weeks } = ctrl.today!
   const played = weeks.some(w => w.games)
-  const line = streak.current
-    ? `Best ${Math.max(streak.best, streak.current)}.`
-    : streak.best
-      ? `Best ${streak.best}. A clean game starts a new run.`
-      : 'A clean game starts the streak.'
+  const best = Math.max(streak.best, streak.current)
   return card(
     [
       el('div', 'flex items-end justify-between gap-4', [
@@ -59,7 +53,7 @@ function streakCard(ctrl: Ctrl): VNode {
         ]),
         played ? el('div', 'flex flex-col items-end gap-1', [weekBars(weeks), el('p', 'text-xs text-dim', 'last 8 weeks')]) : null,
       ]),
-      el('p', 'mt-3 text-xs text-dim', [`${line} `, whatCountsLink()]),
+      el('p', 'mt-3 text-xs text-dim', [best ? `Best ${best}. ` : '', whatCountsLink()]),
     ],
     'md:col-span-2',
   )
@@ -72,8 +66,7 @@ function dueCard(ctrl: Ctrl): VNode {
   return card([
     label('Due today'),
     el('p', 'mt-1 font-display text-3xl', plural(remaining, 'puzzle')),
-    queue.recovery ? el('p', 'mt-1 text-sm text-dim', 'A shorter set after more than two days away.') : null,
-    external ? el('p', 'mt-1 text-sm text-dim', `${external} from Lichess: weak themes and puzzles missed there.`) : null,
+    external ? el('p', 'mt-1 text-sm text-dim', `${external} from Lichess`) : null,
     ctrl.today!.openingDue
       ? el('p', 'mt-1 text-sm', [`${plural(ctrl.today!.openingDue, 'opening card')} due. `, el('a', 'text-accent underline', { attrs: { href: '#/opening' } }, 'Train')])
       : null,
@@ -87,7 +80,7 @@ function dueCard(ctrl: Ctrl): VNode {
             : ctrl.counts.puzzles
               ? 'Nothing due today.'
               : ctrl.syncing
-                ? 'Analyzing games. The first puzzles appear here within a few minutes.'
+                ? 'Analyzing games…'
                 : 'No puzzles yet. Sync your games first.',
         ),
   ])
@@ -106,10 +99,11 @@ function replayCard(ctrl: Ctrl): VNode | null {
 // The week's one focus: the recurring leak if there is one, otherwise the
 // weakest area (report.focus already picks). One line of data plus one
 // action - improvement-areas style, never both a focus and a leak card.
-function focusCard(ctrl: Ctrl): VNode {
+function focusCard(ctrl: Ctrl): VNode | null {
   const r = ctrl.today!.report
   const d = ctrl.today!.practice
   const open = d.conversion + (ctrl.profile!.band === 'beginner' ? 0 : d.defense)
+  if (!r.focus) return null
   return card([
     label(r.leak ? 'Recurring' : 'This week'),
     el('p', 'mt-2', r.focus),
@@ -128,7 +122,7 @@ function drillsCard(ctrl: Ctrl): VNode | null {
   if (!open && !d.cleared) return null
   return card([
     label('Drills'),
-    el('p', 'mt-2', open ? `${plural(open, 'position')} to play out against Maia.` : 'All cleared. New ones come from your next games.'),
+    el('p', 'mt-2', open ? `${plural(open, 'position')} to play out.` : 'All cleared.'),
     d.cleared ? el('p', 'mt-1 text-sm text-dim', `${d.cleared} cleared.`) : null,
     open ? el('div', 'mt-4 grid', [button('Open drills', () => ctrl.go('drills'), 'plain')]) : null,
   ])
@@ -148,7 +142,7 @@ function bandNote(ctrl: Ctrl): VNode | null {
   return card(
     [
       el('div', 'flex items-start justify-between gap-3', [
-        el('p', 'text-sm', [`Level changed to ${last.band}, from your Lichess rating. Puzzles come from moves that gave away ${thresholdWords(ctrl.profile!.swingThresholdCp) ?? 'material'} or more.${extra} `, whatCountsLink()]),
+        el('p', 'text-sm', [`Level changed to ${last.band}.${extra} `, whatCountsLink()]),
         el(
           'button',
           btnClass('quiet', 'icon'),

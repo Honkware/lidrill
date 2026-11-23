@@ -83,8 +83,8 @@ export function leakLine(leak: Leak): string {
 }
 
 // One focus for the week: the recurring leak if there is one, else the
-// weakest of the three areas.
-export function weeklyFocus(m: Metrics, leak: Leak | undefined, band: Band): string {
+// weakest of the three areas, else none
+export function weeklyFocus(m: Metrics, leak: Leak | undefined, band: Band): string | undefined {
   if (leak) return leakLine(leak)
   if (m.games >= 3 && m.hangRate >= 0.3)
     return band === 'beginner'
@@ -92,13 +92,13 @@ export function weeklyFocus(m: Metrics, leak: Leak | undefined, band: Band): str
       : 'Before each move, list your opponent\'s checks, captures and threats.'
   if (m.conversionRate !== undefined && m.conversionRate < 0.7) return 'You\'re letting winning positions slip. Trade pieces when ahead and work through the conversion drills.'
   if (m.timeouts >= 2) return 'Clock trouble: you lost on time this week more than once. Spend less time on the opening.'
-  return 'Keep the streak going: one careful game at a time.'
+  return undefined
 }
 
 export interface WeekReport {
   thisWeek: Metrics
   lastWeek: Metrics
-  focus: string
+  focus?: string
   leak?: Leak
 }
 
