@@ -7,7 +7,7 @@ import type { Game } from '../db'
 import { material, type PlayRun } from '../play'
 import { el } from '../el'
 import { moveTable, score } from './moves'
-import { board, boardScreen, button, errorLine, judgColor, loading, plural } from './ui'
+import { board, boardScreen, button, errorLine, jumps, judgColor, loading, plural } from './ui'
 
 const RESULT = { win: 'Won', loss: 'Lost', draw: 'Draw' } as const
 
@@ -23,6 +23,7 @@ export function playView(ctrl: Ctrl): VNode {
     above: player(run, m, opposite(color), `Maia, about ${level}`),
     board: board(run.key, e => run.mount(e)),
     below: player(run, m, color, 'You'),
+    controls: run.live ? null : jumps(run.viewPly, 0, run.moves.length, ply => run.go(ply)),
     side: [
       // Once it is over the summary comes first, in view under the board on a phone
       ...(run.state === 'over'
