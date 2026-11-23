@@ -77,6 +77,15 @@ describe('buildTree', () => {
     expect(tree.recs.map(r => r.uci)).toEqual(['f1e1', 'f1e1', 'a2a4'])
     expect(rep.get(keyAfter(`${o} h7h6 f1e1 e8h8`))).toBe('a2a4')
   })
+
+  it('reports the share of the tree walked as each branch ends, reaching 1 at the end', async () => {
+    const shares: number[] = []
+    await buildTree(opening, known(), policy, recommend, s => shares.push(s))
+    // 6...a6 7.a4 O-O 8.Re1 ends first; Kf8's 3% is cut and the rest share 97%
+    expect(shares[0]).toBeCloseTo((0.5 / 0.97) * 0.6, 6)
+    expect(shares.every((s, i) => i === 0 || s > shares[i - 1])).toBe(true)
+    expect(shares.at(-1)).toBeCloseTo(1, 9)
+  })
 })
 
 describe('coverage', () => {

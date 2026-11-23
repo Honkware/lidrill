@@ -49,17 +49,25 @@ export const kept = (replies: Reply[]) => replies.filter(r => r.p >= THRESHOLD)
 export const pastDepth = (pos: Chess) => pos.fullmoves + (pos.turn === 'black' ? 1 : 0) > DEPTH
 
 // rep takes the recommended moves too, so a transposition later in the walk
-// reuses one
-export async function buildTree(opening: Opening, rep: Map<string, string>, policy: Policy, recommend?: Recommend): Promise<Tree> {
+// reuses one. walked hears the share of the tree's reach walked so far each
+// time a branch ends, 1 once the walk is done: the first walk asks Maia and
+// Stockfish at every turn and takes seconds, and the count of positions
+// isn't known until it ends.
+export async function buildTree(opening: Opening, rep: Map<string, string>, policy: Policy, recommend?: Recommend, walked?: (share: number) => void): Promise<Tree> {
   const nodes: TreeNode[] = []
   const recs: RepMove[] = []
   const root = Chess.default()
   for (const m of opening.moves) root.play(parseUci(m)!)
+  let done = 0
+  const end = (reach: number) => {
+    done += reach
+    walked?.(Math.min(1, done))
+  }
 
   const walk = async (pos: Chess, moves: string[], reach: number): Promise<void> => {
-    if (pos.isEnd()) return
+    if (pos.isEnd()) return end(reach)
     if (pos.turn === opening.color) {
-      if (pos.fullmoves > DEPTH) return
+      if (pos.fullmoves > DEPTH) return end(reach)
       const key = keyOf(pos)
       let answer = rep.get(key)
       if (!answer && recommend) {
@@ -68,12 +76,12 @@ export async function buildTree(opening: Opening, rep: Map<string, string>, poli
         recs.push({ fen: key, uci: answer, source: 'rec' })
       }
       nodes.push({ fen: makeFen(pos.toSetup()), moves, reach, answer })
-      if (!answer) return
+      if (!answer) return end(reach)
       const next = pos.clone()
       next.play(parseUci(answer)!)
       return walk(next, [...moves, answer], reach)
     }
-    if (pastDepth(pos)) return
+    if (pastDepth(pos)) return end(reach)
     // A position where every move is under the cut (rare: it takes twenty
     // or more moves about equally likely) keeps Maia's favourite
     const all = await policy(moves)
