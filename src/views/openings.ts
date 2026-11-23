@@ -88,24 +88,21 @@ export function openingView(ctrl: Ctrl): VNode {
 function cardSide(s: OpeningSession, c: OpeningCard): VNode {
   const v = s.verdict
   const last = s.index === s.cards.length - 1
+  const tone = v && TONE[v.rating][0]
   return el('div', 'space-y-3', [
     el('p', 'text-xs text-dim', `Card ${s.index + 1} of ${s.cards.length}, ${c.opening}`),
     el('p', 'text-sm', lineSan(c.moves)),
-    s.state === 'your-move'
-      ? el('p', 'text-sm', s.recall ? 'Play your repertoire move.' : 'No repertoire move here yet. Find a good one.')
-      : s.state === 'judging'
-        ? el('p', 'animate-pulse text-sm text-dim', 'Stockfish is checking…')
-        : null,
+    s.state === 'your-move' ? el('p', 'text-sm text-dim', 'Your move') : s.state === 'judging' ? el('p', 'animate-pulse text-sm text-dim', 'Checking…') : null,
     v
-      ? el('div', 'rounded-xl bg-surface p-4 border-l-4', { class: { 'border-accent': TONE[v.rating][0] === 'good', 'border-warn': TONE[v.rating][0] === 'warn', 'border-bad': TONE[v.rating][0] === 'bad' } }, [
-          el('p', 'font-display text-xl', { class: { 'text-accent': TONE[v.rating][0] === 'good', 'text-warn': TONE[v.rating][0] === 'warn', 'text-bad': TONE[v.rating][0] === 'bad' } }, TONE[v.rating][1]),
-          el('p', 'mt-1 text-sm text-dim', v.text),
+      ? el('div', 'rounded-xl bg-surface p-4 border-l-4', { class: { 'border-accent': tone === 'good', 'border-warn': tone === 'warn', 'border-bad': tone === 'bad' } }, [
+          el('p', 'font-display text-xl', { class: { 'text-accent': tone === 'good', 'text-warn': tone === 'warn', 'text-bad': tone === 'bad' } }, TONE[v.rating][1]),
+          v.rating === Rating.Good ? null : el('p', 'mt-1 text-sm', [el('span', 'text-dim', 'Repertoire '), s.answerSan ?? '']),
         ])
       : null,
     v?.offer
       ? s.added
         ? el('p', 'flex items-center gap-1 text-sm text-accent', [icon('check', 16), `${s.offerSan} added to your repertoire`])
-        : el('div', 'grid', [button(`Add ${s.offerSan} to your repertoire`, () => void s.add(), 'plain')])
+        : el('div', 'grid', [button(`Use ${s.offerSan} instead`, () => void s.add(), 'plain')])
       : null,
     s.state === 'judged' ? el('div', 'grid', [button(last ? 'Finish' : 'Next', () => s.next())]) : null,
   ])

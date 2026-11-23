@@ -191,7 +191,7 @@ export class Ctrl {
     else if (name === 'practice' && arg) await this.openPractice(arg)
     else if (name === 'drill') await this.openDrill()
     else if (name === 'play') await this.openPlay()
-    else if (name === 'opening') await this.openOpenings()
+    else if (name === 'opening') await this.openOpenings(arg || undefined)
     else if (name === 'learn' && arg) await this.openLearn(arg)
     else if (name === 'spar' && arg) await this.openSpar(arg)
     else this.screen = ROUTED.includes(name as Screen) ? (name as Screen) : 'today'
@@ -400,9 +400,13 @@ export class Ctrl {
     return new Map((await db.repertoire.toArray()).map(r => [r.fen, r.uci]))
   }
 
-  private async openOpenings() {
+  // Due cards for every trained opening, or for one ('white:Italian Game')
+  private async openOpenings(arg?: string) {
     this.screen = 'opening'
-    this.openingSet = new OpeningSession(await dueCards(this.openingNames), await this.repertoireMap(), getEngine(), this.redraw)
+    const names = arg ? (this.profile?.openings ?? []).filter(o => `${o.color}:${o.name}` === arg).map(o => o.name) : this.openingNames
+    const rep = await this.repertoireMap()
+    const cards = (await dueCards(names)).filter(c => rep.has(c.id))
+    this.openingSet = new OpeningSession(cards, rep, getEngine(), this.redraw)
   }
 
   // The next line of an opening to learn. A count still running is waited

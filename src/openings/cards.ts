@@ -1,5 +1,4 @@
 import { makeFen } from 'chessops/fen'
-import { makeSan } from 'chessops/san'
 import { parseUci } from 'chessops/util'
 import { createEmptyCard, Rating, State, type Grade } from 'ts-fsrs'
 import type { Engine } from '../analysis/engine'
@@ -9,22 +8,18 @@ import { fromFen, norm, posKey } from './repertoire'
 import { WRONG_BOOST, type TreeNode } from './tree'
 
 // Opening cards, one per position with the player to move, on the same FSRS
-// schedule as the puzzles. A card is recall when the repertoire has a move
-// there and "they played this instead" when it doesn't, so answering a gap
-// and adding the move turns its card into a recall card.
+// schedule as the puzzles. A card is taught first, in a learn line, and
+// reviewed after; review asks for the repertoire move without a hint.
 
 // One move each, so a set stays short next to the 12 daily puzzles
 export const SET_SIZE = 10
 
-// Recall: a different move Stockfish puts within 30 cp of the repertoire
-// move is playable, Hard rather than Again. A gap: an answer within half a
-// pawn of Stockfish's best is a good one.
+// A different move Stockfish puts within 30 cp of the repertoire move is
+// playable, Hard rather than Again
 export const PLAYABLE_CP = 30
-export const GOOD_CP = 50
 // The interactive engine at the depths the practice drills and the puzzle
 // view use, so an answer comes back while the player waits
 export const RECALL_DEPTH = 10
-const GAP_DEPTH = 14
 
 // A position is learned once its move has been played in a learn line,
 // which gives its card a first grade; FSRS takes it from there
@@ -77,8 +72,7 @@ export async function grade(c: OpeningCard, rating: Grade, now = new Date()): Pr
 
 export interface Verdict {
   rating: Grade
-  text: string
-  offer?: string // a move to add to the repertoire
+  offer?: string // the player's playable move, to make their repertoire move
 }
 
 export type Search = Pick<Engine, 'search'>
@@ -95,23 +89,10 @@ export async function after(engine: Search, fen: string, uci: string, depth: num
 }
 
 // The player's move at a card's position. answer is the repertoire move.
-export async function judgeMove(fen: string, uci: string, answer: string | undefined, engine: Search): Promise<Verdict> {
-  const pos = fromFen(fen)
-  const played = norm(pos, uci)
-  const san = (u: string) => makeSan(pos, parseUci(u)!)
-  if (answer) {
-    if (played === answer) return { rating: Rating.Good, text: 'Your repertoire move.' }
-    const mine = await after(engine, fen, played, RECALL_DEPTH)
-    const theirs = await after(engine, fen, answer, RECALL_DEPTH)
-    return mine >= theirs - PLAYABLE_CP
-      ? { rating: Rating.Hard, text: `${san(played)} is playable, but your repertoire plays ${san(answer)}.` }
-      : { rating: Rating.Again, text: `Your repertoire plays ${san(answer)}.` }
-  }
-  const best = await engine.search(fen, GAP_DEPTH)
-  const top = best.pv[0] ? norm(pos, best.pv[0]) : played
-  if (top === played) return { rating: Rating.Good, text: `${san(played)} is Stockfish's move too.`, offer: played }
-  const loss = cpOf(best.eval) - (await after(engine, fen, played, GAP_DEPTH))
-  return loss <= GOOD_CP
-    ? { rating: Rating.Good, text: `${san(played)} is within half a pawn of Stockfish's ${san(top)}.`, offer: played }
-    : { rating: Rating.Again, text: `Stockfish prefers ${san(top)}. ${san(played)} is ${(loss / 100).toFixed(1)} pawns worse.`, offer: top }
+export async function judgeMove(fen: string, uci: string, answer: string, engine: Search): Promise<Verdict> {
+  const played = norm(fromFen(fen), uci)
+  if (played === answer) return { rating: Rating.Good }
+  const mine = await after(engine, fen, played, RECALL_DEPTH)
+  const theirs = await after(engine, fen, answer, RECALL_DEPTH)
+  return mine >= theirs - PLAYABLE_CP ? { rating: Rating.Hard, offer: played } : { rating: Rating.Again }
 }

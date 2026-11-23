@@ -8,9 +8,8 @@ import { db } from '../db'
 import { addCards, dueCards, grade, judgeMove, saveTreeCards } from './cards'
 import { posKey } from './repertoire'
 
-// A recall card wants the repertoire move but lets a nearly equal one pass
-// as Hard; a gap is judged against Stockfish's best. The engine is scripted
-// with an eval per position.
+// Review wants the repertoire move but lets a nearly equal one pass as
+// Hard. The engine is scripted with an eval per position.
 
 const at = (ucis: string) => {
   const pos = Chess.default()
@@ -34,15 +33,9 @@ const engine = {
 
 describe('judgeMove', () => {
   it('grades the repertoire move Good, a move within 30 cp Hard and a worse one Again', async () => {
-    expect((await judgeMove(fen, 'c2c3', 'c2c3', engine)).rating).toBe(Rating.Good)
-    const near = await judgeMove(fen, 'd2d3', 'c2c3', engine)
-    expect(near).toEqual({ rating: Rating.Hard, text: 'd3 is playable, but your repertoire plays c3.' })
-    expect((await judgeMove(fen, 'f3g5', 'c2c3', engine)).rating).toBe(Rating.Again)
-  })
-
-  it('takes a gap answer within half a pawn of the best and offers it, else offers the best', async () => {
-    expect(await judgeMove(fen, 'd2d3', undefined, engine)).toMatchObject({ rating: Rating.Good, offer: 'd2d3' })
-    expect(await judgeMove(fen, 'f3g5', undefined, engine)).toEqual({ rating: Rating.Again, text: 'Stockfish prefers c3. Ng5 is 1.4 pawns worse.', offer: 'c2c3' })
+    expect(await judgeMove(fen, 'c2c3', 'c2c3', engine)).toEqual({ rating: Rating.Good })
+    expect(await judgeMove(fen, 'd2d3', 'c2c3', engine)).toEqual({ rating: Rating.Hard, offer: 'd2d3' })
+    expect(await judgeMove(fen, 'f3g5', 'c2c3', engine)).toEqual({ rating: Rating.Again })
   })
 })
 
