@@ -13,10 +13,11 @@ import { board, btnClass, button, card, dots, errorLine, icon, label, listRow, l
 
 const side = (o: Opening) => (o.color === 'white' ? 'White' : 'Black')
 
-// What a Learn button starts: the opening's new positions, up to what is left of today's
-const learnN = (ctrl: Ctrl, r: OpeningStat) => Math.min(r.left ?? 0, ctrl.openingsToday.fresh)
+// What a Learn button starts: the opening's new positions, up to what is left
+// of today's suggested amount, or another set of that size once it is used up
+const learnN = (ctrl: Ctrl, r: OpeningStat) => Math.min(r.left ?? 0, ctrl.openingsToday.fresh || NEW_PER_DAY)
 
-const LIMIT_TIP = `Up to ${NEW_PER_DAY} new positions a day, across openings`
+const LIMIT_TIP = `${NEW_PER_DAY} new positions a day is the suggested amount, across openings`
 const BUILD_TIP = "Maia's likely replies and Stockfish's check of each recommended move, once per opening"
 
 const bar = (share: number, building: boolean, tip: string, size = 'h-2 rounded') =>
@@ -77,7 +78,8 @@ function openingRow(ctrl: Ctrl, r: OpeningStat): VNode {
       r.error ? errorLine(r.error, 'text-xs') : null,
     ]),
     el('div', 'mt-3 flex flex-wrap gap-2 sm:mt-0 sm:flex-nowrap', [
-      el('span', 'grid', { attrs: { title: r.left && !n ? LIMIT_TIP : '' } }, [button(r.left === undefined ? 'Learn' : `Learn ${n}`, () => ctrl.go('learn', arg), 'plain', !n)]),
+      // Still counting: Learn walks the tree itself and shows its progress
+      button(r.left === undefined ? 'Learn' : `Learn ${n}`, () => ctrl.go('learn', arg), 'plain', r.left === 0),
       button(`Review ${r.due}`, () => ctrl.go('opening', arg), 'plain', !r.due),
       button('Spar', () => ctrl.go('spar', arg), 'quiet'),
     ]),
@@ -202,9 +204,9 @@ function ladder(p: LinePlay): VNode | null {
   if (!p.offered) return null
   return el('div', 'grid grid-cols-2 gap-2', [
     p.canHelp
-      ? el('button', btnClass('plain', 'sm'), { attrs: { type: 'button' }, class: { 'text-warn': p.help > 0 }, on: { click: () => p.hint() } }, [icon('hint', 18), p.help < 2 ? 'Hint' : 'Show solution'])
+      ? el('button', btnClass('plain'), { attrs: { type: 'button' }, class: { 'text-warn': p.help > 0 }, on: { click: () => p.hint() } }, [icon('hint', 18), p.help < 2 ? 'Hint' : 'Show solution'])
       : el('span'),
-    el('button', btnClass('quiet', 'sm'), { attrs: { type: 'button' }, on: { click: () => p.skip() } }, 'Skip'),
+    el('button', btnClass('quiet'), { attrs: { type: 'button' }, on: { click: () => p.skip() } }, 'Skip'),
   ])
 }
 

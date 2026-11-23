@@ -12,7 +12,7 @@ import { applyLook, BOARDS, PIECE_SETS } from './look'
 import { clampLevel, estimateFor, estimates, levelFor, ownStarts, speedOf, startEstimate, updateEstimate, type Start } from './maia'
 import { openingTable, streak, type OpeningRow, type Streak } from './metrics'
 import { nextAction, type Due, type Next } from './next'
-import { addCards, dueCards, freshLeft, learnedKeys, openingsDue, saveTreeCards } from './openings/cards'
+import { addCards, dueCards, freshLeft, learnedKeys, NEW_PER_DAY, openingsDue, saveTreeCards } from './openings/cards'
 import { cachedPolicy, treeLevel } from './openings/policy'
 import { mastersFor, recommend } from './openings/recommend'
 import { gamesOpenings, openingArg, posKey, rebuildRepertoire } from './openings/repertoire'
@@ -504,7 +504,7 @@ export class Ctrl {
         this.trees.set(arg, (nodes = tree.nodes))
       }
       const learned = await learnedKeys(nodes.map(n => posKey(n.fen)))
-      this.learn = new LearnRun(opening, learnSet(opening, nodes, learned, await freshLeft()), learned, this.redraw)
+      this.learn = new LearnRun(opening, learnSet(opening, nodes, learned, (await freshLeft()) || NEW_PER_DAY), learned, this.redraw)
     } catch (e) {
       this.learnError = (e as Error).message
     }
