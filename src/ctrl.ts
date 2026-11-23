@@ -25,9 +25,10 @@ import { weekReport, weeklyZeroHang, type WeekReport } from './report'
 import { corpus, exportMarks, loadMarks, saveMarks, type Mark } from './precision'
 import { sound } from './sound'
 import { timeProfiles, type TimeProfile } from './time'
+import { Countdown, timedSet } from './timed'
 import { SignInExpired } from './sync/lichess'
 import { serverSync as syncWithServer } from './sync/server'
-import { dueQueue, dueToday, saveWhyMissed, type DayQueue } from './train'
+import { DAILY_CAP, dueQueue, dueToday, saveWhyMissed, type DayQueue } from './train'
 
 export type Screen = 'welcome' | 'today' | 'drill' | 'replay' | 'review' | 'game' | 'games' | 'drills' | 'practice' | 'play' | 'settings' | 'precision' | 'opening' | 'spar'
 
@@ -94,6 +95,10 @@ export class Ctrl {
   session: Outcome[] = [] // today's run so far
   autoNext = readFlag('lidrill.autoNext')
   queueLeft = 0
+  // A "Move under a clock" session: seconds per puzzle, and the screen to go
+  // back to. Nothing in it is recorded, so it ends with a reload.
+  timed?: { from: Screen; limits: Map<string, number>; outs: number }
+  countdown?: Countdown
   replay?: Replay
   gameView?: GameView
   run?: PracticeRun
@@ -172,6 +177,7 @@ export class Ctrl {
     const [name, ...rest] = location.hash.replace(/^#\/?/, '').split('/')
     const arg = decodeURIComponent(rest.join('/'))
     this.teardown()
+    if (name !== 'drill') this.timed = undefined
     if (this.signedOut) this.screen = 'welcome'
     else if (name === 'game' && arg) await this.openGame(arg)
     else if (name === 'replay' && arg) await this.openReplay(arg)
@@ -205,6 +211,8 @@ export class Ctrl {
   private teardown() {
     this.drill?.destroy()
     this.drill = undefined
+    this.countdown?.destroy()
+    this.countdown = undefined
     this.replay?.destroy()
     this.replay = undefined
     this.gameView?.destroy()
@@ -252,7 +260,7 @@ export class Ctrl {
       const done = all.filter(g => g.analyzedAt !== undefined)
       if (this.screen === 'today' && this.profile) await this.loadToday(all, done, this.profile)
       if (this.screen === 'review') await this.loadReview(done)
-      if (this.screen === 'review') this.timeProfiles = timeProfiles(all)
+      if (this.screen === 'review' || this.screen === 'drills') this.timeProfiles = timeProfiles(all)
       if (this.screen === 'drills') {
         this.playStarts = ownStarts(all)
         this.maiaGames = all.filter(g => g.site === 'maia')
@@ -519,6 +527,7 @@ export class Ctrl {
   // --- daily puzzles ---
 
   async startDrill() {
+    this.timed = undefined
     this.queue = (await dueQueue()).puzzles.map(p => p.id)
     this.session = []
     this.drills = []
@@ -535,6 +544,8 @@ export class Ctrl {
   async next() {
     this.drill?.destroy()
     this.drill = undefined
+    this.countdown?.destroy()
+    this.countdown = undefined
     await this.nextPuzzle()
     this.redraw()
   }
@@ -543,13 +554,14 @@ export class Ctrl {
     const id = this.queue.shift()
     this.queueLeft = this.queue.length
     const puzzle = id ? await db.puzzles.get(id) : undefined
+    if (!puzzle && this.timed) return this.endTimed()
     if (!puzzle) {
       sound.notify() // the daily queue is done
       this.notice = { text: 'Done for today.' }
       return this.go('today')
     }
     this.drill = new Drill(puzzle, this.redraw, {
-      record: true,
+      record: !this.timed,
       engine: getEngine(),
       onFinish: outcome => {
         this.session.push(outcome)
@@ -562,6 +574,32 @@ export class Ctrl {
           setTimeout(() => this.drill === drill && this.next(), 700)
       },
     })
+    const timed = this.timed
+    if (timed) this.countdown = new Countdown(timed.limits.get(puzzle.id)!, this.drill, this.redraw, () => timed.outs++)
+  }
+
+  // The player's own puzzles against their think time, from the time
+  // profile on Review or the card on Drills
+  async startTimed(from: Screen) {
+    const games = await db.games.toArray()
+    const profiles = timeProfiles(games)
+    if (!profiles.length) return
+    const set = timedSet(await db.puzzles.toArray(), new Map(games.map(g => [g.id, g])), profiles, DAILY_CAP)
+    if (!set.length) return void ((this.notice = { text: 'No puzzles from your games yet.' }), this.redraw())
+    this.timed = { from, limits: new Map(set.map(p => [p.id, p.limit])), outs: 0 }
+    this.queue = set.map(p => p.id)
+    this.session = []
+    this.drills = []
+    this.review.reset()
+    this.go('drill')
+  }
+
+  private endTimed() {
+    const { from, outs } = this.timed!
+    const solved = this.session.filter(o => o === 'clean' || o === 'hinted').length
+    sound.notify()
+    this.notice = { text: `Solved in time: ${solved} of ${this.session.length}. Out of time: ${outs}.` }
+    this.go(from)
   }
 
   // The puzzle on screen: the live one, or the completed one being reviewed
@@ -767,6 +805,7 @@ export class Ctrl {
 
   // A session of just these puzzles on the daily drill screen
   solvePuzzles(ids: string[]) {
+    this.timed = undefined
     this.queue = [...ids]
     this.session = []
     this.drills = []

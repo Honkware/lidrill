@@ -3,7 +3,8 @@ import type { Ctrl } from '../ctrl'
 import type { Game } from '../db'
 import { el } from '../el'
 import { AFTER_MOVE, gameTime, MIN_GAMES, RECENT, slowest, TROUBLE, type GameTime, type Pace, type TimeProfile } from '../time'
-import { card, label, pct } from './ui'
+import { CEILING, FLOOR, limitFor } from '../timed'
+import { button, card, label, pct } from './ui'
 
 const secs = (s: number) => `${s < 10 ? s.toFixed(1) : Math.round(s)} s`
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
@@ -57,7 +58,7 @@ const PACE: [Pace, string][] = [
 ]
 
 // On the Review list, under the games: where the clock goes across the
-// player's recent games
+// player's recent games, and the timed puzzles built on it
 export function timeProfileCard(ctrl: Ctrl): VNode | null {
   const p = ctrl.timeProfiles[0]
   if (!p) return card([label('Time'), el('p', 'mt-1 text-sm text-dim', `Needs ${MIN_GAMES} analyzed blitz or rapid games with clocks.`)])
@@ -72,6 +73,10 @@ export function timeProfileCard(ctrl: Ctrl): VNode | null {
         fact('Lost on time', `${p.lostOnTime} of ${p.games} games`, p.lostOnTime > 0),
       ]),
       paceTable(p),
+      el('div', 'flex flex-wrap items-center gap-3', [
+        button('Move under a clock', () => void ctrl.startTimed('review'), 'plain'),
+        el('p', 'text-xs text-dim', `Your own puzzles, ${limitFor(p.think, 1)} s a move.`),
+      ]),
     ],
     'space-y-3',
   )
@@ -99,5 +104,35 @@ function paceTable(p: TimeProfile): VNode {
         ])
       }),
     ),
+  ])
+}
+
+// Above the panel of a timed puzzle on the drill screen
+export function countdownBar(ctrl: Ctrl): VNode | null {
+  const c = ctrl.countdown
+  if (!ctrl.timed || !c || ctrl.review.viewing !== undefined) return null
+  return el('div', 'space-y-1', [
+    el('div', 'flex items-baseline justify-between gap-3', [
+      el('p', 'font-display text-2xl tabular-nums', { class: { 'text-bad': c.out } }, c.out ? 'Out of time' : `${Math.ceil(c.left / 1000)} s`),
+      el('p', 'text-xs text-dim', `${c.limit} s for this puzzle`),
+    ]),
+    el('p', 'text-xs text-dim', "Running out of time is a miss in this session only. The puzzle's schedule does not change."),
+  ])
+}
+
+// The entry on the Drills screen
+export function timedCard(ctrl: Ctrl): VNode {
+  const p = ctrl.timeProfiles[0]
+  return card([
+    el('h2', 'font-display text-lg', 'Move under a clock'),
+    el('p', 'mt-1 text-sm text-dim', 'Your own puzzles against a countdown set from how long you take over a move in your games.'),
+    el(
+      'p',
+      'mt-2 text-sm',
+      p
+        ? `${limitFor(p.think, 1)} s a move: your ${p.speed} median after move ${AFTER_MOVE} is ${secs(p.think)}, kept between ${FLOOR} and ${CEILING} s.`
+        : `Needs ${MIN_GAMES} analyzed blitz or rapid games with clocks.`,
+    ),
+    p ? el('div', 'mt-4 flex', [button('Start', () => void ctrl.startTimed('drills'), 'plain')]) : null,
   ])
 }

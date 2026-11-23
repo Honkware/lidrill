@@ -5,11 +5,19 @@ import { el } from '../el'
 import type { BoardLink, Segment } from '../server/render'
 import { board, boardScreen, btnClass, button, dots, errorLine, icon, jumps, loading, moveInput } from './ui'
 import { drillGameLine } from '../server/surface'
+import { countdownBar } from './time'
 
 export function drillView(ctrl: Ctrl): VNode {
   const d = ctrl.displayDrill
   if (!d) return loading()
-  return boardScreen({ title: "Today's puzzles", back: () => ctrl.go('today'), board: boardWithWheel(d), controls: puzzleJumps(d), side: [sessionRow(ctrl), side(ctrl, d)] })
+  const timed = ctrl.timed
+  return boardScreen({
+    title: timed ? 'Move under a clock' : "Today's puzzles",
+    back: () => ctrl.go(timed ? timed.from : 'today'),
+    board: boardWithWheel(d),
+    controls: puzzleJumps(d),
+    side: [sessionRow(ctrl), countdownBar(ctrl), side(ctrl, d)],
+  })
 }
 
 // One square per puzzle in today's run: green solved, amber with the hint,
@@ -258,7 +266,7 @@ function side(ctrl: Ctrl, d: Drill): VNode {
             el('input', 'size-4 accent-accent', { attrs: { type: 'checkbox' }, props: { checked: ctrl.autoNext }, on: { change: e => ctrl.setAutoNext((e.target as HTMLInputElement).checked) } }),
             'Auto-continue after a solve',
           ]),
-      d.failed && d.puzzle.source !== 'lichess' && !reviewing ? noteToggle(ctrl) : null,
+      d.failed && d.puzzle.source !== 'lichess' && !reviewing && !ctrl.timed ? noteToggle(ctrl) : null,
     ]),
   ])
 }
