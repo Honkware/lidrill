@@ -52,6 +52,14 @@ export function findPractice(game: Game): Practice[] {
   return out
 }
 
+// The open positions of a kind in the order their list shows them, starting
+// after the one with id `after`
+export function nextOpen(list: Practice[], kind: PracticeKind, after?: string): Practice | undefined {
+  const open = list.filter(p => p.kind === kind && !p.cleared).sort((a, b) => b.ply - a.ply)
+  const i = open.findIndex(p => p.id === after)
+  return i < 0 ? open[0] : [...open.slice(i + 1), ...open.slice(0, i)][0]
+}
+
 export type RunState = 'thinking' | 'your-move' | 'won' | 'lost'
 
 const DEPTH = 10

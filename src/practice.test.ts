@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Engine } from './analysis/engine'
 import type { Game, Practice } from './db'
-import { findPractice, PracticeRun, verdict } from './practice'
+import { findPractice, nextOpen, PracticeRun, verdict } from './practice'
 import { pgnMoves } from './sync/pgn'
 
 const game = (pgn: string, evals: number[], extra: Partial<Game>): Game => ({
@@ -32,6 +32,24 @@ describe('findPractice', () => {
     // lead held 4 plies from ply 5 (3.Qxh4): first player-to-move point after that is ply 8
     expect(p.ply).toBe(8)
     expect(findPractice(game(pgn, evals, { result: 'win' }))).toEqual([])
+  })
+})
+
+describe('nextOpen', () => {
+  const at = (id: string, ply: number, extra: Partial<Practice> = {}): Practice =>
+    ({ id, gameId: 'g', ply, fen: '', kind: 'conversion', startCp: 400, streak: 0, attempts: 0, cleared: false, ...extra }) as Practice
+  const list = [at('a', 20), at('b', 40), at('c', 30, { cleared: true }), at('d', 10), at('e', 50, { kind: 'defense' })]
+
+  it('starts at the top of the list, latest move first', () => {
+    expect(nextOpen(list, 'conversion')?.id).toBe('b')
+  })
+
+  it('goes on from the position just played, skipping cleared ones and wrapping round', () => {
+    expect(['b', 'a', 'd'].map(id => nextOpen(list, 'conversion', id)?.id)).toEqual(['a', 'd', 'b'])
+  })
+
+  it('has nothing next when the one just played is the only open one', () => {
+    expect(nextOpen(list, 'defense', 'e')).toBeUndefined()
   })
 })
 

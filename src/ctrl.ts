@@ -2,7 +2,7 @@ import type { Progress } from './analysis/queue'
 import { finishSignIn, signOut, startSignIn } from './auth'
 import { backfillPackets } from './backfill'
 import { deleteAllData, exportData, importData, sameUser } from './backup'
-import { db, type Auth, type Game, type JournalEntry, type MaiaSpeed, type Opening, type Practice, type Profile } from './db'
+import { db, type Auth, type Game, type JournalEntry, type MaiaSpeed, type Opening, type Practice, type PracticeKind, type Profile } from './db'
 import { Drill, SessionReview, type Outcome } from './drill'
 import { GameView } from './gameview'
 import { fetchLook, PREFERENCE_SCOPE } from './lichess/api'
@@ -11,7 +11,8 @@ import { STUDY_SCOPE, sendToStudy } from './lichess/study'
 import { applyLook, BOARDS, PIECE_SETS } from './look'
 import { clampLevel, estimateFor, estimates, levelFor, ownStarts, speedOf, startEstimate, updateEstimate, type Start } from './maia'
 import { compliance, openingTable, repertoireTargets, streak, type OpeningRow, type Streak } from './metrics'
-import { addCards, dueCards, learnedKeys, saveTreeCards } from './openings/cards'
+import { nextAction, type Due, type Next } from './next'
+import { addCards, dueCards, learnedKeys, openingsDue, saveTreeCards } from './openings/cards'
 import { cachedPolicy, treeLevel } from './openings/policy'
 import { mastersFor, recommend } from './openings/recommend'
 import { gamesOpenings, posKey, rebuildRepertoire } from './openings/repertoire'
@@ -21,7 +22,7 @@ import { SparRun } from './openings/spar'
 import { buildTree, coverage, gameCards, unlearned, wentWrong, type Recommend } from './openings/tree'
 import { analyzePending, forgetLichessAccount, getEngine, precertifyDue, saveProfile, syncAndAnalyze, warmEngine } from './pipeline'
 import { clearGame, clockOf, PlayRun, readChoices, readGame, rematch, writeChoices, type Choices } from './play'
-import { PracticeRun } from './practice'
+import { nextOpen, PracticeRun } from './practice'
 import { Replay } from './replay'
 import { weekReport, weeklyZeroHang, type WeekReport } from './report'
 import { corpus, exportMarks, loadMarks, saveMarks, type Mark } from './precision'
@@ -65,6 +66,13 @@ export interface TodayData {
   openingDue: number
 }
 
+// What is due now, for Today, Train and the Next button after a session
+export interface DueNow extends Due {
+  puzzlesDone: number
+  openingsDone: number
+  latest?: { game: Game; stops: number } // the latest analyzed game with turning points
+}
+
 export interface ReviewRow {
   game: Game
   journal?: JournalEntry
@@ -89,6 +97,8 @@ export class Ctrl {
   error?: string
   notice?: { text: string; href?: string }
   today?: TodayData
+  due?: DueNow
+  nextUp?: Next
   reviewList?: ReviewRow[]
   timeProfiles: TimeProfile[] = [] // blitz and rapid, the one with more games first
   practiceList?: Practice[]
@@ -285,6 +295,7 @@ export class Ctrl {
           .slice(0, 10)
           .map(r => r.family)
       this.loadedKey = key
+      if (this.screen !== 'welcome') await this.loadDue()
     }
     // Streaks change without the count changing, and the list is small
     if (this.screen === 'drills') this.practiceList = await db.practice.toArray()
@@ -321,6 +332,64 @@ export class Ctrl {
       targets,
       compliance: profile.repertoireStudy ? studyCompliance(games, profile.repertoireStudy.lines) : compliance(games, targets),
       openingDue: (await dueCards(this.openingNames, now)).length,
+    }
+  }
+
+  private async loadDue() {
+    const now = new Date()
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+    const [day, open, practice, own, openingsDone] = await Promise.all([
+      dueToday(now),
+      openingsDue(now),
+      db.practice.toArray(),
+      db.puzzles.filter(p => p.source !== 'lichess').toArray(),
+      db.openingCards.filter(c => !!c.card.last_review && +new Date(c.card.last_review) >= startOfDay).count(),
+    ])
+    const stops = new Map<string, number>()
+    for (const p of own) stops.set(p.gameId, (stops.get(p.gameId) ?? 0) + 1)
+    const games = (await db.games.bulkGet([...stops.keys()])).filter((g): g is Game => g?.analyzedAt !== undefined)
+    const game = games.sort((a, b) => b.playedAt - a.playedAt)[0]
+    const latest = game && { game, stops: stops.get(game.id)! }
+    const replayed = !!game && (await db.replaySessions.where('gameId').equals(game.id).count()) > 0
+    const openOf = (kind: PracticeKind) => practice.filter(p => p.kind === kind && !p.cleared).length
+    this.due = {
+      game: !!readGame(),
+      puzzles: day.remaining,
+      puzzlesDone: day.doneToday,
+      reviews: open.due,
+      fresh: open.fresh,
+      openingsDone,
+      turning: latest && !replayed ? latest.stops : 0,
+      latest,
+      conversion: openOf('conversion'),
+      defense: this.profile?.band === 'beginner' ? 0 : openOf('defense'),
+    }
+    this.nextUp = nextAction(this.due)
+  }
+
+  // Starts what nextAction says is next. Read again first, since the
+  // session that just ended may have changed it.
+  async goNext() {
+    await this.loadDue()
+    const due = this.due!
+    switch (this.nextUp!.go) {
+      case 'game':
+        return this.go('play')
+      case 'puzzles':
+        return this.startDrill()
+      case 'reviews':
+        return this.go('opening')
+      case 'learn': {
+        const o = this.openingStats.find(r => r.fresh)?.opening
+        return o ? this.go('learn', `${o.color}:${o.name}`) : this.go('drills')
+      }
+      case 'turning':
+        return this.go('replay', due.latest!.game.id)
+      case 'conversion':
+      case 'defense':
+        return this.nextPosition(this.nextUp!.go as PracticeKind)
+      case 'play':
+        return this.startPlay(false)
     }
   }
 
@@ -739,6 +808,12 @@ export class Ctrl {
     const maia = game && { level: this.maiaLevel, moves: game.moves.slice(0, practice.ply).map(m => m.uci) }
     this.screen = 'practice'
     this.run = new PracticeRun(practice, getEngine(), this.redraw, maia)
+  }
+
+  // The next open position of a kind after the one on screen
+  async nextPosition(kind: PracticeKind) {
+    const p = nextOpen(await db.practice.toArray(), kind, this.run?.practice.id)
+    if (p) this.go('practice', p.id)
   }
 
   async retryPractice() {
