@@ -209,6 +209,27 @@ describe('a puzzle with its own explanation', () => {
     expect(d.why?.slots).toHaveLength(1)
   })
 
+  it('reports a shown explanation once, with its position and text, and never the text of a sample', async () => {
+    const sent: unknown[] = []
+    const fetchFn = (async (_: string, init: RequestInit) => (sent.push(JSON.parse(init.body as string)), new Response('{}'))) as unknown as typeof fetch
+    const sample = new Drill(legal, () => {}, { record: false, note: 'Bxf7+ drives the king out.' })
+    await flush()
+    sample.viewSolution()
+    await flush()
+    sample.toggleWhy()
+    expect(sample.canFlagWhy).toBe(false)
+    sample.flagWhy(fetchFn)
+
+    const d = new Drill(legal, () => {}, { record: false })
+    await flush()
+    expect(d.canFlagWhy).toBe(false)
+    d.why = { slots: [{ slot: 'whatHappened', segments: [{ text: 'You played ' }, { text: 'Ke2' }, { text: '.' }] }, { slot: 'why', segments: [{ text: 'It let the rook go.' }] }], floor: true }
+    d.flagWhy(fetchFn)
+    d.flagWhy(fetchFn)
+    expect(d.whyFlagged).toBe(true)
+    expect(sent).toEqual([expect.objectContaining({ fen: legal.fen, best: legal.solution[0], floor: true, text: 'You played Ke2.\nIt let the rook go.' })])
+  })
+
   it('has no explanation to open while the puzzle is being played', async () => {
     const d = new Drill(legal, () => {}, { record: false, note: 'Bxf7+ drives the king out.' })
     await flush()

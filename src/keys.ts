@@ -22,6 +22,18 @@ export const DRILL_KEYS: Record<string, DrillAction> = {
   f: 'flip',
 }
 
+// The keys worth showing, in the order a puzzle uses them
+export const KEY_HELP: [string, string][] = [
+  ['Space', 'Next puzzle'],
+  ['H', 'Hint'],
+  ['W', 'Why?'],
+  ['R', 'Try again'],
+  ['B', 'Bury'],
+  ['← →', 'Step through the line'],
+  ['F', 'Flip the board'],
+  ['?', 'Show or hide these'],
+]
+
 const FIELDS = ['INPUT', 'TEXTAREA', 'SELECT']
 const PRESSED = ['BUTTON', 'A', 'SUMMARY']
 

@@ -4,6 +4,7 @@ import { coachLine } from '../coach'
 import { runProgress, type Drill, type Outcome } from '../drill'
 import { el } from '../el'
 import type { BoardLink, Segment } from '../server/render'
+import { KEY_HELP } from '../keys'
 import { board, boardScreen, btnClass, button, errorLine, icon, jumps, loading, runBar, type Mark } from './ui'
 import { drillGameLine } from '../server/surface'
 import { summary } from './summary'
@@ -274,6 +275,12 @@ function whyPart(d: Drill): VNode | null {
     para('why'),
     para('pattern', 'text-dim'),
     ...(nextTime.length ? [el('p', 'text-dim', [el('span', 'font-medium', 'Next time: '), ...linked(d, nextTime)])] : []),
+    // A sample's text is written by hand, so there is nothing to report
+    d.canFlagWhy
+      ? d.whyFlagged
+        ? el('p', 'text-xs text-dim', 'Noted. It goes on the list of explanations to fix.')
+        : el('button', 'text-xs text-dim underline decoration-dotted underline-offset-2', { attrs: { type: 'button', title: 'Report this explanation as wrong or unclear' }, on: { click: () => d.flagWhy() } }, 'This is off')
+      : null,
   ])
 }
 
@@ -310,14 +317,25 @@ export function puzzleSide(d: Drill, after: (VNode | null)[]): VNode {
 // Spar plays on from the puzzle's position against Maia, once the puzzle
 // is over and for a puzzle from a stored game. Retry is the puzzle again for
 // practice; Bury takes it out of the deck for good, in one click.
-function tools(ctrl: Ctrl, d: Drill): VNode | null {
+function tools(ctrl: Ctrl, d: Drill): VNode {
   const tool = (name: string, title: string, onClick: () => void) => el('button', btnClass('quiet', 'sm'), { attrs: { type: 'button', title }, on: { click: onClick } }, name)
   const items = [
     d.state === 'view' && d.game ? tool('Spar vs Maia', 'Play on from this position against Maia', () => ctrl.sparFrom(d)) : null,
     ctrl.canRetry ? tool('Retry', 'Try this puzzle again (R)', () => ctrl.retry()) : null,
     ctrl.canBury ? tool('Bury', 'Take this puzzle out of the deck (B)', () => void ctrl.bury()) : null,
+    // A phone has no keys to list
+    el('button', `${btnClass('quiet', 'sm')} max-sm:hidden`, { attrs: { type: 'button', title: 'Keyboard shortcuts (?)', 'aria-expanded': String(ctrl.keysOpen) }, on: { click: () => ctrl.toggleKeys() } }, 'Keys'),
   ].filter(t => t !== null)
-  return items.length ? el('div', 'flex flex-wrap gap-2', items) : null
+  return el('div', 'space-y-2', [
+    el('div', 'flex flex-wrap gap-2', items),
+    ctrl.keysOpen
+      ? el(
+          'dl',
+          'grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-xl bg-surface p-4 text-sm max-sm:hidden',
+          KEY_HELP.flatMap(([key, does]) => [el('dt', 'font-mono text-xs text-dim', key), el('dd', '', does)]),
+        )
+      : null,
+  ])
 }
 
 function side(ctrl: Ctrl, d: Drill): VNode {

@@ -10,7 +10,7 @@ import { parseSquare, parseUci } from 'chessops/util'
 import type { Engine } from './analysis/engine'
 import { checkColor } from './checkColor'
 import { db, type Game, type Puzzle } from './db'
-import { CERT_RUN_VERSION, contextFor, explain } from './explain'
+import { CERT_RUN_VERSION, contextFor, explain, EXPLAIN_VERSION } from './explain'
 import { whyShapes, type WhyStored } from './puzzles/whyShapes'
 import { renderSlot, type BoardLink, type Segment } from './server/render'
 import type { Packet, SlotName } from './server/packet'
@@ -511,6 +511,23 @@ export class Drill {
     // The arrows are drawn for the puzzle position, before anything is asked for
     this.go(this.showWhy ? this.start : this.cursor)
     if (this.showWhy) void this.explain()
+  }
+
+  // The player says the explanation is wrong or unclear. What they were
+  // shown goes to the server with the position it is about, and nothing
+  // about the player, so the bad ones can be read and fixed.
+  whyFlagged = false
+  get canFlagWhy(): boolean {
+    return !this.opts.note && !!this.why?.slots
+  }
+
+  flagWhy(fetchFn: typeof fetch = fetch) {
+    if (!this.canFlagWhy || this.whyFlagged) return
+    this.whyFlagged = true
+    const text = this.why!.slots!.map(s => s.segments.map(g => g.text).join('')).join('\n')
+    const body = { fen: this.puzzle.fen, played: this.puzzle.played, best: this.puzzle.solution[0], tried: this.firstTry, floor: !!this.why!.floor, version: EXPLAIN_VERSION, text }
+    void fetchFn('/api/flag', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).catch(() => {})
+    this.redraw()
   }
 
   // A short worded explanation built from the engine lines

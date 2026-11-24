@@ -90,6 +90,7 @@ export class Ctrl {
   error?: string
   notice?: { text: string; href?: string; undo?: () => void }
   moreOpen = false
+  keysOpen = false // the list of puzzle keys
   syncCodeError?: string
   today?: TodayData
   due?: DueNow
@@ -939,6 +940,8 @@ export class Ctrl {
   // belong to a run of puzzles, and on its summary Space and Enter press Next.
   private onKey(e: KeyboardEvent) {
     if (this.moreOpen && e.key === 'Escape') return this.closeMore()
+    if (e.key === '?' && !['INPUT', 'TEXTAREA'].includes((e.target as Element | null)?.tagName ?? '') && (this.screen === 'drill' || this.screen === 'replay')) return this.toggleKeys()
+    if (this.keysOpen && e.key === 'Escape') return this.toggleKeys()
     const action = drillAction(e, (e.target as Element | null)?.tagName)
     // The summary of a run has no puzzle under it, and its Next is the key's
     if (action === 'next' && this.screen === 'drill' && this.sessionDone && this.review.viewing === undefined) {
@@ -1308,6 +1311,11 @@ export class Ctrl {
     this.timeProfiles = timeProfiles(all)
     this.maiaStart = startEstimate(this.profile?.ratings, all)
     await this.loadDue()
+    this.redraw()
+  }
+
+  toggleKeys() {
+    this.keysOpen = !this.keysOpen
     this.redraw()
   }
 
