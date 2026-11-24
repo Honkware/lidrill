@@ -1,6 +1,6 @@
 import type { VNode } from 'snabbdom'
 import type { Ctrl } from '../ctrl'
-import type { Practice, PracticeKind } from '../db'
+import type { Game, Practice, PracticeKind } from '../db'
 import { el } from '../el'
 import { CLEAR_AFTER, nextOpen } from '../practice'
 import { summary } from './summary'
@@ -24,7 +24,7 @@ export function practiceListView(ctrl: Ctrl, kind: PracticeKind): VNode {
                 listRow(`#/practice/${encodeURIComponent(p.id)}`, [
                   el('div', 'min-w-0 flex-1', [
                     el('p', 'font-medium', positionName(p)),
-                    el('p', 'text-xs text-dim', p.attempts ? `${p.attempts} ${p.attempts === 1 ? 'try' : 'tries'}` : 'Not tried yet'),
+                    el('p', 'truncate text-xs text-dim', [p.attempts ? `${p.attempts} ${p.attempts === 1 ? 'try' : 'tries'}` : 'Not tried yet', gameName(ctrl.practiceGames.get(p.gameId))].filter(Boolean).join(' · ')),
                   ]),
                   p.cleared
                     ? el('span', 'flex items-center gap-1 text-sm text-accent', [icon('check', 16), 'Cleared'])
@@ -70,6 +70,9 @@ export function practiceView(ctrl: Ctrl): VNode {
 }
 
 const RESULT = { conversion: ['Converted', 'Not converted'], defense: ['Held', 'Not held'] }
+// 'vs name, Italian Game', with whichever of the two the game has
+const gameName = (g?: Game) => (g ? [g.opponent && `vs ${g.opponent}`, g.opening.split(':')[0].trim()].filter(Boolean).join(', ') : '')
+
 const positionName = (p: Practice) => `Move ${Math.ceil(p.ply / 2)}, ${pawns(p.startCp)}`
 
 // The positions played one after another, this one last

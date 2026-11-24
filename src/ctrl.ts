@@ -96,6 +96,7 @@ export class Ctrl {
   openingRows: OpeningRow[] = [] // the record per opening, under the games
   timeProfiles: TimeProfile[] = [] // blitz and rapid, the one with more games first
   practiceList?: Practice[]
+  practiceGames = new Map<string, Game>() // the games those positions are from
   drill?: Drill
   drills: Drill[] = [] // this session's completed puzzles, kept for review
   review = new SessionReview()
@@ -325,7 +326,11 @@ export class Ctrl {
       if (this.screen !== 'welcome' && !this.sample) await this.loadDue()
     }
     // Streaks change without the count changing, and the list is small
-    if (this.screen === 'conversion' || this.screen === 'defense' || this.screen === 'practice') this.practiceList = await db.practice.toArray()
+    if (this.screen === 'conversion' || this.screen === 'defense' || this.screen === 'practice') {
+      this.practiceList = await db.practice.toArray()
+      const from = await db.games.bulkGet([...new Set(this.practiceList.map(p => p.gameId))])
+      this.practiceGames = new Map(from.filter(g => g !== undefined).map(g => [g.id, g]))
+    }
     this.ready = true
     this.redraw()
   }
