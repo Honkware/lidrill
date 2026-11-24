@@ -188,6 +188,29 @@ describe('SessionReview', () => {
   })
 })
 
+describe('a puzzle with its own explanation', () => {
+  it('opens Why? on the puzzle position with the stored text, and closes it again', async () => {
+    const d = new Drill(legal, () => {}, { record: false, note: 'Bxf7+ drives the king out.', arrows: [{ orig: 'c4', dest: 'f7', brush: 'green' }] })
+    await flush()
+    d.viewSolution()
+    await flush()
+    expect(d.cursor).toBe(1)
+    d.toggleWhy()
+    expect([d.showWhy, d.cursor]).toEqual([true, d.start])
+    expect(d.why).toEqual({ slots: [{ slot: 'why', segments: [{ text: 'Bxf7+ drives the king out.' }] }] })
+    d.toggleWhy()
+    expect(d.showWhy).toBe(false)
+    expect(d.why?.slots).toHaveLength(1)
+  })
+
+  it('has no explanation to open while the puzzle is being played', async () => {
+    const d = new Drill(legal, () => {}, { record: false, note: 'Bxf7+ drives the king out.' })
+    await flush()
+    d.toggleWhy()
+    expect([d.showWhy, d.why]).toEqual([false, undefined])
+  })
+})
+
 describe('runProgress', () => {
   it('counts the puzzle on the board as one more until it is answered', () => {
     expect(runProgress(2, 4, false)).toEqual({ at: 3, total: 7 })

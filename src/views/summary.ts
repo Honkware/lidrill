@@ -42,7 +42,8 @@ export function summary(ctrl: Ctrl, s: Summary): VNode {
         ])
       : null,
     s.more?.length ? el('div', 'flex flex-wrap gap-2', s.more) : null,
-    el('div', 'primary-action bg-bg py-2', [nextButtons(ctrl)]),
+    // The sample run ends on the sign-in beside it, not on a next thing
+    ctrl.sample ? null : el('div', 'primary-action bg-bg py-2', [nextButtons(ctrl)]),
   ])
 }
 

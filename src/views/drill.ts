@@ -8,20 +8,37 @@ import { board, boardScreen, btnClass, button, errorLine, icon, jumps, loading, 
 import { drillGameLine } from '../server/surface'
 import { summary } from './summary'
 import { countdownBar } from './time'
+import { ownGamesCard } from './welcome'
 
 export function drillView(ctrl: Ctrl): VNode {
+  if (ctrl.sample) return sampleView(ctrl)
   const timed = ctrl.timed
-  const title = timed ? 'Move under a clock' : "Today's puzzles"
-  const back = () => (timed ? ctrl.go(timed.from) : ctrl.go('train', 'day'))
-  const note = timed ? undefined : coachLine({ due: ctrl.due?.puzzles ?? 0, week: ctrl.today?.weeks.at(-1), time: ctrl.timeProfiles[0] })
+  const top = {
+    title: timed ? 'Move under a clock' : "Today's puzzles",
+    back: () => (timed ? ctrl.go(timed.from) : ctrl.go('train', 'day')),
+    note: timed ? undefined : coachLine({ due: ctrl.due?.puzzles ?? 0, week: ctrl.today?.weeks.at(-1), time: ctrl.timeProfiles[0] }),
+  }
+  return run(ctrl, top, [])
+}
+
+// The first visit's three puzzles: the same screen with nowhere to go back
+// to, and the sign-in a tap away. It opens by itself after the first solve
+// and at the end.
+function sampleView(ctrl: Ctrl): VNode {
+  const open = ctrl.ownGames || ctrl.sessionDone
+  const action = el('button', btnClass('quiet', 'sm'), { attrs: { type: 'button', 'aria-expanded': String(open) }, on: { click: () => ctrl.toggleOwnGames() } }, 'Sign in')
+  return run(ctrl, { title: 'Sample puzzles', action }, [open ? ownGamesCard(ctrl) : null])
+}
+
+function run(ctrl: Ctrl, top: { title: string; back?: () => void; action?: VNode; note?: string }, first: (VNode | null)[]): VNode {
   const last = ctrl.drills.at(-1)
   // The summary keeps the last puzzle's board, under its own key since that
   // puzzle's board was destroyed when it ended
   if (ctrl.sessionDone && last && ctrl.review.viewing === undefined)
-    return boardScreen({ title, back, note, hero: true, board: board(`done:${last.puzzle.id}`, e => last.mount(e)), side: [sessionSummary(ctrl)] })
+    return boardScreen({ ...top, hero: true, board: board(`done:${last.key}`, e => last.mount(e)), side: [...first, sessionSummary(ctrl)] })
   const d = ctrl.displayDrill
   if (!d) return loading()
-  return boardScreen({ title, back, note, hero: true, board: boardWithWheel(d), controls: puzzleJumps(d), side: [sessionRow(ctrl), countdownBar(ctrl), side(ctrl, d)] })
+  return boardScreen({ ...top, hero: true, board: boardWithWheel(d), controls: puzzleJumps(d), side: [...first, sessionRow(ctrl), countdownBar(ctrl), side(ctrl, d)] })
 }
 
 const markOf = (o?: Outcome): Mark => (o === 'clean' ? 'good' : o === 'hinted' ? 'warn' : o ? 'bad' : undefined)
@@ -250,10 +267,12 @@ function whyPart(d: Drill): VNode | null {
   if (w.error) return errorLine(w.error, 'mt-3')
   const slot = (name: string) => w.slots?.find(s => s.slot === name)?.segments ?? []
   const nextTime = slot('nextTime')
+  // A sample's own text is the one slot
+  const para = (name: string, classes = '') => (slot(name).length ? el('p', classes, linked(d, slot(name))) : null)
   return el('div', 'mt-3 space-y-2 border-t border-raised pt-3 text-sm', [
-    el('p', '', linked(d, slot('whatHappened'))),
-    el('p', '', linked(d, slot('why'))),
-    el('p', 'text-dim', linked(d, slot('pattern'))),
+    para('whatHappened'),
+    para('why'),
+    para('pattern', 'text-dim'),
     ...(nextTime.length ? [el('p', 'text-dim', [el('span', 'font-medium', 'Next time: '), ...linked(d, nextTime)])] : []),
   ])
 }
@@ -310,12 +329,12 @@ function side(ctrl: Ctrl, d: Drill): VNode {
     ]),
     el('div', 'flex flex-wrap items-center justify-between gap-2', [
       reviewing
-        ? el('p', 'text-sm text-dim', 'Earlier puzzle, already graded.')
+        ? el('p', 'text-sm text-dim', ctrl.sample ? 'Earlier puzzle.' : 'Earlier puzzle, already graded.')
         : el('label', 'flex items-center gap-2 text-sm text-dim', [
             el('input', 'size-4 accent-accent', { attrs: { type: 'checkbox' }, props: { checked: ctrl.autoNext }, on: { change: e => ctrl.setAutoNext((e.target as HTMLInputElement).checked) } }),
             'Auto-continue after a solve',
           ]),
-      d.failed && d.puzzle.source !== 'lichess' && !reviewing && !ctrl.timed ? noteToggle(ctrl) : null,
+      d.failed && d.puzzle.source !== 'lichess' && !reviewing && !ctrl.timed && !ctrl.sample ? noteToggle(ctrl) : null,
     ]),
     tools(ctrl, d),
   ])

@@ -1,5 +1,6 @@
 import { Chessground } from '@lichess-org/chessground'
 import type { Api } from '@lichess-org/chessground/api'
+import type { DrawShape } from '@lichess-org/chessground/draw'
 import type { Key } from '@lichess-org/chessground/types'
 import { Chess } from 'chessops/chess'
 import { chessgroundDests } from 'chessops/compat'
@@ -92,6 +93,10 @@ export interface DrillOptions {
   // stored eval line before it renders, so no stop contradicts another
   consistency?: (packet: Packet) => Packet
   onFinish?: (outcome: Outcome) => void
+  // A sample puzzle explains itself: its own text for "Why?", and arrows on
+  // the puzzle position while that is open
+  note?: string
+  arrows?: DrawShape[]
 }
 
 export interface Node {
@@ -248,7 +253,7 @@ export class Drill {
 
   private sync() {
     this.previewing = undefined
-    this.cg?.setAutoShapes([])
+    this.cg?.setAutoShapes(this.showWhy && this.cursor === this.start ? (this.opts.arrows ?? []) : [])
     const node = this.nodes[this.cursor]
     const pos = this.posAt(this.cursor)
     const playable = this.state === 'view' || (this.yourTurn && !this.reverting)
@@ -482,6 +487,8 @@ export class Drill {
   toggleWhy() {
     if (this.state !== 'view') return
     this.showWhy = !this.showWhy
+    // The arrows are drawn for the puzzle position
+    if (this.opts.arrows) this.go(this.showWhy ? this.start : this.cursor)
     this.redraw()
     if (this.showWhy) void this.explain()
   }
@@ -489,6 +496,10 @@ export class Drill {
   // A short worded explanation built from the engine lines
   private async explain() {
     if (this.state !== 'view' || this.why?.loading || this.why?.slots) return
+    if (this.opts.note) {
+      this.why = { slots: [{ slot: 'why', segments: [{ text: this.opts.note }] }] }
+      return this.redraw()
+    }
     this.why = { loading: true }
     this.redraw()
     try {

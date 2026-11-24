@@ -26,11 +26,14 @@ const TABS: { tab: Tab; label: string; icon: string }[] = [
 // but on the day's puzzles
 const BOARD_SCREENS: Screen[] = ['drill', 'replay', 'game', 'practice', 'maia', 'opening', 'learn', 'spar']
 
+// The sample puzzles of a first visit have nothing to navigate to yet
+const signedIn = (ctrl: Ctrl) => !!tabOf(ctrl.screen) && !ctrl.sample
+
 export function view(ctrl: Ctrl): VNode {
   const full = BOARD_SCREENS.includes(ctrl.screen)
   // The day's puzzles are where the app opens, so that board keeps the tabs
   const home = ctrl.screen === 'drill'
-  const tabs = !!tabOf(ctrl.screen) && (!full || home)
+  const tabs = signedIn(ctrl) && (!full || home)
   return el('div', 'min-h-dvh', { class: { 'pb-tabbar': tabs } }, [
     header(ctrl, full),
     // Train's board sets its own width (.board-screen.hero)
@@ -79,8 +82,9 @@ function screen(ctrl: Ctrl): VNode {
   }
 }
 
+// The open menu takes the highlight from the tab of the screen under it
 const tabClass = (ctrl: Ctrl, t: Tab) => {
-  const active = t === 'more' ? ctrl.moreOpen || (tabOf(ctrl.screen) === 'more' && !ctrl.moreOpen) : tabOf(ctrl.screen) === t && !ctrl.moreOpen
+  const active = (ctrl.moreOpen ? 'more' : tabOf(ctrl.screen)) === t
   return { 'text-accent': active, 'text-dim': !active }
 }
 
@@ -90,11 +94,11 @@ const moreAttrs = (ctrl: Ctrl) => ({ type: 'button', 'aria-haspopup': 'true', 'a
 // Phone: logo and sync state, and none at all on board screens, upright or
 // sideways.
 function header(ctrl: Ctrl, full: boolean): VNode | null {
-  const signedIn = !!tabOf(ctrl.screen)
+  const nav = signedIn(ctrl)
   return el('header', 'pt-safe border-b border-raised', { class: { 'max-sm:hidden': full, 'short:hidden': full } }, [
     el('div', 'mx-auto flex h-12 max-w-5xl items-center gap-6 px-4 sm:h-14 sm:px-6', [
-      el('a', 'font-display text-xl font-bold', { attrs: { href: signedIn ? '#/train' : '#' } }, 'lidrill'),
-      signedIn
+      el('a', 'font-display text-xl font-bold', { attrs: { href: nav ? '#/train' : '#' } }, 'lidrill'),
+      nav
         ? el(
             'nav',
             'hidden items-center gap-5 sm:flex',

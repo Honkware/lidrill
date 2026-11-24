@@ -27,6 +27,7 @@ import { nextOpen, PracticeRun } from './practice'
 import { Replay } from './replay'
 import { movedTo, pageOf, type Moved, type Screen } from './routes'
 import { weeklyZeroHang } from './report'
+import { SAMPLES } from './samples'
 import { corpus, exportMarks, loadMarks, saveMarks, type Mark } from './precision'
 import { sound } from './sound'
 import { timeProfiles, type TimeProfile } from './time'
@@ -101,6 +102,10 @@ export class Ctrl {
   session: Outcome[] = [] // today's run so far
   sessionDone = false // the run is over and its summary is on screen
   answered = false // the live puzzle is over and counted in the run
+  // A first visit: no account and no games, so the run on screen is the
+  // stored sample puzzles, and ownGames is whether the sign-in is open
+  sample = false
+  ownGames = false
   autoNext = readFlag('lidrill.autoNext')
   queueLeft = 0
   // A "Move under a clock" session: seconds per puzzle, and the screen to go
@@ -155,7 +160,9 @@ export class Ctrl {
 
   constructor(redraw: () => void) {
     this.redraw = redraw
-    window.addEventListener('hashchange', () => this.route())
+    // Not before boot has read the account: a route would take the player
+    // for a first visitor, and boot routes to the current hash anyway
+    window.addEventListener('hashchange', () => this.loaded && this.route())
     window.addEventListener('keydown', e => this.onKey(e))
     window.addEventListener('online', () => void this.serverSync())
     this.boot()
@@ -203,7 +210,12 @@ export class Ctrl {
     this.moreOpen = false
     this.teardown()
     if (name !== 'drill') this.timed = undefined
-    if (this.signedOut) this.screen = 'welcome'
+    const first = this.signedOut && name !== 'welcome' && !(await db.games.count())
+    // The sample run is not carried into the player's own puzzles
+    if (this.sample && !first) this.clearRun()
+    this.sample = first
+    if (first) await this.openSample()
+    else if (this.signedOut) this.screen = 'welcome'
     else if (name === 'game' && arg) await this.openGame(arg)
     else if (name === 'replay' && arg) await this.openReplay(arg)
     else if (name === 'practice' && arg) await this.openPractice(arg)
@@ -307,7 +319,7 @@ export class Ctrl {
         void this.countOpenings(all)
       }
       this.loadedKey = key
-      if (this.screen !== 'welcome') await this.loadDue()
+      if (this.screen !== 'welcome' && !this.sample) await this.loadDue()
     }
     // Streaks change without the count changing, and the list is small
     if (this.screen === 'conversion' || this.screen === 'defense' || this.screen === 'practice') this.practiceList = await db.practice.toArray()
@@ -624,9 +636,10 @@ export class Ctrl {
   // Chess.com is optional and username-only: its API has no sign-in
   async setChesscom(user: string) {
     const chesscomUser = user.trim() || undefined
+    const before = this.signedOut
     this.profile = await saveProfile({ lichessUser: this.auth?.username, chesscomUser })
     if (chesscomUser) {
-      if (this.screen === 'welcome') this.go('games')
+      if (before) this.go('games')
       this.sync()
     } else this.refresh(true)
   }
@@ -696,6 +709,29 @@ export class Ctrl {
     await this.nextPuzzle()
   }
 
+  // The three stored puzzles, ungraded. Coming back to the page mid-run
+  // starts them over, since the board on screen was closed.
+  private async openSample() {
+    this.screen = 'drill'
+    if (this.sessionDone) return
+    this.clearRun()
+    this.queue = SAMPLES.map(s => s.puzzle.id)
+    await this.nextPuzzle()
+  }
+
+  private clearRun() {
+    this.queue = []
+    this.session = []
+    this.sessionDone = false
+    this.drills = []
+    this.review.reset()
+  }
+
+  toggleOwnGames() {
+    this.ownGames = !this.ownGames
+    this.redraw()
+  }
+
   async next() {
     this.drill?.destroy()
     this.drill = undefined
@@ -708,7 +744,8 @@ export class Ctrl {
   private async nextPuzzle() {
     const id = this.queue.shift()
     this.queueLeft = this.queue.length
-    const puzzle = id ? await db.puzzles.get(id) : undefined
+    const sample = SAMPLES.find(s => s.puzzle.id === id)
+    const puzzle = sample?.puzzle ?? (id ? await db.puzzles.get(id) : undefined)
     if (!puzzle) {
       if (!this.session.length) return this.go('train', 'day')
       sound.notify()
@@ -717,12 +754,15 @@ export class Ctrl {
     }
     this.answered = false
     this.drill = new Drill(puzzle, this.redraw, {
-      record: !this.timed,
+      record: !this.timed && !sample,
       engine: getEngine(),
+      note: sample?.why,
+      arrows: sample?.arrows,
       onFinish: outcome => {
         this.session.push(outcome)
         this.answered = true
-        if (!this.timed) void this.countDue()
+        if (sample && (outcome === 'clean' || outcome === 'hinted')) this.ownGames = true
+        if (!this.timed && !sample) void this.countDue()
         const drill = this.drill
         if (drill) {
           this.drills.push(drill)
@@ -771,17 +811,22 @@ export class Ctrl {
     const old = this.drill
     if (!this.canRetry || !old) return
     old.destroy()
-    this.drill = new Drill(old.puzzle, this.redraw, { record: false, engine: getEngine() })
+    this.drill = new Drill(old.puzzle, this.redraw, { ...old.opts, record: false, onFinish: undefined })
     this.redraw()
   }
 
-  get canRetry() {
-    return this.canBury && this.drill?.state === 'view'
+  // Timed runs grade nothing, and an earlier puzzle is only being looked at
+  private get live() {
+    return this.screen === 'drill' && !!this.drill && !this.timed && this.review.viewing === undefined
   }
 
-  // Timed runs grade nothing, and an earlier puzzle is only being looked at
+  get canRetry() {
+    return this.live && this.drill?.state === 'view'
+  }
+
+  // A sample is not in the deck
   get canBury() {
-    return this.screen === 'drill' && !!this.drill && !this.timed && this.review.viewing === undefined
+    return this.live && !this.sample
   }
 
   private async unbury(id: string, requeue: boolean) {
