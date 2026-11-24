@@ -60,9 +60,24 @@ export function buildQueue(due: Puzzle[], all: Puzzle[], lastReviewAt: number | 
   return { puzzles: [...interleave(chosen.sort(byLength)), ...ext], recovery, topLeak }
 }
 
+// A buried puzzle is out of the deck for good: it is never queued or
+// counted as due, and savePuzzles keeps the generator from replacing it
+export const inDeck = (p: Puzzle) => !p.buried
+
+export const bury = (id: string) => db.puzzles.update(id, { buried: true })
+export const unbury = (id: string) => db.puzzles.update(id, { buried: undefined })
+
+// Stores what the generator found for a game. A first analysis replaces
+// the game's puzzles; a recheck of an analyzed game only adds new ones, so
+// those it has keep their schedule. Neither touches a buried puzzle.
+export async function savePuzzles(found: Puzzle[], replace: boolean): Promise<void> {
+  const old = await db.puzzles.bulkGet(found.map(p => p.id))
+  await db.puzzles.bulkPut(found.filter((_, i) => !old[i] || (replace && !old[i].buried)))
+}
+
 export async function dueQueue(now = new Date()): Promise<DayQueue> {
-  const due = await db.puzzles.where('card.due').belowOrEqual(now).toArray()
-  const all = await db.puzzles.toArray()
+  const due = (await db.puzzles.where('card.due').belowOrEqual(now).toArray()).filter(inDeck)
+  const all = (await db.puzzles.toArray()).filter(inDeck)
   const last = await db.reviews.orderBy('at').last()
   return buildQueue(due, all, last?.at, now)
 }
@@ -77,7 +92,7 @@ export async function dueQueue(now = new Date()): Promise<DayQueue> {
 // never re-count the same day.
 export async function dueToday(now = new Date()): Promise<{ remaining: number; doneToday: number }> {
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
-  const dueNow = await db.puzzles.where('card.due').belowOrEqual(now).count()
+  const dueNow = await db.puzzles.where('card.due').belowOrEqual(now).filter(inDeck).count()
   const doneToday = await db.reviews.where('at').aboveOrEqual(startOfDay).count()
   const last = await db.reviews.orderBy('at').last()
   const cap = last !== undefined && +now - last.at > 2 * 24 * 3600 * 1000 ? RECOVERY_CAP : DAILY_CAP

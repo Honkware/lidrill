@@ -125,6 +125,7 @@ export interface Puzzle {
   tag: PuzzleTag
   swingCp: number
   card: Card
+  buried?: boolean // taken out of the deck by the player; the row stays so the generator can't bring it back
 }
 
 export type Band = 'beginner' | 'club' | 'advanced'

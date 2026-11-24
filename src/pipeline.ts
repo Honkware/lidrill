@@ -11,7 +11,7 @@ import { GENERATOR_VERSION, generatePuzzles, SOLUTION_PLIES_CAP } from './puzzle
 import { calibrate } from './report'
 import { SignInExpired } from './sync/lichess'
 import { sync } from './sync/sync'
-import { DAILY_CAP, dueQueue } from './train'
+import { DAILY_CAP, dueQueue, inDeck, savePuzzles } from './train'
 import { precertify, uploadPacketFor } from './explain'
 
 export interface Accounts {
@@ -103,7 +103,7 @@ async function refreshLichess(token: string, now: Date): Promise<Partial<Profile
     await db.puzzles.bulkAdd(failedPuzzles(activity, now).filter(p => !known.has(p.id)))
     // Solved on Lichess since: retire the ones not yet started here
     const solved = activity.filter(a => a.win).map(a => `lichess:${a.puzzle.id}`)
-    await db.puzzles.where('id').anyOf(solved).filter(p => p.card.reps === 0).delete()
+    await db.puzzles.where('id').anyOf(solved).filter(p => p.card.reps === 0 && inDeck(p)).delete()
     patch.puzzleActivityAt = Math.max(since, ...activity.map(a => a.date))
   })
   return patch
@@ -116,7 +116,7 @@ async function topUpExternal(token: string, profile: Profile, now: Date): Promis
   const themes = profile.weakThemes?.map(t => t.theme) ?? []
   if (!themes.length) return
   const week = new Date(+now + 7 * 24 * 3600 * 1000)
-  const supply = await db.puzzles.where('card.due').belowOrEqual(week).count()
+  const supply = await db.puzzles.where('card.due').belowOrEqual(week).filter(inDeck).count()
   const unseen = await db.puzzles.filter(p => p.source === 'lichess' && p.card.reps === 0).count()
   if (supply >= 7 * DAILY_CAP || unseen >= 30) return
   for (const theme of themes.slice(0, 3)) {
@@ -159,7 +159,7 @@ export async function analyzePending(profile: Profile, token: string | undefined
   let sinceCutoff = 0
   const genOpts = genOptsFor(profile)
   await runQueue(getPool(), { depth: 14, bookPlies: bookFor(token) }, onProgress, signal, async (game, eng) => {
-    await db.puzzles.bulkPut(await generatePuzzles(game, eng, genOpts))
+    await savePuzzles(await generatePuzzles(game, eng, genOpts), true)
     await db.games.update(game.id, { puzzlesVersion: GENERATOR_VERSION })
     if (profile.band === 'advanced' && ++sinceCutoff >= 10) {
       cutoff = worst5Cutoff(await db.games.filter(g => g.analyzedAt !== undefined).toArray())
@@ -193,9 +193,10 @@ export async function syncAndAnalyze(
 
   onStatus(`Added ${added.lichess + added.chesscom} games. Analyzing…`)
   // Over the band cap a line is replay material, not a puzzle - drop
-  // stored own-game puzzles the current band would never have generated
+  // stored own-game puzzles the current band would never have generated.
+  // A buried one keeps its row, or a later band could make it again.
   const plyCap = SOLUTION_PLIES_CAP[profile.band]
-  await db.puzzles.filter(p => p.source === 'own' && p.solution.length > plyCap).delete()
+  await db.puzzles.filter(p => p.source === 'own' && p.solution.length > plyCap && inDeck(p)).delete()
   await analyzePending(profile, accounts.lichessToken, onProgress, signal)
   const genOpts = genOptsFor(profile)
 
@@ -210,9 +211,7 @@ export async function syncAndAnalyze(
     getPool(),
     async (game, eng) => {
       onStatus(`Rechecking analyzed games for puzzles, ${++rechecked} of ${stale.length}…`)
-      const found = await generatePuzzles(game, eng, genOpts)
-      const known = new Set(await db.puzzles.where('gameId').equals(game.id).primaryKeys())
-      await db.puzzles.bulkAdd(found.filter(p => !known.has(p.id)))
+      await savePuzzles(await generatePuzzles(game, eng, genOpts), false)
       await db.games.update(game.id, { puzzlesVersion: GENERATOR_VERSION })
     },
     signal,

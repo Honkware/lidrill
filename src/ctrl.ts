@@ -32,7 +32,7 @@ import { timeProfiles, type TimeProfile } from './time'
 import { Countdown, timedSet } from './timed'
 import { SignInExpired } from './sync/lichess'
 import { serverSync as syncWithServer } from './sync/server'
-import { DAILY_CAP, dueQueue, dueToday, saveWhyMissed } from './train'
+import { bury, DAILY_CAP, dueQueue, dueToday, inDeck, saveWhyMissed, unbury } from './train'
 
 export type { Screen } from './routes'
 
@@ -85,7 +85,7 @@ export class Ctrl {
   progress?: Progress
   syncing = false
   error?: string
-  notice?: { text: string; href?: string }
+  notice?: { text: string; href?: string; undo?: () => void }
   moreOpen = false
   today?: TodayData
   due?: DueNow
@@ -727,7 +727,7 @@ export class Ctrl {
     const games = await db.games.toArray()
     const profiles = timeProfiles(games)
     if (!profiles.length) return
-    const set = timedSet(await db.puzzles.toArray(), new Map(games.map(g => [g.id, g])), profiles, DAILY_CAP)
+    const set = timedSet((await db.puzzles.toArray()).filter(inDeck), new Map(games.map(g => [g.id, g])), profiles, DAILY_CAP)
     if (!set.length) return void ((this.notice = { text: 'No puzzles from your games yet.' }), this.redraw())
     this.timed = { from, limits: new Map(set.map(p => [p.id, p.limit])), outs: 0 }
     this.queue = set.map(p => p.id)
@@ -736,6 +736,31 @@ export class Ctrl {
     this.drills = []
     this.review.reset()
     this.go('drill')
+  }
+
+  // Takes the live puzzle out of the deck for good and moves on. One not
+  // yet answered leaves the run too, and Undo puts it back as the next.
+  async bury() {
+    const d = this.drill
+    if (!this.canBury || !d) return
+    const id = d.puzzle.id
+    const open = d.state === 'playing'
+    await bury(id)
+    this.notice = { text: 'Buried.', undo: () => void this.unbury(id, open) }
+    await this.next()
+  }
+
+  // Timed runs grade nothing, and an earlier puzzle is only being looked at
+  get canBury() {
+    return this.screen === 'drill' && !!this.drill && !this.timed && this.review.viewing === undefined
+  }
+
+  private async unbury(id: string, requeue: boolean) {
+    await unbury(id)
+    if (requeue) this.queueLeft = this.queue.unshift(id)
+    this.notice = undefined
+    await this.loadDue()
+    this.redraw()
   }
 
   // The puzzle on screen: the live one, or the completed one being reviewed

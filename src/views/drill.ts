@@ -283,8 +283,12 @@ export function puzzleSide(d: Drill, after: (VNode | null)[]): VNode {
   ])
 }
 
+// Out of the deck for good, in one click
+const buryButton = (ctrl: Ctrl) =>
+  ctrl.canBury ? el('button', btnClass('quiet', 'sm'), { attrs: { type: 'button', title: 'Take this puzzle out of the deck (B)' }, on: { click: () => void ctrl.bury() } }, 'Bury') : null
+
 function side(ctrl: Ctrl, d: Drill): VNode {
-  if (d.state === 'playing') return puzzleSide(d, [])
+  if (d.state === 'playing') return el('div', 'space-y-3', [puzzleSide(d, []), buryButton(ctrl)])
   const reviewing = ctrl.review.viewing !== undefined
   return puzzleSide(d, [
     el('div', 'grid', [button(reviewing ? 'Next' : ctrl.queueLeft ? 'Continue' : 'Done', reviewing ? () => ctrl.sessionForward() : () => ctrl.next())]),
@@ -297,6 +301,7 @@ function side(ctrl: Ctrl, d: Drill): VNode {
           ]),
       d.failed && d.puzzle.source !== 'lichess' && !reviewing && !ctrl.timed ? noteToggle(ctrl) : null,
     ]),
+    buryButton(ctrl),
   ])
 }
 

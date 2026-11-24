@@ -157,6 +157,7 @@ function notice(ctrl: Ctrl, tabs: boolean): VNode {
     [
       el('p', 'flex-1 py-2 text-sm', n.text),
       n.href ? el('a', 'text-sm font-medium text-accent', { attrs: { href: n.href, target: '_blank', rel: 'noopener' } }, 'Open') : null,
+      n.undo ? el('button', `${btnClass('quiet', 'sm')} text-accent`, { attrs: { type: 'button' }, on: { click: n.undo } }, 'Undo') : null,
       el('button', btnClass('quiet', 'sm'), { attrs: { type: 'button' }, on: { click: () => ctrl.dismissNotice() } }, 'OK'),
     ],
   )

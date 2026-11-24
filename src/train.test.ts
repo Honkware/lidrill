@@ -1,7 +1,8 @@
 import { createEmptyCard } from 'ts-fsrs'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db, type Puzzle, type PuzzleTag, type PuzzleType } from './db'
-import { buildQueue, DAILY_CAP, dueQueue, dueToday, interleave, RECOVERY_CAP, recordAttempt } from './train'
+import { nextAction } from './next'
+import { buildQueue, bury, DAILY_CAP, dueQueue, dueToday, interleave, RECOVERY_CAP, recordAttempt, savePuzzles, unbury } from './train'
 
 let n = 0
 const puzzle = (type: PuzzleType, tag: PuzzleTag = 'hang', solutionLen = 1, source: Puzzle['source'] = 'own'): Puzzle => ({
@@ -149,5 +150,71 @@ describe('dueToday (home count)', () => {
     // Yesterday’s 4 are not subtracted today; the fresh supply means the
     // count resets to the full daily target either way
     expect(remaining).toBe(DAILY_CAP)
+  })
+})
+
+// Bury takes a puzzle out of the deck by a flag on its row. The row has to
+// outlive every pass that writes puzzles, or the generator would hand the
+// same position back.
+describe('a buried puzzle', () => {
+  beforeEach(async () => {
+    await db.puzzles.clear()
+    await db.reviews.clear()
+  })
+
+  it('leaves the queue and the due count, and the next thing to do is no longer puzzles', async () => {
+    const [a, b] = [puzzle('hang'), puzzle('hang')]
+    await db.puzzles.bulkPut([a, b])
+    await bury(a.id)
+    expect((await dueQueue(now)).puzzles.map(p => p.id)).toEqual([b.id])
+    expect((await dueToday(now)).remaining).toBe(1)
+    await bury(b.id)
+    const due = { game: false, puzzles: (await dueToday(now)).remaining, reviews: 0, fresh: 0, turning: 0, conversion: 0, defense: 0 }
+    expect(nextAction(due).go).toBe('play')
+  })
+
+  it('does not count towards the most common type', async () => {
+    const hangs = [puzzle('hang'), puzzle('hang')]
+    const win = puzzle('missed-win')
+    await db.puzzles.bulkPut([...hangs, win])
+    for (const p of hangs) await bury(p.id)
+    expect((await dueQueue(now)).topLeak).toBe('missed-win')
+  })
+
+  it('comes back as it was when the bury is undone', async () => {
+    const p = puzzle('hang')
+    await db.puzzles.put(p)
+    await recordAttempt(p, true, now)
+    const card = (await db.puzzles.get(p.id))!.card
+    await bury(p.id)
+    await unbury(p.id)
+    const row = (await db.puzzles.get(p.id))!
+    expect('buried' in row).toBe(false)
+    expect(row.card).toEqual(card)
+    expect((await dueQueue(new Date(+now + 30 * 86400e3))).puzzles.length).toBe(1)
+  })
+
+  it('is not replaced when its game is analyzed again', async () => {
+    const [a, b] = [puzzle('hang'), puzzle('hang')]
+    await db.puzzles.bulkPut([a, b])
+    await recordAttempt(b, true, now)
+    await bury(a.id)
+    await savePuzzles([{ ...a }, { ...b }], true)
+    expect((await db.puzzles.get(a.id))!.buried).toBe(true)
+    // The other puzzle of the game is new again, as before
+    expect((await db.puzzles.get(b.id))!.card.reps).toBe(0)
+    expect((await dueQueue(now)).puzzles.map(p => p.id)).toEqual([b.id])
+  })
+
+  it('is not added again by a recheck, which keeps every stored puzzle and adds the new one', async () => {
+    const [a, b, c] = [puzzle('hang'), puzzle('hang'), puzzle('hang')]
+    await db.puzzles.bulkPut([a, b])
+    await recordAttempt(b, true, now)
+    await bury(a.id)
+    await savePuzzles([{ ...a }, { ...b }, c], false)
+    expect((await db.puzzles.get(a.id))!.buried).toBe(true)
+    expect((await db.puzzles.get(b.id))!.card.reps).toBe(1)
+    expect(await db.puzzles.count()).toBe(3)
+    expect((await dueQueue(now)).puzzles.map(p => p.id)).toEqual([c.id])
   })
 })
