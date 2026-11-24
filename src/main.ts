@@ -2,6 +2,7 @@ import { attributesModule, classModule, eventListenersModule, init, propsModule,
 import '@lichess-org/chessground/assets/chessground.base.css'
 import './index.css'
 import { Ctrl } from './ctrl'
+import { startPings } from './ping'
 import { view } from './views/layout'
 
 const patch = init([classModule, attributesModule, propsModule, styleModule, eventListenersModule])
@@ -21,6 +22,8 @@ function redraw() {
 
 const ctrl = new Ctrl(redraw)
 redraw()
+// Not in dev, which would count the developer
+if (import.meta.env.PROD) startPings()
 
 // Offline shell and installability; not in dev, where it would
 // cache Vite's modules

@@ -134,7 +134,7 @@ export function settingsView(ctrl: Ctrl): VNode {
     card(
       [
         label('Your data'),
-        el('p', 'text-sm text-dim', "Your games, puzzles and progress are stored in this browser. Signed in with Lichess, or with a sync code, they are also kept on lidrill's server, which is how a second device catches up. Two things are sent either way, without your name: \"Why?\" sends the puzzle's position and Stockfish's lines through the server to an AI model (via OpenRouter), and an analyzed game's moves and evals are kept there so the same game is not analyzed twice."),
+        el('p', 'text-sm text-dim', "Your games, puzzles and progress are stored in this browser. Signed in with Lichess, or with a sync code, they are also kept on lidrill's server, which is how a second device catches up. Two things are sent either way, without your name: \"Why?\" sends the puzzle's position and Stockfish's lines through the server to an AI model (via OpenRouter), and an analyzed game's moves and evals are kept there so the same game is not analyzed twice. Visits are counted with a hash of your address that changes every day; the address itself is not kept."),
         el('div', 'flex flex-wrap gap-2', [
           button('Export', () => ctrl.exportFile(), 'plain'),
           el('label', `${btnClass('plain')} cursor-pointer`, [

@@ -54,6 +54,7 @@ const env = {
   MAIA_LIMIT: { limit: async () => ({ success: maiaLimitOk }) },
   POLICY_LIMIT: { limit: async () => ({ success: policyLimitOk }) },
   EVALS_LIMIT: { limit: async () => ({ success: evalsLimitOk }) },
+  PING_LIMIT: { limit: async () => ({ success: true }) },
   BACKEND_URL: 'https://backend.example',
   LIDRILL_KEY: 'backend-secret',
   PACKETS: {
@@ -497,6 +498,25 @@ describe('POST /api/maia/policy', () => {
     policyLimitOk = false
     expect((await post('/api/maia/policy', position, { proof: null })).status).toBe(429)
     expect(calls).toHaveLength(2)
+  })
+})
+
+describe('POST /api/ping', () => {
+  it('sends the backend a hash for the visitor and the day, never the address', async () => {
+    const sent: { url: string; body: { day: string; visitor: string; active: boolean } }[] = []
+    vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
+      sent.push({ url, body: JSON.parse(init.body as string) })
+      return new Response('{}')
+    })
+    expect((await post('/api/ping', { active: true }, { proof: null })).status).toBe(200)
+    expect((await post('/api/ping', {}, { proof: null })).status).toBe(200)
+    expect(sent.map(s => s.url)).toEqual(['https://backend.example/stats/ping', 'https://backend.example/stats/ping'])
+    expect(sent[0].body.visitor).toMatch(/^[0-9a-f]{32}$/)
+    expect(sent[0].body.day).toBe(new Date().toISOString().slice(0, 10))
+    expect(JSON.stringify(sent[0].body)).not.toContain('1.2.3.4')
+    // the same visitor both times, active only when the page says so
+    expect([sent[1].body.visitor, sent[0].body.active, sent[1].body.active]).toEqual([sent[0].body.visitor, true, false])
+    expect((await post('/api/ping', {}, { origin: 'https://evil.example', proof: null })).status).toBe(403)
   })
 })
 

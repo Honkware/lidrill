@@ -34,6 +34,7 @@ interface Env {
   MAIA_LIMIT: RateLimit
   POLICY_LIMIT: RateLimit
   EVALS_LIMIT: RateLimit
+  PING_LIMIT: RateLimit
   PACKETS: KVNamespace
   // Server tier (docs/server-tier.md): the loopback FastAPI service, reached
   // through its cloudflared quick tunnel, guarded by the shared secret
@@ -339,6 +340,26 @@ async function evals(request: Request, env: Env, route: 'get' | 'put'): Promise<
   return json(await res.json())
 }
 
+// A page saying it is open, and whether its visitor has touched a board yet
+// (src/ping.ts). The backend counts visitors, so it needs to tell two apart,
+// and it is given a hash of the address, the browser and the day, keyed with
+// a Worker secret: the same visitor is one row today and an unrelated one
+// tomorrow, and the address itself is never stored.
+async function ping(request: Request, env: Env, ctx: { waitUntil(p: Promise<unknown>): void }): Promise<Response> {
+  if (request.method !== 'POST') return json({ error: 'POST only' }, 405)
+  if (!ORIGINS.some(o => o.test(request.headers.get('origin') ?? ''))) return json({ error: 'Not from lidrill' }, 403)
+  const ip = request.headers.get('cf-connecting-ip') ?? 'unknown'
+  if (!(await env.PING_LIMIT.limit({ key: ip })).success) return json({ error: 'Too many requests at once.' }, 429)
+  const body = (await request.json().catch(() => ({}))) as { active?: unknown }
+  const day = new Date().toISOString().slice(0, 10)
+  const visitor = sha256Hex(`${env.POW_SECRET}.${day}.${ip}.${request.headers.get('user-agent') ?? ''}`).slice(0, 32)
+  // The page doesn't wait on the count, and a backend that is down loses a ping and nothing else
+  ctx.waitUntil(
+    fetch(`${env.BACKEND_URL}/stats/ping`, { method: 'POST', headers: { 'x-lidrill-key': env.LIDRILL_KEY, 'content-type': 'application/json' }, body: JSON.stringify({ day, visitor, active: body.active === true }) }).catch(() => undefined),
+  )
+  return json({ ok: true })
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: { waitUntil(p: Promise<unknown>): void }): Promise<Response> {
     const url = new URL(request.url)
@@ -348,6 +369,7 @@ export default {
     if (url.pathname === '/api/maia/move') return maia(request, env, 'move', 'Maia can’t move from that position.')
     if (url.pathname === '/api/maia/draw') return maia(request, env, 'draw', 'Maia can’t answer a draw offer in that position.')
     if (url.pathname === '/api/maia/policy') return maia(request, env, 'policy', 'Maia can’t move from that position.', env.POLICY_LIMIT)
+    if (url.pathname === '/api/ping') return ping(request, env, ctx)
     if (url.pathname === '/api/evals/get') return evals(request, env, 'get')
     if (url.pathname === '/api/evals/put') return evals(request, env, 'put')
     if (url.pathname.startsWith('/api/sync/')) return syncProxy(request, url, env, ctx)

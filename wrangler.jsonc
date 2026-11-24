@@ -26,7 +26,9 @@
     { "name": "POLICY_LIMIT", "namespace_id": "1005", "simple": { "limit": 300, "period": 60 } },
     // Shared evals: one lookup per 500 games, then one upload for each game
     // the browser had to analyse itself, a few seconds apart
-    { "name": "EVALS_LIMIT", "namespace_id": "1006", "simple": { "limit": 120, "period": 60 } }
+    { "name": "EVALS_LIMIT", "namespace_id": "1006", "simple": { "limit": 120, "period": 60 } },
+    // A page pings on load, on the first touch of a board and every five minutes
+    { "name": "PING_LIMIT", "namespace_id": "1007", "simple": { "limit": 20, "period": 60 } }
   ],
   // Packet store: key = packetHash, value = packet
   // JSON, TTL 30 days. Finished explanations live beside the packets under
