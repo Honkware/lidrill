@@ -2,7 +2,7 @@
   "name": "lidrill",
   "short_name": "lidrill",
   "description": "Puzzles from your own chess games.",
-  "start_url": "/#/today",
+  "start_url": "/#/train",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
