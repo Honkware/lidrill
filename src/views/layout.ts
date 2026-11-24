@@ -97,7 +97,7 @@ function header(ctrl: Ctrl, full: boolean): VNode | null {
   const nav = signedIn(ctrl)
   return el('header', 'pt-safe border-b border-raised', { class: { 'max-sm:hidden': full, 'short:hidden': full } }, [
     el('div', 'mx-auto flex h-12 max-w-5xl items-center gap-6 px-4 sm:h-14 sm:px-6', [
-      el('a', 'font-display text-xl font-bold', { attrs: { href: nav ? '#/train' : '#' } }, 'lidrill'),
+      el('a', 'flex h-11 items-center font-display text-xl font-bold', { attrs: { href: nav ? '#/train' : '#' } }, 'lidrill'),
       nav
         ? el(
             'nav',
@@ -105,10 +105,10 @@ function header(ctrl: Ctrl, full: boolean): VNode | null {
             TABS.map(t =>
               t.tab === 'more'
                 ? el('div', 'relative', [
-                    el('button', 'text-sm', { attrs: moreAttrs(ctrl), class: tabClass(ctrl, t.tab), on: { click: () => void ctrl.toggleMore() } }, t.label),
+                    el('button', 'flex h-11 items-center text-sm', { attrs: moreAttrs(ctrl), class: tabClass(ctrl, t.tab), on: { click: () => void ctrl.toggleMore() } }, t.label),
                     ctrl.moreOpen ? el('div', 'absolute left-0 top-full z-40 mt-3 w-72 overflow-hidden rounded-xl bg-surface shadow-lg ring-1 ring-raised', [moreMenu(ctrl)]) : null,
                   ])
-                : el('a', 'text-sm', { attrs: { href: `#/${t.tab}` }, class: tabClass(ctrl, t.tab) }, t.label),
+                : el('a', 'flex h-11 items-center text-sm', { attrs: { href: `#/${t.tab}` }, class: tabClass(ctrl, t.tab) }, t.label),
             ),
           )
         : null,
