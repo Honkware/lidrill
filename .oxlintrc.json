@@ -4,6 +4,7 @@
     "typescript",
     "oxc"
   ],
+  "ignorePatterns": [".claude"],
   "rules": {
     "no-unused-vars": "error",
     "no-empty": "error",

@@ -22,6 +22,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['fake-indexeddb/auto'],
-    exclude: ['**/node_modules/**', '**/dist/**'],
+    // .claude holds worktrees, each a full copy of the tests
+    exclude: ['**/node_modules/**', '**/dist/**', '**/.claude/**'],
   },
 })
