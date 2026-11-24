@@ -9,6 +9,7 @@ import { BANDS, buildPacket, membershipOf, packetHash, packetProblems, stampTier
 import { templateFloor } from '../src/server/floor'
 import type { Slot } from '../src/server/render'
 import { sha256Hex } from '../src/server/sha256'
+import { SYNC_KEY } from '../src/sync/key'
 
 // lidrill is a static site; this Worker only answers /api/*. Everything else
 // is served from the assets without running it (run_worker_first).
@@ -279,9 +280,16 @@ async function accountFor(token: string, ctx: { waitUntil(p: Promise<unknown>): 
 // is VM-local (Worker secret → tunnel → loopback), never exposed to clients.
 async function syncProxy(request: Request, url: URL, env: Env, ctx: { waitUntil(p: Promise<unknown>): void }): Promise<Response> {
   const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
-  if (!token) return json({ error: 'Sign in with Lichess to sync.' }, 401)
-  const account = await accountFor(token, ctx)
+  if (!token) return json({ error: 'Sign in with Lichess or use a sync code to sync.' }, 401)
+  // A sync key (src/sync/key.ts) is its own proof: there is no account to
+  // ask about, and the rows go under a hash of it, which no Lichess
+  // username is long enough to collide with
+  const byKey = SYNC_KEY.test(token)
+  const account = byKey ? { username: `k_${sha256Hex(token).slice(0, 40)}` } : await accountFor(token, ctx)
   if (account instanceof Response) return account
+  // Keys cost nothing to make, so one address can't work through them
+  // faster than one account could
+  if (byKey && !(await env.SYNC_LIMIT.limit({ key: `ip:${request.headers.get('cf-connecting-ip') ?? 'unknown'}` })).success) return json({ error: 'Too many syncs at once. Try again in a minute.' }, 429)
   if (!(await env.SYNC_LIMIT.limit({ key: account.username })).success) return json({ error: 'Too many syncs at once. Try again in a minute.' }, 429)
   const path = url.pathname.slice('/api/sync'.length)
   const upstream = `${env.BACKEND_URL}/u/${encodeURIComponent(account.username)}${path}${url.search}`

@@ -42,6 +42,7 @@ let packetLimitOk = true
 let maiaLimitOk = true
 let policyLimitOk = true
 let evalsLimitOk = true
+let syncLimited: string[] = []
 
 const env = {
   ASSETS: { fetch: async () => new Response('assets') },
@@ -49,7 +50,7 @@ const env = {
   POW_SECRET: SECRET,
   EXPLAIN_LIMIT: { limit: async () => ({ success: true }) },
   PACKET_LIMIT: { limit: async () => ({ success: packetLimitOk }) },
-  SYNC_LIMIT: { limit: async () => ({ success: true }) },
+  SYNC_LIMIT: { limit: async ({ key }: { key: string }) => ({ success: !syncLimited.includes(key) }) },
   MAIA_LIMIT: { limit: async () => ({ success: maiaLimitOk }) },
   POLICY_LIMIT: { limit: async () => ({ success: policyLimitOk }) },
   EVALS_LIMIT: { limit: async () => ({ success: evalsLimitOk }) },
@@ -384,6 +385,20 @@ describe('/api/sync/*', () => {
     expect(backendCalls[0].method).toBe('POST')
     expect(backendCalls[0].key).toBe('backend-secret')
     expect(backendCalls[0].body).toBe(JSON.stringify({ rows: [] }))
+  })
+
+  it('takes a sync key without asking Lichess, and keeps its rows under a hash of it', async () => {
+    const token = 'key_abcdefghijklmnopqrstuvwxyz'
+    expect((await syncRequest('/api/sync/state', { token })).status).toBe(200)
+    expect(accountCalls).toBe(0)
+    expect(backendCalls[0].url).toBe(`https://backend.example/u/k_${sha256Hex(token).slice(0, 40)}/state`)
+    // one address is held to an account's rate across every key it sends
+    syncLimited = ['ip:unknown']
+    expect((await syncRequest('/api/sync/state', { token })).status).toBe(429)
+    syncLimited = []
+    // anything else of that look is a Lichess token, and Lichess is asked
+    await syncRequest('/api/sync/state', { token: 'key_short' })
+    expect(accountCalls).toBe(1)
   })
 
   it('caches the account lookup for 15 minutes', async () => {

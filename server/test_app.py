@@ -150,3 +150,9 @@ def test_shared_evals_refuse_what_is_not_a_game_or_an_eval():
     assert put({**GAME, "depth": 0, "evals": [None, None, None]}) == 400
     assert CLIENT.post("/evals/get", json={"keys": ["../x"]}, **KEY).status_code == 400
     assert CLIENT.post("/evals/get", json={"keys": []}, **KEY).json() == {"found": {}}
+
+
+def test_state_of_an_unknown_account_leaves_no_database():
+    res = CLIENT.get("/u/k_nobody/state", **KEY)
+    assert res.json() == {"rows": 0, "lastSeen": None, "pendingAnalysis": 0}
+    assert not os.path.exists(os.path.join(os.environ["DATA_DIR"], "k_nobody.db"))

@@ -337,6 +337,9 @@ def pull(
 @app.get("/u/{user}/state")
 def state(user: str, x_lidrill_key: str | None = Header(default=None)) -> dict[str, Any]:
     guard(x_lidrill_key)
+    # Asking about a sync code nobody uses must not leave a database behind
+    if USER_RE.match(user) and not os.path.exists(os.path.join(DATA_DIR, f"{user}.db")):
+        return {"rows": 0, "lastSeen": None, "pendingAnalysis": 0}
     conn = connect(user)
     count = conn.execute("SELECT COUNT(*) AS n FROM rows").fetchone()["n"]
     last_seen = conn.execute("SELECT value FROM meta WHERE key = 'lastSeen'").fetchone()
