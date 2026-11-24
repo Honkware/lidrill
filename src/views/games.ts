@@ -35,7 +35,8 @@ function syncCard(ctrl: Ctrl): VNode {
         fact('Games', String(games)),
         fact('Analyzed', String(analyzed)),
         fact('Puzzles', String(puzzles)),
-        band ? fact('Level', el('a', 'underline decoration-dotted underline-offset-2', { attrs: { href: '#/settings', title: 'What counts' } }, band)) : null,
+        // The link's own box is a line of text, so ::after widens what a finger can hit to 46px
+        band ? fact('Level', el('a', "relative underline decoration-dotted underline-offset-2 after:absolute after:-inset-x-2 after:-inset-y-3 after:content-['']", { attrs: { href: '#/settings', title: 'What counts' } }, band)) : null,
         el('div', 'ml-auto flex gap-2', [
           ctrl.syncing ? button('Stop', () => ctrl.stopSync(), 'quiet') : null,
           button(ctrl.syncing ? 'Syncing…' : 'Sync', () => ctrl.sync(), 'plain', ctrl.syncing),
