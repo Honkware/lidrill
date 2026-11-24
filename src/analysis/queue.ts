@@ -1,11 +1,14 @@
 import { db, type Game } from '../db'
 import { analyzeMoves } from './analyze'
 import type { Engine } from './engine'
+import { shareable, withShared, type Shared } from './shared'
 
 export interface QueueOptions {
   depth: number
   // Book length for a game: masters explorer when signed in, else a fixed count
   bookPlies: (game: Game) => Promise<number>
+  // Evals other browsers have already searched (./shared.ts)
+  shared?: Shared
 }
 
 export interface Progress {
@@ -45,13 +48,18 @@ export async function runQueue(
   const total = pending.length
   let done = 0
   onProgress({ done, total })
+  const known = (await opts.shared?.get(pending, opts.depth)) ?? new Map()
   await eachWithEngine(
     pending,
     engines,
     async (game, engine) => {
       const bookPlies = await opts.bookPlies(game)
-      const moves = await analyzeMoves(game.moves, engine, { depth: opts.depth, bookPlies })
+      const before = known.has(game.id) ? withShared(game.moves, known.get(game.id)!) : game.moves
+      const moves = await analyzeMoves(before, engine, { depth: opts.depth, bookPlies })
       if (signal?.aborted) return
+      // Uploaded only when this device found evals the server didn't have
+      const evals = (ms: typeof moves) => ms.filter(m => m.eval).length
+      if (shareable(game) && evals(moves) > evals(before)) void opts.shared?.put(moves, opts.depth)
       const analyzed = { ...game, moves, analyzedAt: Date.now() }
       await db.games.put(analyzed)
       await onGame?.(analyzed, engine)

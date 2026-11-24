@@ -1,6 +1,7 @@
 import { bookFor } from './analysis/book'
 import { Engine, workerEngine } from './analysis/engine'
 import { eachWithEngine, runQueue, type Progress } from './analysis/queue'
+import { shared } from './analysis/shared'
 import { db, type Game, type Profile } from './db'
 import { fetchAccount } from './lichess/api'
 import { failedPuzzles, fetchActivity, fetchDashboard, fetchThemePuzzles, snapshot, weakThemes } from './lichess/puzzles'
@@ -159,7 +160,7 @@ export async function analyzePending(profile: Profile, token: string | undefined
   let cutoff = worst5Cutoff(await db.games.filter(g => g.analyzedAt !== undefined).toArray())
   let sinceCutoff = 0
   const genOpts = genOptsFor(profile)
-  await runQueue(getPool(), { depth: 14, bookPlies: bookFor(token) }, onProgress, signal, async (game, eng) => {
+  await runQueue(getPool(), { depth: 14, bookPlies: bookFor(token), shared: shared() }, onProgress, signal, async (game, eng) => {
     await savePuzzles(await generatePuzzles(game, eng, genOpts), false)
     await db.games.update(game.id, { puzzlesVersion: GENERATOR_VERSION })
     if (profile.band === 'advanced' && ++sinceCutoff >= 10) {

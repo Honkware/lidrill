@@ -17,6 +17,7 @@ The Worker holds the secrets and the rate limits, so it is where anything that c
 | `POST /api/explain` | Has the model write an explanation from a packet, through OpenRouter, and caches the answer | Origin, proof of work, 8 a minute per IP |
 | `POST /api/maia/move`, `/api/maia/draw` | Forwarded to the Python service | Origin, 60 a minute per IP |
 | `POST /api/maia/policy` | Forwarded to the Python service | Origin, 300 a minute per IP |
+| `POST /api/evals/get`, `/api/evals/put` | Forwarded to the Python service | Origin, 120 a minute per IP |
 | `/api/sync/*` | Forwarded to `/u/<username>/*` on the Python service | Lichess token, 240 a minute per account |
 
 The Origin check accepts `lidrill.org`, `www.lidrill.org`, the `workers.dev` address and `http://localhost` on any port (`ORIGINS` in `worker/index.ts`). `http://127.0.0.1` is not on the list, so open the dev site as `localhost`. For sync the Worker asks Lichess who the token belongs to, caches the answer for 15 minutes, and sends only the username on. The token never reaches the VM.
@@ -31,8 +32,11 @@ The Origin check accepts `lidrill.org`, `www.lidrill.org`, the `workers.dev` add
 | `POST /u/<user>/push`, `GET /u/<user>/pull` | Sync rows, newer `updatedAt` wins |
 | `GET /u/<user>/state`, `DELETE /u/<user>/rows` | Row counts, and the wipe behind "delete everything" |
 | `POST /maia/move`, `/maia/draw`, `/maia/policy` | Maia-3's move, its answer to a draw offer, and its move probabilities |
+| `POST /evals/get`, `/evals/put` | Engine evals shared between browsers, kept by the hash of a game's moves |
 
-The tables it accepts (`TABLES` in `server/app.py`) have to match `SYNC_TABLES` in `src/db.ts`. A push with a table it does not know is refused with 400. `server/analysis_daemon.py` is a second process on the VM that analyses pushed games with native Stockfish. Sync is described in `docs/server-tier.md` and the Maia endpoints in `server/README.md`.
+The tables it accepts (`TABLES` in `server/app.py`) have to match `SYNC_TABLES` in `src/db.ts`. A push with a table it does not know is refused with 400. The shared evals are the one thing stored outside an account. A game's evals are the same for whoever analyses it, so the browser asks for the games it is about to analyse (`src/analysis/shared.ts`), searches only the positions that come back empty and uploads what it found. They live in `DATA_DIR/shared/evals.db` under the SHA-256 of the search depth and the moves, with no player or game id, and an eval once stored is never replaced. This is what spares a Chess.com player, who has no account to sync under, the analysis on a second device. The puzzles are still made on each device.
+
+`server/analysis_daemon.py` is a second process on the VM that analyses pushed games with native Stockfish. Sync is described in `docs/server-tier.md` and the Maia endpoints in `server/README.md`.
 
 ## Path of a request
 
