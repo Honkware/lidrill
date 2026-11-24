@@ -30,15 +30,16 @@ function sampleView(ctrl: Ctrl): VNode {
   return run(ctrl, { title: 'Sample puzzles', action }, [open ? ownGamesCard(ctrl) : null])
 }
 
-function run(ctrl: Ctrl, top: { title: string; back?: () => void; action?: VNode; note?: string }, first: (VNode | null)[]): VNode {
+// `after` goes under the puzzle panel, so a result is read before anything else
+function run(ctrl: Ctrl, top: { title: string; back?: () => void; action?: VNode; note?: string }, after: (VNode | null)[]): VNode {
   const last = ctrl.drills.at(-1)
   // The summary keeps the last puzzle's board, under its own key since that
   // puzzle's board was destroyed when it ended
   if (ctrl.sessionDone && last && ctrl.review.viewing === undefined)
-    return boardScreen({ ...top, hero: true, board: board(`done:${last.key}`, e => last.mount(e)), side: [...first, sessionSummary(ctrl)] })
+    return boardScreen({ ...top, hero: true, board: board(`done:${last.key}`, e => last.mount(e)), side: [sessionSummary(ctrl), ...after] })
   const d = ctrl.displayDrill
   if (!d) return loading()
-  return boardScreen({ ...top, hero: true, board: boardWithWheel(d), controls: puzzleJumps(d), side: [...first, sessionRow(ctrl), countdownBar(ctrl), side(ctrl, d)] })
+  return boardScreen({ ...top, hero: true, board: boardWithWheel(d), controls: puzzleJumps(d), side: [sessionRow(ctrl), countdownBar(ctrl), side(ctrl, d), ...after] })
 }
 
 const markOf = (o?: Outcome): Mark => (o === 'clean' ? 'good' : o === 'hinted' ? 'warn' : o ? 'bad' : undefined)
@@ -155,8 +156,10 @@ function playing(d: Drill): VNode {
     // it never shifts the layout (the packet is precomputed at sync,
     // so the hint is ready the moment a try fails - gating is only whose
     // turn it is)
-    // One row, so space-y on the column can't push the second button down
+    // One row, so space-y on the column can't push the second button down.
+    // The hint comes last so its reserved slot leaves no gap before it shows.
     el('div', 'flex flex-wrap gap-2', [
+      d.canViewSolution ? button('View the solution', () => d.viewSolution(), 'plain') : null,
       el(
         'button',
         btnClass('plain'),
@@ -167,7 +170,6 @@ function playing(d: Drill): VNode {
         },
         [icon('hint', 18), d.showHint ? 'Hide hint' : 'Hint'],
       ),
-      d.canViewSolution ? button('View the solution', () => d.viewSolution(), 'plain') : null,
     ]),
     drillContext(d),
   ])
