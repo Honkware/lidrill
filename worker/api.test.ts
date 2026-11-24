@@ -216,6 +216,96 @@ describe('POST /api/explain v2 (slim)', () => {
   })
 })
 
+// The model is OpenRouter over fetch, scripted here: each draft call takes
+// the next draft, and the claim check answers with one claim per sentence
+describe('POST /api/explain with a model', () => {
+  const good = () => [
+    { slot: 'whatHappened', text: 'In the game, {ref:played} cost you {ref:swing}. This position has {ref:best}.', refs: ['played', 'swing', 'best'] },
+    { slot: 'why', text: 'They had NO_THREAT, so you were free to play {ref:best}. After {ref:pv1}, {ref:pv2} takes the rook.', refs: ['c-nothreat', 'best', 'pv1', 'pv2'] },
+    { slot: 'pattern', text: 'Your idea: {ref:c-motif}. {ref:gloss:fork}', refs: ['c-motif', 'gloss:fork'] },
+    { slot: 'nextTime', text: '{ref:habit:two-targets}', refs: ['habit:two-targets'] },
+  ]
+  const invented = () => good().map(s => (s.slot === 'whatHappened' ? { ...s, text: 'Ke2 lost a rook.', refs: [] } : s))
+  const unsupported = () => good().map(s => (s.slot === 'why' ? { ...s, text: `${s.text} The knight loves the center.` } : s))
+  const claimsFor = (slots: ReturnType<typeof good>) => ({
+    claims: slots.flatMap(s => s.text.split(/(?<=\.)\s+/).map(t => ({ slot: s.slot, text: t, refs: [...t.matchAll(/\{ref:([a-z0-9:-]+)\}|NO_THREAT/g)].map(m => m[1] ?? 'c-nothreat'), tense: 'past' }))),
+  })
+  let passes: string[]
+  const model = (drafts: ReturnType<typeof good>[]) => {
+    passes = []
+    const last = drafts[drafts.length - 1]
+    vi.stubGlobal('fetch', async (url: string, init: { body: string }) => {
+      expect(url).toBe('https://openrouter.ai/api/v1/chat/completions')
+      const claims = (JSON.parse(init.body) as { response_format: { json_schema: { name: string } } }).response_format.json_schema.name === 'claims'
+      passes.push(claims ? 'claims' : 'slots')
+      const content = claims ? claimsFor(last) : { slots: drafts.shift() }
+      return new Response(JSON.stringify({ model: 'scripted', usage: { cost: 0.001 }, choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(content) } }] }))
+    })
+  }
+  const stored = () => puts.filter(x => x.key.startsWith('why/'))
+  // The same position from a second browser: the evals differ by a few
+  // centipawns, so the request body and its Cache API key differ too
+  const again = () => forkReport({ best: forkReport().best.map(r => ({ ...r, lines: r.lines.map((l, i) => (i ? l : { ...l, eval: cp(l.eval.value + 3) })) })) })
+
+  it('a fresh explanation takes one model call and says so in its headers', async () => {
+    model([good()])
+    const res = await post('/api/explain', forkReport())
+    expect(res.headers.get('x-lidrill-path')).toBe('one-pass')
+    expect(res.headers.get('x-lidrill-calls')).toBe('1')
+    expect(res.headers.get('x-lidrill-cost')).toBe('0.00100')
+    expect(await res.json()).toMatchObject({ source: 'model', calls: 1, cost: 0.001 })
+    expect(passes).toEqual(['slots'])
+    expect(stored()).toEqual([{ key: expect.stringMatching(/^why\/p2\.6\/17\/[0-9a-f]{64}$/), ttl: 30 * 86400 }])
+  })
+
+  it('a repeat for the same position, game move and best move makes no model call', async () => {
+    model([good()])
+    const first = (await (await post('/api/explain', forkReport())).json()) as { slots: unknown }
+    const res = await post('/api/explain', again())
+    expect(res.headers.get('x-lidrill-path')).toBe('cache')
+    expect(res.headers.get('x-lidrill-calls')).toBe('0')
+    expect(await res.json()).toMatchObject({ source: 'model', calls: 0, cost: 0, slots: first.slots })
+    expect(passes).toEqual(['slots'])
+  })
+
+  it('another solving move or another band is not a repeat', async () => {
+    model([good(), good(), good(), good(), good()])
+    await post('/api/explain', forkReport())
+    await post('/api/explain', { ...again(), solved: 'd5c7' })
+    expect(passes.length).toBeGreaterThan(1)
+    const before = passes.length
+    await post('/api/explain', forkReport({ band: 'advanced' }))
+    expect(passes.length).toBeGreaterThan(before)
+  })
+
+  it('a draft with an invented move is repaired once, then floored and not stored', async () => {
+    model([invented(), invented()])
+    const res = await post('/api/explain', forkReport())
+    expect(res.headers.get('x-lidrill-path')).toBe('floor')
+    expect(res.headers.get('x-lidrill-calls')).toBe('2')
+    expect(await res.json()).toMatchObject({ source: 'floor', reason: expect.stringMatching(/repair failed/) })
+    expect(passes).toEqual(['slots', 'slots'])
+    expect(stored()).toEqual([])
+  })
+
+  it('a draft with a claim no fact holds still goes to the second model, which cuts it', async () => {
+    model([unsupported()])
+    const res = await post('/api/explain', forkReport())
+    expect(res.headers.get('x-lidrill-path')).toBe('second-pass')
+    expect(passes).toEqual(['slots', 'claims'])
+    const data = (await res.json()) as { source: string; slots: { slot: string; text: string }[] }
+    expect(data.source).toBe('model')
+    expect(data.slots.find(s => s.slot === 'why')!.text).not.toMatch(/center/)
+  })
+
+  it('a stored entry that does not read as an explanation is a miss', async () => {
+    model([good(), good()])
+    await post('/api/explain', forkReport())
+    kv.set(stored()[0].key, JSON.stringify({ slots: 'garbage' }))
+    expect((await post('/api/explain', again())).headers.get('x-lidrill-path')).toBe('one-pass')
+  })
+})
+
 describe('POST /api/explain v1 (legacy report-in)', () => {
   it('still builds from the report and stamps the browser tier', async () => {
     const res = await post('/api/explain', forkReport({ best: forkReport().best.map(r => ({ ...r, depth: 18 })) }))

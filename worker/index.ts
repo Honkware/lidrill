@@ -1,12 +1,13 @@
 import { issue, verify } from '../src/server/guard'
 import type { Band } from '../src/db'
-import { explainCacheKey } from '../src/server/explainCache'
+import { explainCacheKey, explainStoreKey } from '../src/server/explainCache'
 import { EXPLAIN_VERSION } from '../src/server/explainVersion'
-import { narrate } from '../src/server/narrate'
+import { narrate, type Narration } from '../src/server/narrate'
 import { openRouter } from '../src/server/openrouter'
 import { reconcileWithLine } from '../src/server/consistency'
 import { BANDS, buildPacket, membershipOf, packetHash, packetProblems, stampTier, validPacket, validReport, type Packet } from '../src/server/packet'
 import { templateFloor } from '../src/server/floor'
+import type { Slot } from '../src/server/render'
 import { sha256Hex } from '../src/server/sha256'
 
 // lidrill is a static site; this Worker only answers /api/*. Everything else
@@ -105,23 +106,73 @@ async function packet(request: Request, env: Env): Promise<Response> {
   return json({ packetHash: hash }, 201)
 }
 
+// How an explanation was reached, for the x-lidrill-path header and the log:
+// the narrator's own routes, or a stored answer that cost no model call
+type Path = Narration['path'] | 'cache'
+
+interface Answer {
+  slots: Slot[]
+  packet: Packet
+  source: 'model' | 'floor'
+  reason?: string
+  models: string[]
+  frame: string
+}
+
+function answered(a: Answer, path: Path, calls: number, cost: number, cacheControl = 'no-store'): Response {
+  return json({ ...a, calls, cost: Number(cost.toFixed(5)), version: EXPLAIN_VERSION }, 200, {
+    'cache-control': cacheControl,
+    'x-lidrill-path': path,
+    'x-lidrill-calls': String(calls),
+    'x-lidrill-cost': cost.toFixed(5),
+  })
+}
+
+const logPath = (path: Path, calls: number, cost: number, detail: string) => console.log(`[explain] path=${path} calls=${calls} cost_usd=${cost.toFixed(5)} ${detail}`)
+
+// A stored explanation that still reads as one: its packet passes the same
+// check a stored packet does, so a corrupt entry is a miss
+function storedAnswer(text: string | null): Answer | undefined {
+  if (!text) return undefined
+  try {
+    const a = JSON.parse(text) as Answer
+    return validPacket(a.packet) && Array.isArray(a.slots) && a.source === 'model' ? a : undefined
+  } catch {
+    return undefined
+  }
+}
+
 // One narration over a packet that already passed its self-check: the
-// narrator (or the floor), cost-accounted, cached by request body - the key
-// carries the solve frame, so a different solving move never
-// receives another player's framing.
+// narrator (or the floor), cost-accounted. A model-written answer is kept in
+// two places. The packet store holds it for 30 days under the position, so
+// nobody pays for the same explanation twice. The Cache API keeps every
+// answer, floors too, for a day under the request body: it is free to read,
+// it answers before the rate limit, and it stops a floor that cost two
+// failed drafts from being retried on every tap. Its key carries the solve
+// frame, so a different solving move never receives another player's framing.
 async function narrateAndCache(pkt: Packet, solved: string | undefined, cacheKey: Request, ctx: { waitUntil(p: Promise<unknown>): void }, env: Env): Promise<Response> {
   const problems = packetProblems(pkt)
   const solve = { move: solved, membership: membershipOf(solved, pkt) }
+  const detail = `frame=${solve.membership} band=${pkt.context.band}`
+  const keep = (a: Answer) => ctx.waitUntil((caches as unknown as { default: Cache }).default.put(cacheKey, answered(a, 'cache', 0, 0, 'public, max-age=86400')))
+
+  const storeKey = explainStoreKey({ fen: pkt.position.fenBefore, played: pkt.played?.uci, best: pkt.best.uci, band: pkt.context.band, tried: pkt.tried?.uci, solved })
+  const stored = problems.length ? undefined : storedAnswer(await env.PACKETS.get(storeKey))
+  if (stored) {
+    keep(stored)
+    logPath('cache', 0, 0, `${detail} layer=kv`)
+    return answered(stored, 'cache', 0, 0)
+  }
+
   const n = problems.length
-    ? { slots: templateFloor(pkt, { membership: solve.membership, solvingRef: solve.membership === 'set' ? (pkt.alternatives.find(a => a.uci === solved)?.id ?? undefined) : undefined }), source: 'floor' as const, reason: `packet self-check: ${problems[0]}`, calls: 0, cost: 0, models: [] }
+    ? { slots: templateFloor(pkt, { membership: solve.membership, solvingRef: solve.membership === 'set' ? (pkt.alternatives.find(a => a.uci === solved)?.id ?? undefined) : undefined }), source: 'floor' as const, reason: `packet self-check: ${problems[0]}`, calls: 0, cost: 0, models: [], path: 'floor' as const }
     : await narrate(pkt, openRouter(env.OPENROUTER_API_KEY), solve)
-  const response = json(
-    { slots: n.slots, packet: pkt, source: n.source, reason: n.reason, models: n.models, calls: n.calls, cost: Number(n.cost.toFixed(5)), version: EXPLAIN_VERSION, frame: solve.membership },
-    200,
-    { 'cache-control': 'public, max-age=86400' },
-  )
-  ctx.waitUntil((caches as unknown as { default: Cache }).default.put(cacheKey, response.clone()))
-  return new Response(response.body, { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } })
+  const a: Answer = { slots: n.slots, packet: pkt, source: n.source, reason: n.reason, models: n.models, frame: solve.membership }
+  keep(a)
+  // A floor is not stored: the next ask may get a draft that passes
+  if (n.source === 'model') ctx.waitUntil(env.PACKETS.put(storeKey, JSON.stringify(a), { expirationTtl: PACKET_TTL }))
+  logPath(n.path, n.calls, n.cost, n.reason ? `${detail} reason=${JSON.stringify(n.reason)}` : detail)
+  return answered(a, n.path, n.calls, n.cost)
 }
 
 // The slim shape: the request carries only a packet
@@ -160,7 +211,10 @@ async function explain(request: Request, env: Env, ctx: { waitUntil(p: Promise<u
   const cacheKey = explainCacheKey(EXPLAIN_VERSION, g.body)
   const cache = (caches as unknown as { default: Cache }).default
   const hit = await cache.match(cacheKey)
-  if (hit) return hit
+  if (hit) {
+    logPath('cache', 0, 0, 'layer=edge')
+    return hit
+  }
 
   if (!(await env.EXPLAIN_LIMIT.limit({ key: g.ip })).success) return json({ error: 'Too many explanations at once. Try again in a minute.' }, 429)
   let raw: unknown
