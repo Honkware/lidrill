@@ -520,6 +520,20 @@ describe('POST /api/ping', () => {
   })
 })
 
+describe('POST /api/flag', () => {
+  const report = { fen: forkFen, played: 'e1e2', best: 'd5c7', floor: false, version: 17, text: 'Ke2 let the rook go.' }
+
+  it('passes a reported explanation to the backend and refuses another origin', async () => {
+    const sent: { url: string; body: string }[] = []
+    vi.stubGlobal('fetch', async (url: string, init: RequestInit) => (sent.push({ url, body: init.body as string }), new Response('{}')))
+    expect((await post('/api/flag', report, { proof: null })).status).toBe(200)
+    expect(sent).toEqual([{ url: 'https://backend.example/stats/flag', body: JSON.stringify(report) }])
+    expect((await post('/api/flag', report, { origin: 'https://evil.example', proof: null })).status).toBe(403)
+    vi.stubGlobal('fetch', async () => new Response('{}', { status: 400 }))
+    expect((await post('/api/flag', report, { proof: null })).status).toBe(400)
+  })
+})
+
 describe('POST /api/evals', () => {
   const game = { depth: 14, moves: ['e2e4'], evals: [{ cp: 30 }] }
 

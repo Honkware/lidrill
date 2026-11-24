@@ -179,3 +179,19 @@ def test_stats_refuse_a_ping_without_the_key_or_with_a_made_up_shape():
     assert ping("not-a-hash", False).status_code == 400
     assert ping("a" * 32, False, day="today").status_code == 400
     assert CLIENT.get("/stats").status_code == 401
+
+
+FLAG = {"fen": "r3k3/8/8/3N4/8/8/8/4K3 w - - 0 1", "played": "e1e2", "best": "d5c7", "floor": False, "version": 17, "text": "Ke2 let the rook go."}
+
+
+def test_a_reported_explanation_is_kept_with_its_position():
+    assert CLIENT.get("/stats/flags", **KEY).json() == {"flags": []}
+    assert CLIENT.post("/stats/flag", json=FLAG, **KEY).status_code == 200
+    got = CLIENT.get("/stats/flags", **KEY).json()["flags"]
+    assert [(f["fen"], f["played"], f["best"], f["tried"], f["floor"], f["text"]) for f in got] == [(FLAG["fen"], "e1e2", "d5c7", None, 0, FLAG["text"])]
+
+
+def test_a_report_with_no_text_or_a_made_up_move_is_refused():
+    assert CLIENT.post("/stats/flag", json={**FLAG, "text": ""}, **KEY).status_code == 400
+    assert CLIENT.post("/stats/flag", json={**FLAG, "best": "the fork"}, **KEY).status_code == 400
+    assert CLIENT.post("/stats/flag", json=FLAG).status_code == 401

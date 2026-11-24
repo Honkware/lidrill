@@ -360,6 +360,22 @@ async function ping(request: Request, env: Env, ctx: { waitUntil(p: Promise<unkn
   return json({ ok: true })
 }
 
+// A player's report that an explanation is wrong or unclear (flagWhy in
+// src/drill.ts), kept on the backend to be read. It carries the position
+// and the text that was shown, and nothing about who sent it.
+async function flag(request: Request, env: Env): Promise<Response> {
+  if (request.method !== 'POST') return json({ error: 'POST only' }, 405)
+  if (!ORIGINS.some(o => o.test(request.headers.get('origin') ?? ''))) return json({ error: 'Not from lidrill' }, 403)
+  const ip = request.headers.get('cf-connecting-ip') ?? 'unknown'
+  if (!(await env.PING_LIMIT.limit({ key: `flag:${ip}` })).success) return json({ error: 'Too many requests at once.' }, 429)
+  const body = await request.text()
+  if (body.length > 6000) return json({ error: 'Too large' }, 413)
+  const res = await fetch(`${env.BACKEND_URL}/stats/flag`, { method: 'POST', headers: { 'x-lidrill-key': env.LIDRILL_KEY, 'content-type': 'application/json' }, body }).catch(() => undefined)
+  if (res?.status === 400 || res?.status === 422) return json({ error: 'That isn’t a report.' }, 400)
+  if (!res?.ok) return json({ error: 'Reports aren’t available right now.' }, 502)
+  return json({ ok: true })
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: { waitUntil(p: Promise<unknown>): void }): Promise<Response> {
     const url = new URL(request.url)
@@ -370,6 +386,7 @@ export default {
     if (url.pathname === '/api/maia/draw') return maia(request, env, 'draw', 'Maia can’t answer a draw offer in that position.')
     if (url.pathname === '/api/maia/policy') return maia(request, env, 'policy', 'Maia can’t move from that position.', env.POLICY_LIMIT)
     if (url.pathname === '/api/ping') return ping(request, env, ctx)
+    if (url.pathname === '/api/flag') return flag(request, env)
     if (url.pathname === '/api/evals/get') return evals(request, env, 'get')
     if (url.pathname === '/api/evals/put') return evals(request, env, 'put')
     if (url.pathname.startsWith('/api/sync/')) return syncProxy(request, url, env, ctx)

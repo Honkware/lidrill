@@ -299,6 +299,51 @@ def stats_ping(body: PingBody, x_lidrill_key: str | None = Header(default=None))
     return {"ok": True}
 
 
+class FlagBody(BaseModel):
+    fen: str
+    played: str | None = None
+    best: str
+    tried: str | None = None
+    floor: bool
+    version: int
+    text: str
+
+
+@app.post("/stats/flag")
+def stats_flag(body: FlagBody, x_lidrill_key: str | None = Header(default=None)) -> dict[str, bool]:
+    """An explanation a player reported as wrong or unclear, with the position it is about."""
+    guard(x_lidrill_key)
+    moves = [m for m in (body.played, body.best, body.tried) if m is not None]
+    if not 0 < len(body.fen) <= 100 or not 0 < len(body.text) <= 4000 or not all(UCI_RE.match(m) for m in moves):
+        raise HTTPException(400, "bad flag")
+    conn = stats_db()
+    with conn:
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS flags (
+                 at INTEGER NOT NULL, fen TEXT NOT NULL, played TEXT, best TEXT NOT NULL, tried TEXT,
+                 floor INTEGER NOT NULL, version INTEGER NOT NULL, text TEXT NOT NULL)"""
+        )
+        conn.execute(
+            "INSERT INTO flags (at, fen, played, best, tried, floor, version, text) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (int(time.time() * 1000), body.fen, body.played, body.best, body.tried, int(body.floor), body.version, body.text),
+        )
+    conn.close()
+    return {"ok": True}
+
+
+@app.get("/stats/flags")
+def stats_flags(limit: int = Query(default=20), x_lidrill_key: str | None = Header(default=None)) -> dict[str, Any]:
+    guard(x_lidrill_key)
+    conn = stats_db()
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute("SELECT * FROM flags ORDER BY at DESC LIMIT ?", (min(max(1, limit), 200),)).fetchall()
+    except sqlite3.OperationalError:
+        rows = []  # nobody has reported one yet
+    conn.close()
+    return {"flags": [dict(r) for r in rows]}
+
+
 @app.get("/stats")
 def stats(days: int = Query(default=14), x_lidrill_key: str | None = Header(default=None)) -> dict[str, Any]:
     """Visitors and active players for each of the last days, and how many were seen in the last five minutes."""
