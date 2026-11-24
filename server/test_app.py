@@ -118,3 +118,35 @@ def test_jobs_not_exposed_and_json_roundtrip():
     push("player_01", [{"table": "journal", "id": "g", "updatedAt": 1, "data": data}])
     row = CLIENT.get("/u/player_01/pull", params={"since": 0}, **KEY).json()["rows"][0]
     assert row["data"] == data
+
+
+GAME = {"depth": 14, "moves": ["e2e4", "e7e5", "g1f3"]}
+
+
+def test_shared_evals_are_found_by_the_hash_of_depth_and_moves():
+    res = CLIENT.post("/evals/put", json={**GAME, "evals": [None, {"cp": 31}, {"mate": -3}]}, **KEY)
+    assert res.status_code == 200
+    key = res.json()["key"]
+    # sha256 of "14:e2e4 e7e5 g1f3", the same string the browser hashes
+    assert key == "5874d995026839a121819905e56e157a43fd79e5cc578877eb20e173e93cf473"
+    found = CLIENT.post("/evals/get", json={"keys": [key, "0" * 64]}, **KEY).json()["found"]
+    assert found == {key: [None, {"cp": 31}, {"mate": -3}]}
+
+
+def test_a_later_upload_fills_gaps_and_changes_nothing_stored():
+    key = CLIENT.post("/evals/put", json={**GAME, "evals": [None, {"cp": 31}, None]}, **KEY).json()["key"]
+    CLIENT.post("/evals/put", json={**GAME, "evals": [{"cp": 20}, {"cp": -900}, {"cp": 15}]}, **KEY)
+    found = CLIENT.post("/evals/get", json={"keys": [key]}, **KEY).json()["found"]
+    assert found[key] == [{"cp": 20}, {"cp": 31}, {"cp": 15}]
+
+
+def test_shared_evals_refuse_what_is_not_a_game_or_an_eval():
+    put = lambda body: CLIENT.post("/evals/put", json=body, **KEY).status_code  # noqa: E731
+    assert CLIENT.post("/evals/put", json={**GAME, "evals": [None, None, None]}).status_code == 401
+    assert put({**GAME, "evals": [None, None]}) == 400
+    assert put({**GAME, "moves": ["e2e4", "e7e5", "castle"], "evals": [None, None, None]}) == 400
+    assert put({**GAME, "evals": [None, None, {"cp": 1, "mate": 2}]}) == 400
+    assert put({**GAME, "evals": [None, None, {"cp": "high"}]}) == 400
+    assert put({**GAME, "depth": 0, "evals": [None, None, None]}) == 400
+    assert CLIENT.post("/evals/get", json={"keys": ["../x"]}, **KEY).status_code == 400
+    assert CLIENT.post("/evals/get", json={"keys": []}, **KEY).json() == {"found": {}}

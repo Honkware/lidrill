@@ -10,6 +10,7 @@ Every endpoint requires the X-Lidrill-Key shared secret; only the lidrill
 Cloudflare Worker holds it, and direct access stays on 127.0.0.1.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -36,6 +37,10 @@ MAX_ROWS_PER_PUSH = 5000
 MAX_ROW_BYTES = 2_000_000
 MAX_PAGE = 1000
 
+MAX_EVAL_KEYS = 500
+MAX_PLIES = 600
+UCI_RE = re.compile(r"^[a-h][1-8][a-h][1-8][qrbn]?$")
+KEY_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 def warm_maia() -> None:
@@ -161,6 +166,90 @@ def maia_draw(body: DrawBody, x_lidrill_key: str | None = Header(default=None)) 
         return maia.draw(maia.model(), body.moves, body.level)
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+
+# Engine evals shared between every browser. A game on Lichess or Chess.com
+# is public and its evals are the same for whoever analyses it, so the first
+# browser to analyse a game stores them here and the next one, or the same
+# player on another device, skips the search. A game is its moves from the
+# start position: no player and no game id is stored.
+
+
+def evals_db() -> sqlite3.Connection:
+    # A directory, so it can't be taken for an account's <username>.db
+    os.makedirs(os.path.join(DATA_DIR, "shared"), exist_ok=True)
+    conn = sqlite3.connect(os.path.join(DATA_DIR, "shared", "evals.db"), timeout=30)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=30000")
+    conn.execute("CREATE TABLE IF NOT EXISTS evals (key TEXT PRIMARY KEY, evals TEXT NOT NULL, updated_at INTEGER NOT NULL)")
+    return conn
+
+
+def evals_key(depth: int, moves: list[str]) -> str:
+    """Has to match evalsKey in src/analysis/shared.ts."""
+    return hashlib.sha256(f"{depth}:{' '.join(moves)}".encode()).hexdigest()
+
+
+def clean_eval(e: Any) -> dict[str, int] | None:
+    """One eval as the browser stores it, {"cp": n} or {"mate": n} from White's side, or None."""
+    if e is None:
+        return None
+    if not isinstance(e, dict) or len(e) != 1:
+        raise HTTPException(400, "bad eval")
+    (name, value), = e.items()
+    limit = {"cp": 100_000, "mate": 1000}.get(name)
+    if limit is None or type(value) is not int or abs(value) > limit:
+        raise HTTPException(400, "bad eval")
+    return {name: value}
+
+
+class EvalsGetBody(BaseModel):
+    keys: list[str]
+
+
+class EvalsPutBody(BaseModel):
+    depth: int
+    moves: list[str]
+    evals: list[Any]  # the eval after each move, None where the browser has none
+
+
+@app.post("/evals/get")
+def evals_get(body: EvalsGetBody, x_lidrill_key: str | None = Header(default=None)) -> dict[str, Any]:
+    guard(x_lidrill_key)
+    if len(body.keys) > MAX_EVAL_KEYS or not all(KEY_RE.match(k) for k in body.keys):
+        raise HTTPException(400, "bad keys")
+    if not body.keys:
+        return {"found": {}}
+    conn = evals_db()
+    marks = ",".join("?" * len(body.keys))
+    found = conn.execute(f"SELECT key, evals FROM evals WHERE key IN ({marks})", body.keys).fetchall()
+    conn.close()
+    return {"found": {k: json.loads(v) for k, v in found}}
+
+
+@app.post("/evals/put")
+def evals_put(body: EvalsPutBody, x_lidrill_key: str | None = Header(default=None)) -> dict[str, Any]:
+    guard(x_lidrill_key)
+    if not 1 <= body.depth <= 40:
+        raise HTTPException(400, "bad depth")
+    if not 0 < len(body.moves) <= MAX_PLIES or not all(UCI_RE.match(m) for m in body.moves):
+        raise HTTPException(400, "bad moves")
+    if len(body.evals) != len(body.moves):
+        raise HTTPException(400, "one eval per move")
+    sent = [clean_eval(e) for e in body.evals]
+    key = evals_key(body.depth, body.moves)
+    conn = evals_db()
+    with conn:
+        old = conn.execute("SELECT evals FROM evals WHERE key = ?", (key,)).fetchone()
+        # An eval already stored is never replaced, so a later upload can
+        # fill the gaps another browser left but can't change what is served
+        merged = [a if a is not None else b for a, b in zip(json.loads(old[0]), sent)] if old else sent
+        conn.execute(
+            "INSERT INTO evals (key, evals, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET evals = excluded.evals, updated_at = excluded.updated_at",
+            (key, json.dumps(merged, separators=(",", ":")), int(time.time() * 1000)),
+        )
+    conn.close()
+    return {"ok": True, "key": key}
 
 
 @app.post("/u/{user}/push")

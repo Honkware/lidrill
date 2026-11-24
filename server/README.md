@@ -6,8 +6,13 @@ The server tier's loopback backend (`docs/server-tier.md`).
   `$DATA_DIR/<username>.db`. Opaque row versions `{table, id, updatedAt,
   data}`; per-row conflict rule: newer `updatedAt` wins. Requires the
   `X-Lidrill-Key` shared secret on every endpoint; bind stays on 127.0.0.1 and
-  the only doors from the internet are the lidrill Worker's `/api/sync/*` and
-  `/api/maia/*` proxies.
+  the only doors from the internet are the lidrill Worker's `/api/sync/*`,
+  `/api/maia/*` and `/api/evals/*` proxies. It also keeps the engine evals
+  browsers share, in `$DATA_DIR/shared/evals.db`: `POST /evals/put` takes
+  `{depth, moves, evals}` with one eval or `null` per move and stores them
+  under the SHA-256 of `"<depth>:<moves joined by spaces>"`, filling gaps
+  without replacing an eval it holds, and `POST /evals/get` takes
+  `{keys}`, up to 500, and answers `{"found": {key: evals}}`.
 - `analysis.py` + `analysis_daemon.py` - phase-2 analysis worker: native
   Stockfish 19 (multi-thread, one job at a time, `Nice=10`) judges pushed
   games with an exact port of the client's `analyze.ts`/`judge.ts`, writes
