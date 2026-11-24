@@ -80,6 +80,17 @@ export const dots = (marks: Mark[], current: number, name: string) =>
     ),
   )
 
+// The same run as a bar across the panel, one segment per item
+export const runBar = (marks: Mark[], current: number, name: string) =>
+  el(
+    'div',
+    'flex gap-1',
+    { attrs: { role: 'img', 'aria-label': name } },
+    marks.map((m, i) =>
+      el('span', 'h-1.5 min-w-0 flex-1 rounded-full', { class: { 'bg-accent': m === 'good', 'bg-warn': m === 'warn', 'bg-bad': m === 'bad', 'bg-raised': !m, 'ring-2': i === current, 'ring-fg': i === current } }),
+    ),
+  )
+
 // role=alert has a screen reader read it out when it appears
 export const errorLine = (text: string | undefined, extra = '') => el('p', `text-sm text-bad ${extra}`, { attrs: { role: 'alert' } }, text)
 
@@ -132,20 +143,35 @@ export const icon = (name: string, size = 22) =>
 export const board = (key: string, mount: (el: HTMLElement) => void): VNode =>
   el('div', 'board', [el('div', 'cg-wrap', { key, hook: { insert: v => mount(v.elm as HTMLElement) } })])
 
-const topBar = (title: string, onBack: () => void) =>
+// A screen with nowhere to go back to has no Back, and its title lines up
+// with the panel under it
+const topBar = (title: string, onBack?: () => void, action?: VNode | null) =>
   el('div', 'flex items-center gap-2 px-2 py-2 sm:px-0', [
-    el('button', btnClass('quiet', 'icon'), { attrs: { 'aria-label': 'Back', type: 'button' }, on: { click: onBack } }, [icon('back')]),
-    el('h1', 'min-w-0 flex-1 truncate font-display text-lg', title),
+    onBack ? el('button', btnClass('quiet', 'icon'), { attrs: { 'aria-label': 'Back', type: 'button' }, on: { click: onBack } }, [icon('back')]) : null,
+    el('h1', 'min-w-0 flex-1 truncate font-display text-lg', { class: { 'pl-2': !onBack, 'wide:pl-0': !onBack } }, title),
+    action ?? null,
   ])
 
 // A full-screen board screen. The column holds the board with an optional
 // bar above and below it and a control row under it; the grid that places
 // it beside the top bar and side panel is .board-screen in index.css. On a
 // phone on its side the board fills the height, so it stays put while the
-// panel scrolls.
-export const boardScreen = (o: { title: string; back: () => void; board: VNode; above?: VNode; below?: VNode; controls?: VNode | null; side: VNodeChildren }) =>
-  el('div', 'board-screen', { class: { 'with-bars': !!o.above } }, [
-    el('div', '[grid-area:top]', [topBar(o.title, o.back)]),
+// panel scrolls. hero is Train's larger board, note a line under the title
+// and action a control at the end of the top bar.
+export const boardScreen = (o: {
+  title: string
+  back?: () => void
+  action?: VNode | null
+  note?: string
+  hero?: boolean
+  board: VNode
+  above?: VNode
+  below?: VNode
+  controls?: VNode | null
+  side: VNodeChildren
+}) =>
+  el('div', 'board-screen', { class: { 'with-bars': !!o.above, hero: !!o.hero } }, [
+    el('div', '[grid-area:top]', [topBar(o.title, o.back, o.action), o.note ? el('p', 'px-4 pb-2 text-sm text-dim wide:px-0', o.note) : null]),
     el('div', '[grid-area:board] short:sticky short:top-0 short:self-start', [o.above ?? null, o.board, o.below ?? null, o.controls ? el('div', 'px-4 pt-3 wide:px-0', [o.controls]) : null]),
     el('aside', '[grid-area:side] space-y-4 px-4 pb-8 pt-3 wide:px-0 wide:pt-4', o.side),
   ])

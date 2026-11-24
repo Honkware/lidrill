@@ -1,9 +1,10 @@
 import type { VNode } from 'snabbdom'
 import type { Ctrl } from '../ctrl'
-import type { Drill, Outcome } from '../drill'
+import { coachLine } from '../coach'
+import { runProgress, type Drill, type Outcome } from '../drill'
 import { el } from '../el'
 import type { BoardLink, Segment } from '../server/render'
-import { board, boardScreen, btnClass, button, dots, errorLine, icon, jumps, loading, moveInput, type Mark } from './ui'
+import { board, boardScreen, btnClass, button, errorLine, icon, jumps, loading, moveInput, runBar, type Mark } from './ui'
 import { drillGameLine } from '../server/surface'
 import { summary } from './summary'
 import { countdownBar } from './time'
@@ -12,14 +13,15 @@ export function drillView(ctrl: Ctrl): VNode {
   const timed = ctrl.timed
   const title = timed ? 'Move under a clock' : "Today's puzzles"
   const back = () => (timed ? ctrl.go(timed.from) : ctrl.go('train', 'day'))
+  const note = timed ? undefined : coachLine({ due: ctrl.due?.puzzles ?? 0, week: ctrl.today?.weeks.at(-1), time: ctrl.timeProfiles[0] })
   const last = ctrl.drills.at(-1)
   // The summary keeps the last puzzle's board, under its own key since that
   // puzzle's board was destroyed when it ended
   if (ctrl.sessionDone && last && ctrl.review.viewing === undefined)
-    return boardScreen({ title, back, board: board(`done:${last.puzzle.id}`, e => last.mount(e)), side: [sessionSummary(ctrl)] })
+    return boardScreen({ title, back, note, hero: true, board: board(`done:${last.puzzle.id}`, e => last.mount(e)), side: [sessionSummary(ctrl)] })
   const d = ctrl.displayDrill
   if (!d) return loading()
-  return boardScreen({ title, back, board: boardWithWheel(d), controls: puzzleJumps(d), side: [sessionRow(ctrl), countdownBar(ctrl), side(ctrl, d)] })
+  return boardScreen({ title, back, note, hero: true, board: boardWithWheel(d), controls: puzzleJumps(d), side: [sessionRow(ctrl), countdownBar(ctrl), side(ctrl, d)] })
 }
 
 const markOf = (o?: Outcome): Mark => (o === 'clean' ? 'good' : o === 'hinted' ? 'warn' : o ? 'bad' : undefined)
@@ -46,13 +48,13 @@ function puzzleName(d: Drill): string {
   return `${d.game?.opponent ? `vs ${d.game.opponent}, ` : ''}move ${Math.ceil(p.ply / 2)}`
 }
 
-// One square per puzzle in today's run: green solved, amber with the hint,
-// red missed, outlined for the one on screen - the live puzzle or the
-// completed one being reviewed (chevrons step back through them read-only)
+// "Puzzle 3 of 7" over a bar with one segment per puzzle in the run: green
+// solved, amber with the hint, red missed, outlined for the one on screen -
+// the live puzzle or the completed one being reviewed (chevrons step back
+// through them read-only)
 function sessionRow(ctrl: Ctrl): VNode {
   const done = ctrl.session
-  const total = done.length + (ctrl.sessionDone ? 0 : 1) + ctrl.queueLeft
-  const current = ctrl.review.viewing === undefined ? done.length : ctrl.review.viewing
+  const { at, total } = runProgress(done.length, ctrl.queueLeft, ctrl.answered || ctrl.sessionDone, ctrl.review.viewing)
   const step = (name: string, aria: string, onClick: () => void, enabled: boolean) =>
     el(
       'button',
@@ -62,11 +64,14 @@ function sessionRow(ctrl: Ctrl): VNode {
     )
   return el('div', 'flex items-center gap-1', [
     step('prev', 'Previous puzzle', () => ctrl.sessionBack(), ctrl.review.canBack),
-    dots(
-      Array.from({ length: total }, (_, i) => markOf(done[i])),
-      current,
-      `${done.length} of ${total} done`,
-    ),
+    el('div', 'min-w-0 flex-1 space-y-1.5', [
+      el('p', 'text-sm tabular-nums', `Puzzle ${at} of ${total}`),
+      runBar(
+        Array.from({ length: total }, (_, i) => markOf(done[i])),
+        at - 1,
+        `${done.length} of ${total} done`,
+      ),
+    ]),
     step('next', 'Next puzzle', () => ctrl.sessionForward(), ctrl.review.canForward),
   ])
 }
@@ -298,7 +303,7 @@ function side(ctrl: Ctrl, d: Drill): VNode {
   if (d.state === 'playing') return el('div', 'space-y-3', [puzzleSide(d, []), tools(ctrl)])
   const reviewing = ctrl.review.viewing !== undefined
   return puzzleSide(d, [
-    el('div', 'grid', [
+    el('div', 'primary-action grid bg-bg py-2', [
       el('button', btnClass(), { attrs: { type: 'button', title: 'Space or Enter' }, on: { click: reviewing ? () => ctrl.sessionForward() : () => void ctrl.next() } }, reviewing ? 'Next' : ctrl.queueLeft ? 'Continue' : 'Done'),
     ]),
     el('div', 'flex flex-wrap items-center justify-between gap-2', [

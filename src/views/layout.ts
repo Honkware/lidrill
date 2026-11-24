@@ -22,7 +22,8 @@ const TABS: { tab: Tab; label: string; icon: string }[] = [
   { tab: 'more', label: 'More', icon: 'more' },
 ]
 
-// Board screens take the whole phone screen: no tab bar
+// Board screens take the whole phone screen: no header, and no tab bar
+// but on the day's puzzles
 const BOARD_SCREENS: Screen[] = ['drill', 'replay', 'game', 'practice', 'maia', 'opening', 'learn', 'spar']
 
 export function view(ctrl: Ctrl): VNode {
@@ -31,8 +32,9 @@ export function view(ctrl: Ctrl): VNode {
   const home = ctrl.screen === 'drill'
   const tabs = !!tabOf(ctrl.screen) && (!full || home)
   return el('div', 'min-h-dvh', { class: { 'pb-tabbar': tabs } }, [
-    header(ctrl, full, home),
-    el('main', 'mx-auto w-full max-w-5xl', { class: { 'px-4': !full, 'pt-4': !full, 'sm:px-6': true, 'pb-8': !full } }, [ctrl.loaded ? screen(ctrl) : null]),
+    header(ctrl, full),
+    // Train's board sets its own width (.board-screen.hero)
+    el('main', 'mx-auto w-full', { class: { 'max-w-5xl': !home, 'px-4': !full, 'pt-4': !full, 'sm:px-6': true, 'pb-8': !full } }, [ctrl.loaded ? screen(ctrl) : null]),
     tabs ? tabBar(ctrl) : null,
     ctrl.moreOpen ? moreSheet(ctrl) : null,
     ctrl.notice ? notice(ctrl, tabs) : null,
@@ -85,11 +87,11 @@ const tabClass = (ctrl: Ctrl, t: Tab) => {
 const moreAttrs = (ctrl: Ctrl) => ({ type: 'button', 'aria-haspopup': 'true', 'aria-expanded': String(ctrl.moreOpen) })
 
 // Desktop: logo, the three tabs with More as a dropdown, and the account.
-// Phone: logo and sync state, and none at all on board screens. A phone on
-// its side has no tab bar, so Train's board keeps the header there.
-function header(ctrl: Ctrl, full: boolean, home: boolean): VNode | null {
+// Phone: logo and sync state, and none at all on board screens, upright or
+// sideways.
+function header(ctrl: Ctrl, full: boolean): VNode | null {
   const signedIn = !!tabOf(ctrl.screen)
-  return el('header', 'pt-safe border-b border-raised', { class: { 'max-sm:hidden': full, 'short:hidden': full && !home } }, [
+  return el('header', 'pt-safe border-b border-raised', { class: { 'max-sm:hidden': full, 'short:hidden': full } }, [
     el('div', 'mx-auto flex h-12 max-w-5xl items-center gap-6 px-4 sm:h-14 sm:px-6', [
       el('a', 'font-display text-xl font-bold', { attrs: { href: signedIn ? '#/train' : '#' } }, 'lidrill'),
       signedIn

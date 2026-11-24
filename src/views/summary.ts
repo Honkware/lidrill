@@ -42,7 +42,7 @@ export function summary(ctrl: Ctrl, s: Summary): VNode {
         ])
       : null,
     s.more?.length ? el('div', 'flex flex-wrap gap-2', s.more) : null,
-    nextButtons(ctrl),
+    el('div', 'primary-action bg-bg py-2', [nextButtons(ctrl)]),
   ])
 }
 

@@ -74,6 +74,14 @@ export class SessionReview {
   }
 }
 
+// Where a run of puzzles stands, for "Puzzle 3 of 7": done are the answered
+// ones, left the ones still queued. The puzzle on the board is one more
+// until it is answered, and stays the same puzzle when it is retried.
+export function runProgress(done: number, left: number, answered: boolean, viewing?: number): { at: number; total: number } {
+  const at = viewing !== undefined ? viewing + 1 : answered ? done : done + 1
+  return { at, total: done + left + (answered ? 0 : 1) }
+}
+
 export interface DrillOptions {
   // Daily queue puzzles feed FSRS; Turning Points stops don't
   record: boolean

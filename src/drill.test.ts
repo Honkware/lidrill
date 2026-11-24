@@ -1,7 +1,7 @@
 import { createEmptyCard } from 'ts-fsrs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db, type Puzzle } from './db'
-import { Drill, SessionReview, type Outcome } from './drill'
+import { Drill, runProgress, SessionReview, type Outcome } from './drill'
 
 // Legal's mate: 6. Bxf7+ Ke7 7. Nd5#
 const legal: Puzzle = {
@@ -185,5 +185,20 @@ describe('SessionReview', () => {
     r.reset()
     expect(r.viewing).toBeUndefined()
     expect(r.canBack).toBe(false)
+  })
+})
+
+describe('runProgress', () => {
+  it('counts the puzzle on the board as one more until it is answered', () => {
+    expect(runProgress(2, 4, false)).toEqual({ at: 3, total: 7 })
+    expect(runProgress(3, 4, true)).toEqual({ at: 3, total: 7 })
+  })
+
+  it('ends on the last puzzle, not one past it', () => {
+    expect(runProgress(7, 0, true)).toEqual({ at: 7, total: 7 })
+  })
+
+  it('points at an earlier puzzle while it is looked at again', () => {
+    expect(runProgress(3, 4, false, 0)).toEqual({ at: 1, total: 8 })
   })
 })

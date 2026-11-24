@@ -100,6 +100,7 @@ export class Ctrl {
   review = new SessionReview()
   session: Outcome[] = [] // today's run so far
   sessionDone = false // the run is over and its summary is on screen
+  answered = false // the live puzzle is over and counted in the run
   autoNext = readFlag('lidrill.autoNext')
   queueLeft = 0
   // A "Move under a clock" session: seconds per puzzle, and the screen to go
@@ -288,13 +289,14 @@ export class Ctrl {
     const version = [games, analyzed, puzzles, reviews, journal, practice, repertoire, openings, this.profile?.band, this.profile?.repertoire?.join(), this.profile?.repertoireStudy?.id, this.openingsTouched, new Date().toDateString()].join('|')
     const key = `${this.screen}:${version}`
     if (key !== this.loadedKey) {
-      const all = ['games', 'settings', 'train', 'openings', 'play'].includes(this.screen) ? await db.games.toArray() : []
+      const all = ['games', 'settings', 'train', 'drill', 'openings', 'play'].includes(this.screen) ? await db.games.toArray() : []
       const done = all.filter(g => g.analyzedAt !== undefined)
-      // Settings shows the puzzle performance from the same read
-      if (this.screen === 'train' || this.screen === 'settings') await this.loadToday()
+      // Settings shows the puzzle performance from the same read, and the
+      // line over the day's puzzles the week
+      if (this.screen === 'train' || this.screen === 'settings' || this.screen === 'drill') await this.loadToday()
       if (this.screen === 'train') this.maiaStart = startEstimate(this.profile?.ratings, all)
       if (this.screen === 'games') await this.loadGames(all, done)
-      if (this.screen === 'games') this.timeProfiles = timeProfiles(all)
+      if (this.screen === 'games' || this.screen === 'drill') this.timeProfiles = timeProfiles(all)
       if (this.screen === 'play') {
         this.playStarts = ownStarts(all)
         this.maiaGames = all.filter(g => g.site === 'maia')
@@ -355,6 +357,15 @@ export class Ctrl {
       defense: this.profile?.band === 'beginner' ? 0 : openOf('defense'),
     }
     this.nextUp = nextAction(this.due)
+  }
+
+  // After a graded puzzle only the puzzle counts have moved
+  private async countDue() {
+    const day = await dueToday()
+    if (!this.due) return
+    Object.assign(this.due, { puzzles: day.remaining, puzzlesDone: day.doneToday })
+    this.nextUp = nextAction(this.due)
+    this.redraw()
   }
 
   // Starts what nextAction says is next. Read again first, since the
@@ -704,11 +715,14 @@ export class Ctrl {
       this.sessionDone = true
       return this.loadDue()
     }
+    this.answered = false
     this.drill = new Drill(puzzle, this.redraw, {
       record: !this.timed,
       engine: getEngine(),
       onFinish: outcome => {
         this.session.push(outcome)
+        this.answered = true
+        if (!this.timed) void this.countDue()
         const drill = this.drill
         if (drill) {
           this.drills.push(drill)
