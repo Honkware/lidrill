@@ -172,6 +172,23 @@ describe('with an account', () => {
     expect(ctrl.drill!.puzzle.id).toBe(id)
   })
 
+  it('Space and Enter press Next on the summary of a run', async () => {
+    await db.puzzles.put(due)
+    location.hash = ''
+    const ctrl = new Ctrl(() => {})
+    await vi.waitFor(() => expect(ctrl.drill).toBeDefined())
+    const goNext = vi.spyOn(ctrl, 'goNext').mockResolvedValue(undefined)
+    const press = (key: string) => window.dispatchEvent(new KeyboardEvent('keydown', { key, cancelable: true }))
+    press(' ')
+    expect(goNext).not.toHaveBeenCalled()
+    ctrl.drill!.viewSolution()
+    await vi.waitFor(() => expect(ctrl.answered).toBe(true))
+    await ctrl.next()
+    expect([ctrl.sessionDone, !!ctrl.nextUp]).toEqual([true, true])
+    expect([press(' '), press('Enter'), press('w')]).toEqual([false, false, true])
+    expect(goNext).toHaveBeenCalledTimes(2)
+  })
+
   it('a buried puzzle no longer opens the board', async () => {
     await db.puzzles.put({ ...due, buried: true })
     expect(await land('#/train')).toEqual(['train', '#/train'])

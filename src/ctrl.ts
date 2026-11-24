@@ -868,10 +868,16 @@ export class Ctrl {
 
   // The key map is in keys.ts. Stepping, flipping, the hint and "Why?" work
   // on any puzzle, a turning point included; moving on, Retry and Bury
-  // belong to a run of puzzles.
+  // belong to a run of puzzles, and on its summary Space and Enter press Next.
   private onKey(e: KeyboardEvent) {
     if (this.moreOpen && e.key === 'Escape') return this.closeMore()
     const action = drillAction(e, (e.target as Element | null)?.tagName)
+    // The summary of a run has no puzzle under it, and its Next is the key's
+    if (action === 'next' && this.screen === 'drill' && this.sessionDone && this.review.viewing === undefined) {
+      if (this.sample || !this.nextUp) return
+      e.preventDefault()
+      return void this.goNext()
+    }
     const d = this.screen === 'drill' ? this.displayDrill : this.screen === 'replay' ? this.replay?.drill : undefined
     if (!action || !d) return
     const over = d.state === 'view'
