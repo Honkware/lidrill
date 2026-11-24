@@ -127,6 +127,16 @@ async function proof(body: string): Promise<string> {
   throw new Error('Failed to explain: no proof of work found for the challenge.')
 }
 
+// A request with its proof of work. A challenge is tied to the address it
+// was issued to, so a 401 gets one more try with a new challenge: a phone
+// that changed network between the two requests shouldn't have to be asked
+// to tap again.
+async function send(path: string, body: string): Promise<Response> {
+  const post = async () => fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-lidrill-proof': await proof(body) }, body })
+  const res = await post()
+  return res.status === 401 ? post() : res
+}
+
 // Fire-and-forget packet upload: after a certification the
 // report goes to the packet store so the slim /api/explain can serve the
 // position without the engine chain. Failures change nothing - the next
@@ -136,7 +146,7 @@ export function uploadPacket(report: EngineReport): Promise<boolean> {
   const body = JSON.stringify({ ...report, tier: 'client-lite' })
   return (async () => {
     try {
-      const res = await fetch('/api/packet', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-lidrill-proof': await proof(body) }, body })
+      const res = await send('/api/packet', body)
       return res.ok
     } catch {
       return false
@@ -215,7 +225,7 @@ async function explainSlim(p: Puzzle, band: Band, tried: string | undefined, sol
   try {
     const hash = await packetHash({ fen: p.fen, solution: p.solution, band })
     const body = JSON.stringify({ v: 2, packetHash: hash, band, ...(tried ? { tried } : {}), ...(solved ? { solved } : {}) })
-    const res = await fetch('/api/explain', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-lidrill-proof': await proof(body) }, body })
+    const res = await send('/api/explain', body)
     if (!res.ok) return undefined
     const data = (await res.json()) as ExplainResponse
     return data.slots && data.packet ? data : undefined
@@ -239,7 +249,7 @@ export async function explain(p: Puzzle, engines: Engine[], ctx: ExplainContext,
   const report = await certifyReport(p, engines, ctx, tried, recent, progress)
   void uploadPacket(report)
   const body = JSON.stringify({ ...report, ...(solved ? { solved } : {}) })
-  const res = await fetch('/api/explain', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-lidrill-proof': await proof(body) }, body })
+  const res = await send('/api/explain', body)
   const data = (await res.json().catch(() => ({}))) as ExplainResponse
   if (!res.ok || !data.slots || !data.packet) throw new Error(data.error ?? `Failed to explain: the server returned HTTP ${res.status}${res.ok ? ' with no explanation' : ''}.`)
   return storeRow(id, p, ctx, tried, data)

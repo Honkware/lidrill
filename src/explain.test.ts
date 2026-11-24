@@ -2,7 +2,7 @@ import { createEmptyCard } from 'ts-fsrs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CertifyOptions, Engine } from './analysis/engine'
 import { db, type Puzzle } from './db'
-import { certifyReport, explain, EXPLAIN_VERSION, isCurrent, kindOf, rowId } from './explain'
+import { certifyReport, explain, EXPLAIN_VERSION, isCurrent, kindOf, rowId, uploadPacket } from './explain'
 import { buildPacket, REPORT_SCHEMA, validReport, type EngineReport } from './server/packet'
 import { templateFloor } from './server/floor'
 
@@ -111,6 +111,23 @@ describe('explain', () => {
     sent.length = 0
     await explain(puzzle, [fakeEngine()], { band: 'club' })
     expect(sent).toEqual([])
+  })
+
+  it('asks for a new challenge and sends again once when the proof is refused', async () => {
+    const urls: string[] = []
+    let refusals = 1
+    vi.stubGlobal('fetch', async (url: string) => {
+      urls.push(url)
+      if (url === '/api/challenge') return new Response(JSON.stringify({ nonce: `n${urls.length}`, exp: Date.now() + 60000, bits: 4, sig: 's' }))
+      return refusals-- > 0 ? new Response('{}', { status: 401 }) : new Response('{}', { status: 201 })
+    })
+    expect(await uploadPacket(reportOf())).toBe(true)
+    expect(urls).toEqual(['/api/challenge', '/api/packet', '/api/challenge', '/api/packet'])
+    // refused twice: it stops there
+    urls.length = 0
+    refusals = 2
+    expect(await uploadPacket(reportOf())).toBe(false)
+    expect(urls).toHaveLength(4)
   })
 
   it('slim v2 first: a packet hit needs no engine and persists certTier', async () => {
