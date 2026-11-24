@@ -73,7 +73,7 @@ function sessionRow(ctrl: Ctrl): VNode {
 
 // Mouse wheel over the board steps through the moves once the puzzle is over
 function boardWithWheel(d: Drill): VNode {
-  const b = board(d.puzzle.id, e => d.mount(e))
+  const b = board(d.key, e => d.mount(e))
   b.data = {
     ...b.data,
     on: {
@@ -124,9 +124,9 @@ function playing(d: Drill): VNode {
             hold ? `Find a move that holds for ${d.color}` : `Find the best move for ${d.color}`,
             hold && d.step === 0 ? `Your move in the game lost material. ${d.puzzle.alternatives!.length} moves would have kept the position.` : null,
           )
-  // Earned after a failed try or once shown; the slot stays reserved either
-  // way (invisible keeps the box, so the reveal shifts nothing)
-  const available = d.feedback === 'fail' || d.showHint
+  // The slot stays reserved before the hint is earned (invisible keeps the
+  // box, so the reveal shifts nothing)
+  const available = d.hintReady
   return el('div', 'space-y-3', [
     box,
     // The hint keeps a fixed slot once the puzzle is running, so revealing
@@ -139,7 +139,7 @@ function playing(d: Drill): VNode {
         'button',
         btnClass('plain'),
         {
-          attrs: { type: 'button', disabled: !d.yourTurn, 'aria-hidden': available ? 'false' : 'true' },
+          attrs: { type: 'button', title: 'Hint (H)', disabled: !d.yourTurn, 'aria-hidden': available ? 'false' : 'true' },
           class: { 'text-warn': d.showHint, invisible: !available },
           on: { click: () => d.hint() },
         },
@@ -237,7 +237,7 @@ function linked(d: Drill, segments: Segment[]): (VNode | string)[] {
 // habit: then there is no nextTime row at all
 function whyPart(d: Drill): VNode | null {
   const w = d.why
-  if (!w) return null
+  if (!w || !d.showWhy) return null
   if (w.loading) {
     const [done, total] = w.progress ?? [0, 0]
     return el('p', 'mt-3 animate-pulse text-sm text-dim', total ? `Checking with Stockfish, ${done} of ${total}…` : 'Explaining…')
@@ -274,7 +274,7 @@ export function puzzleSide(d: Drill, after: (VNode | null)[]): VNode {
   // The cost words come from the shared validated surface, never
   // composed here; an unmeasurable swing omits the clause
   const game = p.played && !affirmed ? (drillGameLine({ san: d.sanAt(p.played) }, p.swingCp) ?? '') : ''
-  const why = d.why ? null : el('button', btnClass('plain', 'sm'), { attrs: { type: 'button' }, on: { click: () => d.explain() } }, 'Why?')
+  const why = el('button', btnClass('plain', 'sm'), { attrs: { type: 'button', title: 'Why? (W)', 'aria-expanded': String(d.showWhy) }, on: { click: () => d.toggleWhy() } }, 'Why?')
   return el('div', 'space-y-3', [
     whyCard(feedbackBox(tone, title, `${answer}${game}`.trim() || null, why), whyPart(d)),
     el('div', 'rounded-xl bg-surface p-2', [moveLine(d)]),
@@ -283,15 +283,24 @@ export function puzzleSide(d: Drill, after: (VNode | null)[]): VNode {
   ])
 }
 
-// Out of the deck for good, in one click
-const buryButton = (ctrl: Ctrl) =>
-  ctrl.canBury ? el('button', btnClass('quiet', 'sm'), { attrs: { type: 'button', title: 'Take this puzzle out of the deck (B)' }, on: { click: () => void ctrl.bury() } }, 'Bury') : null
+// Retry is the puzzle again for practice; Bury takes it out of the deck
+// for good, in one click
+function tools(ctrl: Ctrl): VNode | null {
+  const tool = (name: string, title: string, onClick: () => void) => el('button', btnClass('quiet', 'sm'), { attrs: { type: 'button', title }, on: { click: onClick } }, name)
+  if (!ctrl.canRetry && !ctrl.canBury) return null
+  return el('div', 'flex gap-2', [
+    ctrl.canRetry ? tool('Retry', 'Try this puzzle again (R)', () => ctrl.retry()) : null,
+    ctrl.canBury ? tool('Bury', 'Take this puzzle out of the deck (B)', () => void ctrl.bury()) : null,
+  ])
+}
 
 function side(ctrl: Ctrl, d: Drill): VNode {
-  if (d.state === 'playing') return el('div', 'space-y-3', [puzzleSide(d, []), buryButton(ctrl)])
+  if (d.state === 'playing') return el('div', 'space-y-3', [puzzleSide(d, []), tools(ctrl)])
   const reviewing = ctrl.review.viewing !== undefined
   return puzzleSide(d, [
-    el('div', 'grid', [button(reviewing ? 'Next' : ctrl.queueLeft ? 'Continue' : 'Done', reviewing ? () => ctrl.sessionForward() : () => ctrl.next())]),
+    el('div', 'grid', [
+      el('button', btnClass(), { attrs: { type: 'button', title: 'Space or Enter' }, on: { click: reviewing ? () => ctrl.sessionForward() : () => void ctrl.next() } }, reviewing ? 'Next' : ctrl.queueLeft ? 'Continue' : 'Done'),
+    ]),
     el('div', 'flex flex-wrap items-center justify-between gap-2', [
       reviewing
         ? el('p', 'text-sm text-dim', 'Earlier puzzle, already graded.')
@@ -301,7 +310,7 @@ function side(ctrl: Ctrl, d: Drill): VNode {
           ]),
       d.failed && d.puzzle.source !== 'lichess' && !reviewing && !ctrl.timed ? noteToggle(ctrl) : null,
     ]),
-    buryButton(ctrl),
+    tools(ctrl),
   ])
 }
 

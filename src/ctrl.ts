@@ -5,6 +5,7 @@ import { deleteAllData, exportData, importData, sameUser } from './backup'
 import { db, type Auth, type Game, type JournalEntry, type MaiaSpeed, type Opening, type Practice, type PracticeKind, type Profile } from './db'
 import { Drill, SessionReview, type Outcome } from './drill'
 import { GameView } from './gameview'
+import { drillAction } from './keys'
 import { fetchLook, PREFERENCE_SCOPE } from './lichess/api'
 import { fetchStudyLines, listStudies, STUDY_READ_SCOPE, type StudyInfo } from './lichess/repertoire'
 import { STUDY_SCOPE, sendToStudy } from './lichess/study'
@@ -750,6 +751,20 @@ export class Ctrl {
     await this.next()
   }
 
+  // The live puzzle again from its first move, once it is over. It has been
+  // graded, so the second go is practice and counts nowhere.
+  retry() {
+    const old = this.drill
+    if (!this.canRetry || !old) return
+    old.destroy()
+    this.drill = new Drill(old.puzzle, this.redraw, { record: false, engine: getEngine() })
+    this.redraw()
+  }
+
+  get canRetry() {
+    return this.canBury && this.drill?.state === 'view'
+  }
+
   // Timed runs grade nothing, and an earlier puzzle is only being looked at
   get canBury() {
     return this.screen === 'drill' && !!this.drill && !this.timed && this.review.viewing === undefined
@@ -791,23 +806,29 @@ export class Ctrl {
     writeFlag('lidrill.autoNext', on)
   }
 
-  // Lichess's puzzle keys: arrows or j/k to step, Home/End, f to flip, n to
-  // move on
+  // The key map is in keys.ts. Stepping, flipping, the hint and "Why?" work
+  // on any puzzle, a turning point included; moving on, Retry and Bury
+  // belong to a run of puzzles.
   private onKey(e: KeyboardEvent) {
-    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.ctrlKey || e.metaKey || e.altKey) return
     if (this.moreOpen && e.key === 'Escape') return this.closeMore()
+    const action = drillAction(e, (e.target as Element | null)?.tagName)
     const d = this.screen === 'drill' ? this.displayDrill : this.screen === 'replay' ? this.replay?.drill : undefined
-    if (!d) return
-    const key = e.key
-    if (d.state === 'view' && (key === 'ArrowLeft' || key === 'k')) d.go(d.cursor - 1)
-    else if (d.state === 'view' && (key === 'ArrowRight' || key === 'j')) d.go(d.cursor + 1)
-    else if (d.state === 'view' && key === 'Home') d.go(d.start)
-    else if (d.state === 'view' && key === 'End') d.go(d.nodes.length - 1)
-    else if (key === 'f') d.flip()
-    else if (this.screen === 'drill' && d.state === 'view' && key === 'n') {
+    if (!action || !d) return
+    const over = d.state === 'view'
+    const run = this.screen === 'drill'
+    if (over && action === 'back') d.go(d.cursor - 1)
+    else if (over && action === 'forward') d.go(d.cursor + 1)
+    else if (over && action === 'first') d.go(d.start)
+    else if (over && action === 'last') d.go(d.nodes.length - 1)
+    else if (action === 'flip') d.flip()
+    else if (action === 'hint' && d.hintReady) d.hint()
+    else if (over && action === 'why') d.toggleWhy()
+    else if (run && over && action === 'next') {
       if (this.review.viewing !== undefined) this.sessionForward()
-      else this.next()
+      else void this.next()
     }
+    else if (run && action === 'retry' && this.canRetry) this.retry()
+    else if (run && action === 'bury' && this.canBury) void this.bury()
     else return
     e.preventDefault()
   }

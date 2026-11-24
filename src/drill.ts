@@ -99,7 +99,10 @@ const REPLY_MS = 350
 const INTRO_MS = 500
 const SOLUTION_BUTTON_MS = 4000
 
+let made = 0
+
 export class Drill {
+  readonly key: string // a new board for every go at a puzzle
   state: DrillState = 'playing'
   feedback: Feedback = 'start'
   step = 0 // solution index of the next expected move
@@ -119,6 +122,7 @@ export class Drill {
   game?: Game
   reviewId?: number
   flipped = false
+  showWhy = false
   why?: { loading?: boolean; progress?: [number, number]; slots?: { slot: SlotName; segments: Segment[] }[]; floor?: boolean; error?: string }
   readonly puzzle: Puzzle
   readonly opts: DrillOptions
@@ -133,6 +137,7 @@ export class Drill {
 
   constructor(puzzle: Puzzle, redraw: () => void, opts: DrillOptions = { record: true }) {
     this.puzzle = puzzle
+    this.key = `${puzzle.id}#${++made}`
     this.redraw = redraw
     this.opts = opts
     this.nodes = [{ fen: puzzle.fen }]
@@ -381,6 +386,11 @@ export class Drill {
     }, REVERT_MS)
   }
 
+  // The hint is earned by a wrong try, and stays once it has been shown
+  get hintReady() {
+    return this.feedback === 'fail' || this.showHint
+  }
+
   hint() {
     if (!this.yourTurn) return
     this.hinted = true
@@ -460,8 +470,16 @@ export class Drill {
 
   private previewTimer?: ReturnType<typeof setTimeout>
 
-  // "Why?": a short worded explanation built from the engine lines
-  async explain() {
+  // "Why?" opens and closes; the explanation is made once and kept
+  toggleWhy() {
+    if (this.state !== 'view') return
+    this.showWhy = !this.showWhy
+    this.redraw()
+    if (this.showWhy) void this.explain()
+  }
+
+  // A short worded explanation built from the engine lines
+  private async explain() {
     if (this.state !== 'view' || this.why?.loading || this.why?.slots) return
     this.why = { loading: true }
     this.redraw()
