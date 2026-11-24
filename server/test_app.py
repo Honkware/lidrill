@@ -156,3 +156,26 @@ def test_state_of_an_unknown_account_leaves_no_database():
     res = CLIENT.get("/u/k_nobody/state", **KEY)
     assert res.json() == {"rows": 0, "lastSeen": None, "pendingAnalysis": 0}
     assert not os.path.exists(os.path.join(os.environ["DATA_DIR"], "k_nobody.db"))
+
+
+def ping(visitor, active, day="2026-11-24"):
+    return CLIENT.post("/stats/ping", json={"day": day, "visitor": visitor, "active": active}, **KEY)
+
+
+def test_stats_count_each_visitor_once_a_day_and_keep_them_active():
+    a, b = "a" * 32, "b" * 32
+    assert ping(a, False).status_code == 200
+    ping(a, True)
+    ping(a, False)  # a later ping from a page that has not touched a board yet
+    ping(b, False)
+    ping(a, False, day="2026-11-23")
+    got = CLIENT.get("/stats", **KEY).json()
+    assert got["days"] == [{"day": "2026-11-24", "visitors": 2, "active": 1}, {"day": "2026-11-23", "visitors": 1, "active": 0}]
+    assert got["now"] == {"visitors": 3, "active": 1}
+
+
+def test_stats_refuse_a_ping_without_the_key_or_with_a_made_up_shape():
+    assert CLIENT.post("/stats/ping", json={"day": "2026-11-24", "visitor": "a" * 32, "active": False}).status_code == 401
+    assert ping("not-a-hash", False).status_code == 400
+    assert ping("a" * 32, False, day="today").status_code == 400
+    assert CLIENT.get("/stats").status_code == 401

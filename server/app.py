@@ -252,6 +252,67 @@ def evals_put(body: EvalsPutBody, x_lidrill_key: str | None = Header(default=Non
     return {"ok": True, "key": key}
 
 
+# Visit counts. The Worker sends a hash of the visitor's address that changes
+# every day, so a row says "someone was here today" and nothing that can be
+# followed to a person or across days. active is set once the visitor has
+# touched a board, which a crawler does not do.
+
+DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+VISITOR_RE = re.compile(r"^[0-9a-f]{32}$")
+
+
+def stats_db() -> sqlite3.Connection:
+    os.makedirs(os.path.join(DATA_DIR, "shared"), exist_ok=True)
+    conn = sqlite3.connect(os.path.join(DATA_DIR, "shared", "stats.db"), timeout=30)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=30000")
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS visits (
+             day TEXT NOT NULL, visitor TEXT NOT NULL, active INTEGER NOT NULL,
+             first_at INTEGER NOT NULL, last_at INTEGER NOT NULL,
+             PRIMARY KEY (day, visitor))"""
+    )
+    return conn
+
+
+class PingBody(BaseModel):
+    day: str
+    visitor: str
+    active: bool
+
+
+@app.post("/stats/ping")
+def stats_ping(body: PingBody, x_lidrill_key: str | None = Header(default=None)) -> dict[str, bool]:
+    guard(x_lidrill_key)
+    if not DAY_RE.match(body.day) or not VISITOR_RE.match(body.visitor):
+        raise HTTPException(400, "bad ping")
+    now = int(time.time() * 1000)
+    conn = stats_db()
+    with conn:
+        conn.execute(
+            """INSERT INTO visits (day, visitor, active, first_at, last_at) VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(day, visitor) DO UPDATE SET
+                 active = MAX(active, excluded.active), last_at = excluded.last_at""",
+            (body.day, body.visitor, int(body.active), now, now),
+        )
+    conn.close()
+    return {"ok": True}
+
+
+@app.get("/stats")
+def stats(days: int = Query(default=14), x_lidrill_key: str | None = Header(default=None)) -> dict[str, Any]:
+    """Visitors and active players for each of the last days, and how many were seen in the last five minutes."""
+    guard(x_lidrill_key)
+    conn = stats_db()
+    rows = conn.execute(
+        "SELECT day, COUNT(*), SUM(active) FROM visits GROUP BY day ORDER BY day DESC LIMIT ?", (min(max(1, days), 365),)
+    ).fetchall()
+    since = int(time.time() * 1000) - 5 * 60 * 1000
+    now = conn.execute("SELECT COUNT(*), COALESCE(SUM(active), 0) FROM visits WHERE last_at >= ?", (since,)).fetchone()
+    conn.close()
+    return {"now": {"visitors": now[0], "active": now[1]}, "days": [{"day": d, "visitors": v, "active": a} for d, v, a in rows]}
+
+
 @app.post("/u/{user}/push")
 def push(user: str, body: PushBody, x_lidrill_key: str | None = Header(default=None)) -> dict[str, Any]:
     guard(x_lidrill_key)
