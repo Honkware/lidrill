@@ -212,7 +212,7 @@ export class Ctrl {
     if (name !== 'drill') this.timed = undefined
     const first = this.signedOut && name !== 'welcome' && !(await db.games.count())
     // The sample run is not carried into the player's own puzzles
-    if (this.sample && !first) this.clearRun()
+    if (this.sample && !first) this.newRun([])
     this.sample = first
     if (first) await this.openSample()
     else if (this.signedOut) this.screen = 'welcome'
@@ -250,6 +250,9 @@ export class Ctrl {
   }
 
   private teardown() {
+    // A puzzle left before any try goes back to the front of its run, so
+    // coming back to the board, or pressing Train on it, shows it again
+    if (this.drill && !this.answered && !this.drill.failed) this.queueLeft = this.queue.unshift(this.drill.puzzle.id)
     this.drill?.destroy()
     this.drill = undefined
     this.countdown?.destroy()
@@ -692,11 +695,7 @@ export class Ctrl {
 
   async startDrill() {
     this.timed = undefined
-    this.queue = (await dueQueue()).puzzles.map(p => p.id)
-    this.session = []
-    this.sessionDone = false
-    this.drills = []
-    this.review.reset()
+    this.newRun((await dueQueue()).puzzles.map(p => p.id))
     this.go('drill')
   }
 
@@ -714,13 +713,16 @@ export class Ctrl {
   private async openSample() {
     this.screen = 'drill'
     if (this.sessionDone) return
-    this.clearRun()
-    this.queue = SAMPLES.map(s => s.puzzle.id)
+    this.newRun(SAMPLES.map(s => s.puzzle.id))
     await this.nextPuzzle()
   }
 
-  private clearRun() {
-    this.queue = []
+  // Nothing of the last run is carried into a new one, the puzzle on the
+  // board included
+  private newRun(ids: string[]) {
+    this.drill?.destroy()
+    this.drill = undefined
+    this.queue = ids
     this.session = []
     this.sessionDone = false
     this.drills = []
@@ -785,11 +787,7 @@ export class Ctrl {
     const set = timedSet((await db.puzzles.toArray()).filter(inDeck), new Map(games.map(g => [g.id, g])), profiles, DAILY_CAP)
     if (!set.length) return void ((this.notice = { text: 'No puzzles from your games yet.' }), this.redraw())
     this.timed = { from, limits: new Map(set.map(p => [p.id, p.limit])), outs: 0 }
-    this.queue = set.map(p => p.id)
-    this.session = []
-    this.sessionDone = false
-    this.drills = []
-    this.review.reset()
+    this.newRun(set.map(p => p.id))
     this.go('drill')
   }
 
@@ -1089,11 +1087,7 @@ export class Ctrl {
   // A session of just these puzzles on the daily drill screen
   solvePuzzles(ids: string[]) {
     this.timed = undefined
-    this.queue = [...ids]
-    this.session = []
-    this.sessionDone = false
-    this.drills = []
-    this.review.reset()
+    this.newRun([...ids])
     this.go('drill')
   }
 

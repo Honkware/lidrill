@@ -140,6 +140,18 @@ describe('with an account', () => {
     expect(await land('#/review')).toEqual(['games', '#/games'])
   })
 
+  it('pressing Train on the board keeps the puzzle that was on it', async () => {
+    await db.puzzles.bulkPut([due, { ...due, id: 'p:2' }])
+    location.hash = ''
+    const ctrl = new Ctrl(() => {})
+    await vi.waitFor(() => expect(ctrl.drill).toBeDefined())
+    const { id } = ctrl.drill!.puzzle
+    location.hash = '#/train'
+    await vi.waitFor(() => expect(location.hash).toBe('#/drill'))
+    await vi.waitFor(() => expect(ctrl.drill).toBeDefined())
+    expect([ctrl.drill!.puzzle.id, ctrl.queueLeft]).toEqual([id, 1])
+  })
+
   it('a buried puzzle no longer opens the board', async () => {
     await db.puzzles.put({ ...due, buried: true })
     expect(await land('#/train')).toEqual(['train', '#/train'])
