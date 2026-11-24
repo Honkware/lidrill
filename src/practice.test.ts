@@ -1,3 +1,4 @@
+import type { Key } from '@lichess-org/chessground/types'
 import { describe, expect, it } from 'vitest'
 import type { Engine } from './analysis/engine'
 import type { Game, Practice } from './db'
@@ -97,16 +98,16 @@ describe('PracticeRun', () => {
     return { asked, fetchFn }
   }
 
-  async function play(run: PracticeRun, move: string) {
-    run.typeMove(move)
+  async function play(run: PracticeRun, orig: Key, dest: Key) {
+    run.move(orig, dest)
     await expect.poll(() => run.state).toBe('your-move')
   }
 
   it('plays Maia\'s reply and sends it the whole game so far', async () => {
     const { asked, fetchFn } = scripted('g8f6', 'f8c5')
     const run = new PracticeRun(practice, engine, () => {}, maia, fetchFn)
-    await play(run, 'Nf3')
-    await play(run, 'Nc3')
+    await play(run, 'g1', 'f3')
+    await play(run, 'b1', 'c3')
     expect(asked).toEqual([
       { moves: ['e2e4', 'e7e5', 'g1f3'], level: 1500 },
       { moves: ['e2e4', 'e7e5', 'g1f3', 'g8f6', 'b1c3'], level: 1500 },
@@ -116,20 +117,20 @@ describe('PracticeRun', () => {
 
   it('takes the engine\'s reply when Maia cannot be reached', async () => {
     const run = new PracticeRun(practice, engine, () => {}, maia, scripted().fetchFn)
-    await play(run, 'Nf3')
+    await play(run, 'g1', 'f3')
     expect([run.last, run.lastBy]).toEqual(['Nc6', 'Stockfish'])
   })
 
   it('takes the engine\'s reply when Maia answers with an illegal move', async () => {
     const run = new PracticeRun(practice, engine, () => {}, maia, scripted('e8e6').fetchFn)
-    await play(run, 'Nf3')
+    await play(run, 'g1', 'f3')
     expect([run.last, run.lastBy]).toEqual(['Nc6', 'Stockfish'])
   })
 
   it('uses the engine for the whole drill when the game is missing', async () => {
     const { asked, fetchFn } = scripted('g8f6')
     const run = new PracticeRun(practice, engine, () => {}, undefined, fetchFn)
-    await play(run, 'Nf3')
+    await play(run, 'g1', 'f3')
     expect([run.opponent, run.last, run.lastBy, asked]).toEqual(['Stockfish', 'Nc6', 'Stockfish', []])
   })
 })

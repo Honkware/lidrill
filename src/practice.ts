@@ -12,7 +12,6 @@ import { db, type Game, type Practice, type PracticeKind } from './db'
 import { fetchMove } from './maia'
 import { povCp } from './puzzles/generate'
 import { landSound, sound } from './sound'
-import { parseTyped } from './typed'
 
 // Conversion and defense drills: positions from the player's own games,
 // played out against Maia at about the player's level, because a human-like
@@ -123,7 +122,7 @@ export class PracticeRun {
       coordinates: true,
       premovable: { enabled: false },
       movable: { free: false, color: this.color, dests: chessgroundDests(this.pos), showDests: true },
-      events: { move: (orig, dest) => this.onMove(orig, dest) },
+      events: { move: (orig, dest) => this.move(orig, dest) },
     })
   }
 
@@ -141,19 +140,12 @@ export class PracticeRun {
     })
   }
 
-  private onMove(orig: Key, dest: Key) {
+  // A move made on the board
+  move(orig: Key, dest: Key) {
+    if (this.state !== 'your-move') return
     let uci = orig + dest
     if (this.pos.board.get(parseSquare(orig)!)?.role === 'pawn' && /[18]$/.test(dest)) uci += 'q'
     this.onUci(uci)
-  }
-
-  // Keyboard entry; returns false if the text isn't a legal move here
-  typeMove(text: string): boolean {
-    if (this.state !== 'your-move') return false
-    const uci = parseTyped(this.pos, text)
-    if (!uci) return false
-    this.onUci(uci)
-    return true
   }
 
   private async onUci(uci: string) {

@@ -4,7 +4,7 @@ import type { Practice, PracticeKind } from '../db'
 import { el } from '../el'
 import { CLEAR_AFTER, nextOpen } from '../practice'
 import { summary } from './summary'
-import { board, boardScreen, button, empty, icon, listRow, loading, loadingBlock, moveInput, pawns, rowList } from './ui'
+import { board, boardScreen, button, empty, icon, listRow, loading, loadingBlock, pawns, rowList } from './ui'
 
 const TITLE: Record<PracticeKind, string> = { conversion: 'Conversion', defense: 'Defense' }
 
@@ -64,11 +64,7 @@ export function practiceView(ctrl: Ctrl): VNode {
         el('div', [el('p', 'text-xs text-dim', 'Your moves'), el('p', 'font-medium tabular-nums', String(run.moves))]),
         run.last ? el('div', [el('p', 'text-xs text-dim', `${run.lastBy} played`), el('p', 'font-medium', run.last)]) : null,
       ]),
-      el('div', 'space-y-2', [
-        el('p', 'text-sm text-dim', run.state === 'thinking' ? `${run.opponent} is thinking…` : 'Your move.'),
-        // Same rule as the drill: typing is for keyboards
-        el('div', 'hidden md:block', [moveInput(t => run.typeMove(t))]),
-      ]),
+      el('p', 'text-sm text-dim', run.state === 'thinking' ? `${run.opponent} is thinking…` : 'Your move.'),
     ],
   })
 }

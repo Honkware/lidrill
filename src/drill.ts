@@ -16,7 +16,6 @@ import type { Packet, SlotName } from './server/packet'
 import { pawns } from './format'
 import { recordAttempt } from './train'
 import { landSound, sound } from './sound'
-import { parseTyped } from './typed'
 
 // How a puzzle plays, modelled on Lichess's trainer (lila ui/puzzle):
 // - the opponent's last move is animated in, half a second after the start;
@@ -213,7 +212,7 @@ export class Drill {
   useBoard(cg: Api, owned = false) {
     this.cg = cg
     this.owned = owned
-    cg.set({ events: { move: (orig, dest) => this.onMove(orig, dest) } })
+    cg.set({ events: { move: (orig, dest) => void this.move(orig, dest) } })
     this.loaded.then(() => {
       // Turning Points arrives with the board already at the puzzle position
       this.cursor = owned ? 0 : this.start
@@ -288,21 +287,15 @@ export class Drill {
 
   // --- moves ---
 
-  private onMove(orig: Key, dest: Key) {
+  // A move made on the board; false while it is not the player's to make
+  move(orig: Key, dest: Key): boolean {
+    if (this.state === 'playing' && (!this.yourTurn || this.reverting)) return false
     const pos = this.posAt(this.cursor)
     let uci = orig + dest
     const expected = this.puzzle.solution[this.step]
     // Promotions: the solution's piece if the squares match, else a queen
     if (this.state === 'playing' && expected?.startsWith(uci) && expected.length === 5) uci = expected
     else if (pos.board.get(parseSquare(orig)!)?.role === 'pawn' && /[18]$/.test(dest)) uci += 'q'
-    this.onUci(uci)
-  }
-
-  // Keyboard entry; false if the text isn't a legal move here
-  typeMove(text: string): boolean {
-    if (this.state === 'playing' && (!this.yourTurn || this.reverting)) return false
-    const uci = parseTyped(this.posAt(this.cursor), text)
-    if (!uci) return false
     this.onUci(uci)
     return true
   }

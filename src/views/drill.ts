@@ -4,7 +4,7 @@ import { coachLine } from '../coach'
 import { runProgress, type Drill, type Outcome } from '../drill'
 import { el } from '../el'
 import type { BoardLink, Segment } from '../server/render'
-import { board, boardScreen, btnClass, button, errorLine, icon, jumps, loading, moveInput, runBar, type Mark } from './ui'
+import { board, boardScreen, btnClass, button, errorLine, icon, jumps, loading, runBar, type Mark } from './ui'
 import { drillGameLine } from '../server/surface'
 import { summary } from './summary'
 import { countdownBar } from './time'
@@ -169,8 +169,6 @@ function playing(d: Drill): VNode {
       ),
       d.canViewSolution ? button('View the solution', () => d.viewSolution(), 'plain') : null,
     ]),
-    // Typing moves is for keyboards; on a phone it's clutter
-    el('div', 'hidden md:block', [moveInput(t => d.typeMove(t))]),
     drillContext(d),
   ])
 }

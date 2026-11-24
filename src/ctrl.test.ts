@@ -1,7 +1,9 @@
+import type { Key } from '@lichess-org/chessground/types'
 import { createEmptyCard } from 'ts-fsrs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Ctrl } from './ctrl'
 import { db, type Puzzle } from './db'
+import type { Drill } from './drill'
 import { saveProfile } from './pipeline'
 import { SAMPLES } from './samples'
 
@@ -15,6 +17,9 @@ class NoEngine {
   addEventListener() {}
   terminate() {}
 }
+
+// The one-move solution, made as the board makes it
+const solve = (d: Drill) => d.move(d.puzzle.solution[0].slice(0, 2) as Key, d.puzzle.solution[0].slice(2, 4) as Key)
 
 const open = async (hash: string) => {
   location.hash = hash
@@ -58,7 +63,7 @@ describe('a first visit', () => {
       const d = ctrl.drill!
       expect(d.puzzle).toBe(s.puzzle)
       d.go(d.start)
-      expect(d.typeMove(d.sanAt(s.puzzle.solution[0]))).toBe(true)
+      expect(solve(d)).toBe(true)
       await vi.waitFor(() => expect(ctrl.answered).toBe(true))
       await ctrl.next()
     }
@@ -76,7 +81,7 @@ describe('a first visit', () => {
     await ctrl.next()
     const next = ctrl.drill!
     next.go(next.start)
-    next.typeMove(next.sanAt(next.puzzle.solution[0]))
+    solve(next)
     await vi.waitFor(() => expect(ctrl.ownGames).toBe(true))
   })
 
@@ -84,7 +89,7 @@ describe('a first visit', () => {
     const ctrl = await open('')
     const d = ctrl.drill!
     d.go(d.start)
-    d.typeMove(d.sanAt(d.puzzle.solution[0]))
+    solve(d)
     await vi.waitFor(() => expect(ctrl.answered).toBe(true))
     expect([ctrl.canBury, ctrl.canRetry]).toEqual([false, true])
     ctrl.retry()

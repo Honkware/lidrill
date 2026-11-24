@@ -85,9 +85,9 @@ describe('a puzzle against the countdown', () => {
   it('stops once the puzzle is solved', async () => {
     const { d, c } = start()
     await vi.waitFor(() => expect(d.yourTurn).toBe(true))
-    d.typeMove('Bxf7+')
+    d.move('c4', 'f7')
     await vi.waitFor(() => expect(d.yourTurn).toBe(true))
-    d.typeMove('Nd5#')
+    d.move('c3', 'd5')
     vi.advanceTimersByTime(6000)
     await vi.waitFor(() => expect(outcomes).toEqual(['clean']))
     expect(c.out).toBe(false)

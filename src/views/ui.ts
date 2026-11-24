@@ -236,29 +236,3 @@ export const HANG_RULE = {
   club: 'a hang is one move that gives away a pawn and a half or more and loses material',
   advanced: 'a hang is one of your worst 5% of moves, costing at least a pawn and a half',
 } as const
-
-// Keyboard move entry under the board
-export const moveInput = (onMove: (text: string) => boolean) =>
-  el(
-    'form',
-    'flex gap-2',
-    {
-      on: {
-        submit: e => {
-          e.preventDefault()
-          const input = (e.target as HTMLFormElement).elements.namedItem('move') as HTMLInputElement
-          const ok = onMove(input.value)
-          input.setCustomValidity(ok ? '' : "That isn't a legal move here")
-          if (ok) input.value = ''
-          else input.reportValidity()
-        },
-      },
-    },
-    [
-      el('input', 'min-h-11 min-w-0 flex-1 rounded-lg bg-raised px-3 text-sm', {
-        attrs: { name: 'move', placeholder: 'Or type a move: Nf3, exd5, O-O', autocomplete: 'off', autocapitalize: 'none', spellcheck: false, 'aria-label': 'Type a move' },
-        on: { input: e => (e.target as HTMLInputElement).setCustomValidity('') },
-      }),
-      el('button', btnClass('plain', 'sm'), { attrs: { type: 'submit' } }, 'Play'),
-    ],
-  )
