@@ -17,7 +17,7 @@ A game that is analysed again only adds puzzles it did not have, so a card's sch
 
 ## The arrows
 
-`whyShapes` in `src/puzzles/whyShapes.ts` returns chessground shapes from the puzzle row and whatever is stored for it: the move played in red, the capture or mate it allowed (or the certified threat) in orange, the best move in green, and a green circle where the best line lands next. It makes no engine call and no request.
+`whyShapes` in `src/puzzles/whyShapes.ts` returns chessground shapes from the puzzle row and whatever is stored for it: the move played in red, the capture or mate it allowed (or the certified threat) in orange, the best move in green, and a green circle where the best line lands next. It makes no engine call and no request. `Drill` in `src/drill.ts` reads what is stored when the puzzle opens and draws the arrows on the puzzle position as chessground auto shapes: when "Why?" is opened, before the explanation is asked for, and without it once a puzzle was missed or its solution viewed. A step along the line clears them and the step back draws them again.
 
 ## A "Why?" request
 

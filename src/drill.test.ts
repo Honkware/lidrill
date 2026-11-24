@@ -1,7 +1,11 @@
+import { readFileSync } from 'node:fs'
 import { createEmptyCard } from 'ts-fsrs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db, type Puzzle } from './db'
 import { Drill, runProgress, SessionReview, type Outcome } from './drill'
+import { CERT_RUN_VERSION } from './explain'
+import { ORANGE } from './puzzles/whyShapes'
+import type { EngineReport } from './server/packet'
 
 // Legal's mate: 6. Bxf7+ Ke7 7. Nd5#
 const legal: Puzzle = {
@@ -23,6 +27,7 @@ const flush = async () => {
 beforeEach(async () => {
   outcomes = []
   await db.reviews.clear()
+  await db.certs.clear()
   await db.puzzles.put(legal)
   // Only the drill's own timers; IndexedDB (fake-indexeddb) keeps real ones
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
@@ -194,9 +199,10 @@ describe('a puzzle with its own explanation', () => {
     await flush()
     d.viewSolution()
     await flush()
-    expect(d.cursor).toBe(1)
+    d.go(1)
     d.toggleWhy()
     expect([d.showWhy, d.cursor]).toEqual([true, d.start])
+    expect(d.shapes).toEqual([{ orig: 'c4', dest: 'f7', brush: 'green' }])
     expect(d.why).toEqual({ slots: [{ slot: 'why', segments: [{ text: 'Bxf7+ drives the king out.' }] }] })
     d.toggleWhy()
     expect(d.showWhy).toBe(false)
@@ -208,6 +214,79 @@ describe('a puzzle with its own explanation', () => {
     await flush()
     d.toggleWhy()
     expect([d.showWhy, d.why]).toEqual([false, undefined])
+  })
+})
+
+// The arrows of "Why?" on a position the offline gate keeps a certification
+// report for: ...Rae8 left the queen on a5 to the queen on d2, and ...Qxd2+
+// was the move. The report's runs are what the browser stores in db.certs.
+describe('the arrows of Why?', () => {
+  const report = (JSON.parse(readFileSync('src/server/fixtures/gate-reports.json', 'utf8')) as EngineReport[]).find(r => r.fen.startsWith('r4rk1/pp4pp/1np2p1n/q1bpp2b'))!
+  const queen: Puzzle = { ...legal, id: 'p:queen', fen: report.fen, played: report.played!.uci, solution: report.solution, solutionLen: 1 }
+  const certify = () => db.certs.put({ puzzleId: queen.id, version: CERT_RUN_VERSION, runs: { best: report.best, threat: report.threat ?? [], played: report.played!.runs }, createdAt: 0 })
+  const red = { orig: 'a8', dest: 'e8', brush: 'red' }
+  const orange = { orig: 'd2', dest: 'a5', brush: ORANGE }
+  const green = { orig: 'a5', dest: 'd2', brush: 'green' }
+
+  let requests: ReturnType<typeof vi.fn>
+  beforeEach(() => {
+    requests = vi.fn(() => Promise.reject(new Error('offline')))
+    vi.stubGlobal('fetch', requests)
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('are on the puzzle position of a missed puzzle from what is stored, with no request made', async () => {
+    await certify()
+    const d = new Drill(queen, () => {}, { record: false })
+    await flush()
+    d.move('a8', 'e8')
+    await flush()
+    expect(d.shapes).toEqual([])
+    d.move('a5', 'd2')
+    await flush()
+    expect([d.outcome, d.shapes]).toEqual(['missed', []])
+    d.go(d.start)
+    expect(d.shapes).toEqual([red, orange, green])
+    expect(requests).not.toHaveBeenCalled()
+  })
+
+  it('are up as soon as the solution is viewed, clear on a step into the line and return on the step back', async () => {
+    await certify()
+    const d = new Drill(queen, () => {}, { record: false })
+    await flush()
+    d.viewSolution()
+    expect([d.cursor, d.shapes]).toEqual([d.start, [red, orange, green]])
+    d.go(d.cursor + 1)
+    expect(d.shapes).toEqual([])
+    d.go(d.start)
+    expect(d.shapes).toEqual([red, orange, green])
+  })
+
+  it('are the move played and the best move when no threat is stored', async () => {
+    const d = new Drill(queen, () => {}, { record: false })
+    await flush()
+    d.viewSolution()
+    expect(d.shapes).toEqual([red, green])
+  })
+
+  it('reach the board when Why? is opened, before a request starts, and stay when the answer fails', async () => {
+    await certify()
+    const drawn: unknown[] = []
+    const cg = { set: () => {}, setAutoShapes: (s: unknown) => drawn.push(s), selectSquare: () => {}, destroy: () => {} }
+    const d = new Drill(queen, () => {}, { record: false, certEngines: [] })
+    d.useBoard(cg as unknown as Parameters<Drill['useBoard']>[0])
+    await flush()
+    d.move('a5', 'd2')
+    await flush()
+    expect([d.outcome, d.shapes]).toEqual(['clean', []])
+    d.toggleWhy()
+    expect(drawn.at(-1)).toEqual([red, orange, green])
+    expect(requests).not.toHaveBeenCalled()
+    await vi.waitFor(() => expect(d.why?.error).toBeDefined())
+    expect(requests).toHaveBeenCalled()
+    expect(d.shapes).toEqual([red, orange, green])
+    d.toggleWhy()
+    expect(drawn.at(-1)).toEqual([])
   })
 })
 

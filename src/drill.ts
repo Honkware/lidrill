@@ -10,7 +10,8 @@ import { parseSquare, parseUci } from 'chessops/util'
 import type { Engine } from './analysis/engine'
 import { checkColor } from './checkColor'
 import { db, type Game, type Puzzle } from './db'
-import { contextFor, explain } from './explain'
+import { CERT_RUN_VERSION, contextFor, explain } from './explain'
+import { whyShapes, type WhyStored } from './puzzles/whyShapes'
 import { renderSlot, type BoardLink, type Segment } from './server/render'
 import type { Packet, SlotName } from './server/packet'
 import { pawns } from './format'
@@ -26,6 +27,8 @@ import { landSound, sound } from './sound'
 // - the hint marks the piece to move (solve = Hard, not a fail);
 // - "View the solution" turns up after a miss or after 4 seconds and counts
 //   as a fail;
+// - a puzzle that was missed, or whose solution was viewed, ends with the
+//   arrows of "Why?" on its position (see `shapes`);
 // - once over, the line can be stepped through and played on freely, with
 //   Stockfish's eval of the shown position.
 
@@ -92,8 +95,8 @@ export interface DrillOptions {
   // stored eval line before it renders, so no stop contradicts another
   consistency?: (packet: Packet) => Packet
   onFinish?: (outcome: Outcome) => void
-  // A sample puzzle explains itself: its own text for "Why?", and arrows on
-  // the puzzle position while that is open
+  // A sample puzzle explains itself: its own text for "Why?", and its own
+  // arrows where another puzzle's are worked out from what is stored
   note?: string
   arrows?: DrawShape[]
 }
@@ -145,7 +148,8 @@ export class Drill {
   private recorded = false
   private reverting = false // a wrong move is on the board for a moment
   private redraw: () => void
-  private loaded: Promise<void>
+  private loaded: Promise<unknown>
+  private stored: WhyStored = {}
 
   constructor(puzzle: Puzzle, redraw: () => void, opts: DrillOptions = { record: true }) {
     this.puzzle = puzzle
@@ -153,12 +157,21 @@ export class Drill {
     this.redraw = redraw
     this.opts = opts
     this.nodes = [{ fen: puzzle.fen }]
-    this.loaded = puzzle.gameId
+    const game = puzzle.gameId
       ? db.games.get(puzzle.gameId).then(g => {
           this.game = g
           this.addIntro()
         })
       : Promise.resolve(this.addIntro())
+    this.loaded = Promise.all([game, opts.arrows ? undefined : this.loadStored()])
+  }
+
+  // Read when the puzzle opens, so the arrows wait on nothing later: the
+  // certification runs, and the packet of an explanation already made
+  private async loadStored() {
+    const cert = await db.certs.get(this.puzzle.id)
+    const row = await db.explanations.where('puzzleId').equals(this.puzzle.id).first()
+    this.stored = { runs: cert?.version === CERT_RUN_VERSION ? cert.runs : undefined, packet: row?.packet }
   }
 
   // The position before the opponent's last move, when it's known
@@ -250,9 +263,18 @@ export class Drill {
     return this.state === 'playing' && this.atTip && this.cursor >= this.start && this.posAt(this.cursor).turn === this.color
   }
 
+  // The arrows of "Why?", drawn on the puzzle position only. They are up
+  // while "Why?" is open, and without it after a miss or a viewed solution.
+  // Auto shapes, so the player's own drawings stay.
+  get shapes(): DrawShape[] {
+    const wanted = this.showWhy || this.outcome === 'missed' || this.outcome === 'shown'
+    if (this.state !== 'view' || !wanted || this.cursor !== this.start) return []
+    return this.opts.arrows ?? whyShapes(this.puzzle, this.stored, this.firstTry ?? this.puzzle.played)
+  }
+
   private sync() {
     this.previewing = undefined
-    this.cg?.setAutoShapes(this.showWhy && this.cursor === this.start ? (this.opts.arrows ?? []) : [])
+    this.cg?.setAutoShapes(this.shapes)
     const node = this.nodes[this.cursor]
     const pos = this.posAt(this.cursor)
     const playable = this.state === 'view' || (this.yourTurn && !this.reverting)
@@ -418,7 +440,9 @@ export class Drill {
       this.step++
     }
     this.complete()
-    this.go(Math.min(from + 1, this.nodes.length - 1))
+    // From the puzzle position the arrows show the answer, and the line is a
+    // step away; further in, the next move of the line is shown
+    this.go(from === this.start ? from : Math.min(from + 1, this.nodes.length - 1))
   }
 
   private async complete() {
@@ -480,9 +504,8 @@ export class Drill {
   toggleWhy() {
     if (this.state !== 'view') return
     this.showWhy = !this.showWhy
-    // The arrows are drawn for the puzzle position
-    if (this.opts.arrows) this.go(this.showWhy ? this.start : this.cursor)
-    this.redraw()
+    // The arrows are drawn for the puzzle position, before anything is asked for
+    this.go(this.showWhy ? this.start : this.cursor)
     if (this.showWhy) void this.explain()
   }
 
@@ -505,6 +528,9 @@ export class Drill {
           this.redraw()
         }, this.solvedMove),
       )
+      // The packet may certify a threat the stored runs could not show
+      this.stored = { ...this.stored, packet: e.packet }
+      this.cg?.setAutoShapes(this.shapes)
       const packet = this.opts.consistency?.(e.packet) ?? e.packet
       this.why = { slots: e.slots.map(s => ({ slot: s.slot, segments: renderSlot(s, packet) })), floor: e.floor }
     } catch (e) {
