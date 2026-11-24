@@ -10,7 +10,7 @@ import { fetchLook, PREFERENCE_SCOPE } from './lichess/api'
 import { fetchStudyLines, listStudies, STUDY_READ_SCOPE, type StudyInfo } from './lichess/repertoire'
 import { STUDY_SCOPE, sendToStudy } from './lichess/study'
 import { applyLook, BOARDS, PIECE_SETS } from './look'
-import { clampLevel, estimateFor, estimates, levelFor, ownStarts, speedOf, startEstimate, updateEstimate, type Start } from './maia'
+import { clampLevel, estimateFor, estimates, levelFor, ownStarts, speedOf, startAt, startEstimate, updateEstimate, type Start } from './maia'
 import { openingTable, streak, type OpeningRow, type Streak } from './metrics'
 import { nextAction, type Due, type Next } from './next'
 import { addCards, dueCards, freshLeft, learnedKeys, NEW_PER_DAY, openingsDue, saveTreeCards } from './openings/cards'
@@ -979,6 +979,12 @@ export class Ctrl {
     clearGame()
     this.playFrom = from
     this.go('maia')
+  }
+
+  // A game from a puzzle's position, on the player's side, at the level,
+  // time and pace set on Play
+  sparFrom(d: Drill) {
+    if (d.game) this.startPlay(startAt(d.game, d.puzzle.ply))
   }
 
   private async openMaia() {

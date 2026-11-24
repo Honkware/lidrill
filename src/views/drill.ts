@@ -288,19 +288,21 @@ export function puzzleSide(d: Drill, after: (VNode | null)[]): VNode {
   ])
 }
 
-// Retry is the puzzle again for practice; Bury takes it out of the deck
-// for good, in one click
-function tools(ctrl: Ctrl): VNode | null {
+// Spar plays on from the puzzle's position against Maia, once the puzzle
+// is over and for a puzzle from a stored game. Retry is the puzzle again for
+// practice; Bury takes it out of the deck for good, in one click.
+function tools(ctrl: Ctrl, d: Drill): VNode | null {
   const tool = (name: string, title: string, onClick: () => void) => el('button', btnClass('quiet', 'sm'), { attrs: { type: 'button', title }, on: { click: onClick } }, name)
-  if (!ctrl.canRetry && !ctrl.canBury) return null
-  return el('div', 'flex gap-2', [
+  const items = [
+    d.state === 'view' && d.game ? tool('Spar vs Maia', 'Play on from this position against Maia', () => ctrl.sparFrom(d)) : null,
     ctrl.canRetry ? tool('Retry', 'Try this puzzle again (R)', () => ctrl.retry()) : null,
     ctrl.canBury ? tool('Bury', 'Take this puzzle out of the deck (B)', () => void ctrl.bury()) : null,
-  ])
+  ].filter(t => t !== null)
+  return items.length ? el('div', 'flex flex-wrap gap-2', items) : null
 }
 
 function side(ctrl: Ctrl, d: Drill): VNode {
-  if (d.state === 'playing') return el('div', 'space-y-3', [puzzleSide(d, []), tools(ctrl)])
+  if (d.state === 'playing') return el('div', 'space-y-3', [puzzleSide(d, []), tools(ctrl, d)])
   const reviewing = ctrl.review.viewing !== undefined
   return puzzleSide(d, [
     el('div', 'primary-action grid bg-bg py-2', [
@@ -315,7 +317,7 @@ function side(ctrl: Ctrl, d: Drill): VNode {
           ]),
       d.failed && d.puzzle.source !== 'lichess' && !reviewing && !ctrl.timed ? noteToggle(ctrl) : null,
     ]),
-    tools(ctrl),
+    tools(ctrl, d),
   ])
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Game } from './db'
-import { clampLevel, estimateFor, estimates, expectedScore, fetchMove, history, levelFor, MAX_LEVEL, MIN_LEVEL, ownStarts, speedOf, startEstimate, startLabel, updateEstimate, type Start } from './maia'
+import { clampLevel, estimateFor, estimates, expectedScore, fetchMove, history, levelFor, MAX_LEVEL, MIN_LEVEL, ownStarts, speedOf, startAt, startEstimate, startLabel, updateEstimate, type Start } from './maia'
 import { pgnMoves } from './sync/pgn'
 
 const game = (over: Partial<Game> = {}): Game => ({
@@ -143,6 +143,24 @@ describe('ownStarts', () => {
     expect(ownStarts([analyzed(8, 0, { analyzedAt: undefined })])).toEqual([])
     expect(ownStarts([analyzed(8, 0, { site: 'maia' })])).toEqual([])
     expect(ownStarts([analyzed(14, 0)])).toEqual([])
+  })
+})
+
+describe('startAt', () => {
+  const moves = pgnMoves('1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. c3 Nf6 5. d3 d6 6. O-O O-O')!
+
+  it('keeps the moves before a puzzle\'s ply, so the player is to move', () => {
+    const white = startAt(game({ moves }), 11)
+    expect(white.moves.map(m => m.san).at(-1)).toBe('d6')
+    expect(white.moves.length % 2).toBe(0)
+    const black = startAt(game({ moves, color: 'black' }), 10)
+    expect(black.moves.map(m => m.san).at(-1)).toBe('d3')
+    expect(black.moves.length % 2).toBe(1)
+  })
+
+  it('carries the game and the side, and only san and uci of each move', () => {
+    const s = startAt(game({ moves: moves.map(m => ({ ...m, eval: { cp: 10 } })), color: 'black' }), 2)
+    expect(s).toEqual({ gameId: 'lichess:g', color: 'black', opening: 'Italian Game: Giuoco Piano', playedAt: 1, moves: [{ san: 'e4', uci: 'e2e4' }] })
   })
 })
 

@@ -93,6 +93,17 @@ export interface Start {
   moves: { san: string; uci: string }[]
 }
 
+// The position before a game's move at `ply` (1 is White's first), as a
+// start. A puzzle's ply is the player's move it asks for, so the game goes
+// on from the puzzle position with the player to move.
+export const startAt = (g: Game, ply: number): Start => ({
+  gameId: g.id,
+  color: g.color,
+  opening: g.opening,
+  playedAt: g.playedAt,
+  moves: g.moves.slice(0, ply - 1).map(m => ({ san: m.san, uci: m.uci })),
+})
+
 // Positions to start a game from: the first move after the opening in each
 // of the player's last 30 analyzed games where it was their turn and neither
 // side was more than a pawn ahead.
@@ -108,7 +119,7 @@ export function ownStarts(games: Game[]): Start[] {
     const last = g.moves[plies - 1]
     if (plies < 2 || plies > g.moves.length - 10 || !last?.eval || last.eval.mate !== undefined) continue
     if (Math.abs(povCp(last.eval, 'white')) > 100) continue
-    out.push({ gameId: g.id, color: g.color, opening: g.opening, playedAt: g.playedAt, moves: g.moves.slice(0, plies).map(m => ({ san: m.san, uci: m.uci })) })
+    out.push(startAt(g, plies + 1))
   }
   return out
 }
