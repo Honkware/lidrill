@@ -46,6 +46,22 @@ describe('buildQueue', () => {
     expect(q.puzzles.filter(p => p.type === 'hang').length).toBeGreaterThanOrEqual(Math.ceil(DAILY_CAP * 0.6))
   })
 
+  it('puts the puzzle Maia finds likelier first among solutions of one length', () => {
+    const [rare, common, longer] = [puzzle('hang'), puzzle('hang'), puzzle('hang', 'hang', 2)]
+    Object.assign(rare, { maiaP: 0.05 })
+    Object.assign(common, { maiaP: 0.6 })
+    Object.assign(longer, { maiaP: 0.9 })
+    const all = [longer, rare, common]
+    expect(buildQueue(all, all, undefined, now).puzzles).toEqual([common, rare, longer])
+  })
+
+  it('orders puzzles Maia was never asked about by their due date, as before', () => {
+    const [later, sooner] = [puzzle('hang'), puzzle('hang')]
+    later.card = createEmptyCard(new Date(1000))
+    const all = [later, sooner]
+    expect(buildQueue(all, all, undefined, now).puzzles).toEqual([sooner, later])
+  })
+
   it('shrinks after two days away', () => {
     const all = Array.from({ length: 20 }, () => puzzle('hang'))
     const q = buildQueue(all, all, +now - 3 * 24 * 3600e3, now)

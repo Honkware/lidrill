@@ -1,5 +1,6 @@
 import { fsrs, Rating, type Card, type Grade } from 'ts-fsrs'
 import { db, queueSyncRow, type Puzzle, type Review } from './db'
+import { moreFindable } from './puzzles/findable'
 
 // Puzzles are reviewed once a day, so schedule in whole days: a graded
 // puzzle must leave today's due list. ts-fsrs's default short-term mode
@@ -36,13 +37,14 @@ export function interleave(puzzles: Puzzle[]): Puzzle[] {
   return out
 }
 
-// The day's queue: own-game puzzles first, shortest solutions first
-//at least 60% from the player's most common puzzle type
+// The day's queue: own-game puzzles first, shortest solutions first and,
+// at the same length, the one Maia finds likelier; at least 60% from the
+// player's most common puzzle type
 // when there are enough, interleaved by tag; Lichess puzzles fill at most 30%.
 export function buildQueue(due: Puzzle[], all: Puzzle[], lastReviewAt: number | undefined, now: Date): DayQueue {
   const recovery = lastReviewAt !== undefined && +now - lastReviewAt > 2 * 24 * 3600 * 1000
   const cap = recovery ? RECOVERY_CAP : DAILY_CAP
-  const byLength = (a: Puzzle, b: Puzzle) => a.solutionLen - b.solutionLen || +a.card.due - +b.card.due
+  const byLength = (a: Puzzle, b: Puzzle) => a.solutionLen - b.solutionLen || moreFindable(a, b) || +a.card.due - +b.card.due
   const own = due.filter(p => p.source !== 'lichess').sort(byLength)
   const external = due.filter(p => p.source === 'lichess').sort(byLength)
 
