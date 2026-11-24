@@ -152,6 +152,21 @@ describe('with an account', () => {
     expect([ctrl.drill!.puzzle.id, ctrl.queueLeft]).toEqual([id, 1])
   })
 
+  it('burying the puzzle on the board moves on, and Undo puts it back as the next', async () => {
+    await db.puzzles.bulkPut([due, { ...due, id: 'p:2' }])
+    location.hash = ''
+    const ctrl = new Ctrl(() => {})
+    await vi.waitFor(() => expect(ctrl.drill).toBeDefined())
+    const { id } = ctrl.drill!.puzzle
+    await ctrl.bury()
+    expect([(await db.puzzles.get(id))!.buried, ctrl.drill!.puzzle.id === id, ctrl.queueLeft, ctrl.notice?.text]).toEqual([true, false, 0, 'Buried.'])
+    ctrl.notice!.undo!()
+    await vi.waitFor(() => expect(ctrl.notice).toBeUndefined())
+    expect([(await db.puzzles.get(id))!.buried, ctrl.queueLeft]).toEqual([undefined, 1])
+    await ctrl.next()
+    expect(ctrl.drill!.puzzle.id).toBe(id)
+  })
+
   it('a buried puzzle no longer opens the board', async () => {
     await db.puzzles.put({ ...due, buried: true })
     expect(await land('#/train')).toEqual(['train', '#/train'])

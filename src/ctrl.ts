@@ -735,6 +735,7 @@ export class Ctrl {
   }
 
   async next() {
+    if (this.notice?.undo) this.notice = undefined
     this.drill?.destroy()
     this.drill = undefined
     this.countdown?.destroy()
@@ -793,14 +794,16 @@ export class Ctrl {
 
   // Takes the live puzzle out of the deck for good and moves on. One not
   // yet answered leaves the run too, and Undo puts it back as the next.
+  // The offer lasts until the puzzle after it is left.
   async bury() {
     const d = this.drill
     if (!this.canBury || !d) return
     const id = d.puzzle.id
     const open = d.state === 'playing'
     await bury(id)
-    this.notice = { text: 'Buried.', undo: () => void this.unbury(id, open) }
     await this.next()
+    this.notice = { text: 'Buried.', undo: () => void this.unbury(id, open) }
+    this.redraw()
   }
 
   // The live puzzle again from its first move, once it is over. It has been
