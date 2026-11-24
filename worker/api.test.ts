@@ -41,6 +41,7 @@ const puts: { key: string; ttl?: number }[] = []
 let packetLimitOk = true
 let maiaLimitOk = true
 let policyLimitOk = true
+let evalsLimitOk = true
 
 const env = {
   ASSETS: { fetch: async () => new Response('assets') },
@@ -51,6 +52,7 @@ const env = {
   SYNC_LIMIT: { limit: async () => ({ success: true }) },
   MAIA_LIMIT: { limit: async () => ({ success: maiaLimitOk }) },
   POLICY_LIMIT: { limit: async () => ({ success: policyLimitOk }) },
+  EVALS_LIMIT: { limit: async () => ({ success: evalsLimitOk }) },
   BACKEND_URL: 'https://backend.example',
   LIDRILL_KEY: 'backend-secret',
   PACKETS: {
@@ -480,6 +482,37 @@ describe('POST /api/maia/policy', () => {
     policyLimitOk = false
     expect((await post('/api/maia/policy', position, { proof: null })).status).toBe(429)
     expect(calls).toHaveLength(2)
+  })
+})
+
+describe('POST /api/evals', () => {
+  const game = { depth: 14, moves: ['e2e4'], evals: [{ cp: 30 }] }
+
+  it('passes a lookup and an upload on to the backend with the shared key', async () => {
+    const calls: { url: string; key: string | null; body: string }[] = []
+    vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
+      calls.push({ url, key: new Headers(init.headers).get('x-lidrill-key'), body: init.body as string })
+      return new Response(JSON.stringify({ found: {} }))
+    })
+    expect(await (await post('/api/evals/get', { keys: [] }, { proof: null })).json()).toEqual({ found: {} })
+    expect((await post('/api/evals/put', game, { proof: null })).status).toBe(200)
+    expect(calls).toEqual([
+      { url: 'https://backend.example/evals/get', key: 'backend-secret', body: JSON.stringify({ keys: [] }) },
+      { url: 'https://backend.example/evals/put', key: 'backend-secret', body: JSON.stringify(game) },
+    ])
+  })
+
+  it('refuses another origin, a flood and a body the backend turns down', async () => {
+    vi.stubGlobal('fetch', async () => new Response('{}', { status: 400 }))
+    expect((await post('/api/evals/put', game, { proof: null })).status).toBe(400)
+    expect((await post('/api/evals/put', game, { origin: 'https://evil.example', proof: null })).status).toBe(403)
+    evalsLimitOk = false
+    expect((await post('/api/evals/put', game, { proof: null })).status).toBe(429)
+    evalsLimitOk = true
+    vi.stubGlobal('fetch', async () => {
+      throw new TypeError('unreachable')
+    })
+    expect((await post('/api/evals/get', { keys: [] }, { proof: null })).status).toBe(502)
   })
 })
 

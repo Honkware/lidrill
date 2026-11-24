@@ -32,6 +32,7 @@ interface Env {
   SYNC_LIMIT: RateLimit
   MAIA_LIMIT: RateLimit
   POLICY_LIMIT: RateLimit
+  EVALS_LIMIT: RateLimit
   PACKETS: KVNamespace
   // Server tier (docs/server-tier.md): the loopback FastAPI service, reached
   // through its cloudflared quick tunnel, guarded by the shared secret
@@ -313,6 +314,23 @@ async function maia(request: Request, env: Env, route: 'move' | 'draw' | 'policy
   return json(await res.json())
 }
 
+// The shared store of engine evals (server/app.py): a browser asks for the
+// games it is about to analyse and uploads the ones it had to search itself.
+// Anyone on the site can add a game, so the backend never replaces an eval
+// it already holds.
+async function evals(request: Request, env: Env, route: 'get' | 'put'): Promise<Response> {
+  if (request.method !== 'POST') return json({ error: 'POST only' }, 405)
+  if (!ORIGINS.some(o => o.test(request.headers.get('origin') ?? ''))) return json({ error: 'Not from lidrill' }, 403)
+  const ip = request.headers.get('cf-connecting-ip') ?? 'unknown'
+  if (!(await env.EVALS_LIMIT.limit({ key: ip })).success) return json({ error: 'Too many requests at once. Try again in a minute.' }, 429)
+  const body = await request.text()
+  if (body.length > 50_000) return json({ error: 'Too large' }, 413)
+  const res = await fetch(`${env.BACKEND_URL}/evals/${route}`, { method: 'POST', headers: { 'x-lidrill-key': env.LIDRILL_KEY, 'content-type': 'application/json' }, body }).catch(() => undefined)
+  if (res?.status === 400 || res?.status === 422) return json({ error: 'That isn’t a game.' }, 400)
+  if (!res?.ok) return json({ error: 'Shared analysis isn’t available right now.' }, 502)
+  return json(await res.json())
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: { waitUntil(p: Promise<unknown>): void }): Promise<Response> {
     const url = new URL(request.url)
@@ -322,6 +340,8 @@ export default {
     if (url.pathname === '/api/maia/move') return maia(request, env, 'move', 'Maia can’t move from that position.')
     if (url.pathname === '/api/maia/draw') return maia(request, env, 'draw', 'Maia can’t answer a draw offer in that position.')
     if (url.pathname === '/api/maia/policy') return maia(request, env, 'policy', 'Maia can’t move from that position.', env.POLICY_LIMIT)
+    if (url.pathname === '/api/evals/get') return evals(request, env, 'get')
+    if (url.pathname === '/api/evals/put') return evals(request, env, 'put')
     if (url.pathname.startsWith('/api/sync/')) return syncProxy(request, url, env, ctx)
     if (url.pathname.startsWith('/api/')) return json({ error: 'Not found' }, 404)
     return env.ASSETS.fetch(request)

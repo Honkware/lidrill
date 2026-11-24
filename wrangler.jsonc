@@ -23,7 +23,10 @@
     { "name": "MAIA_LIMIT", "namespace_id": "1004", "simple": { "limit": 60, "period": 60 } },
     // Building an opening tree asks for one position after another; a first
     // tree to 8 moves can need a few hundred, so it gets its own budget
-    { "name": "POLICY_LIMIT", "namespace_id": "1005", "simple": { "limit": 300, "period": 60 } }
+    { "name": "POLICY_LIMIT", "namespace_id": "1005", "simple": { "limit": 300, "period": 60 } },
+    // Shared evals: one lookup per 500 games, then one upload for each game
+    // the browser had to analyse itself, a few seconds apart
+    { "name": "EVALS_LIMIT", "namespace_id": "1006", "simple": { "limit": 120, "period": 60 } }
   ],
   // Packet store: key = packetHash, value = packet
   // JSON, TTL 30 days. Finished explanations live beside the packets under
