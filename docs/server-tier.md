@@ -30,6 +30,8 @@ browser B ─┘   /api/sync/*         └─ 127.0.0.1:8010  lidrill-server (Fa
   client sends its Lichess token; the Worker validates it against Lichess
   `/api/account` (cached 15 min per token), uses the username as the account
   key, and forwards with the shared secret. The token never reaches the VM.
+  A device with no Lichess account sends a sync key in its place
+  (`src/sync/key.ts`), and its rows go under a hash of that key.
 - **Worker `/api/maia/*`**: the same service also runs Maia-3 (`/maia/move`,
   `/maia/draw`, `/maia/policy`, described in `server/README.md`). These need
   no sign-in; the Worker checks the Origin and a per-visitor rate limit.

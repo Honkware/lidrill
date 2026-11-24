@@ -122,6 +122,11 @@ async function wipe(token: string, fetchFn: typeof fetch): Promise<void> {
   await db.syncQueue.clear()
 }
 
+// How many rows the server holds for this token
+export async function syncedRows(token: string, fetchFn: typeof fetch = fetch): Promise<number> {
+  return ((await (await api(token, '/state', {}, fetchFn)).json()) as { rows: number }).rows
+}
+
 // One push/pull cycle. Never throws for ordinary failures (offline, server
 // down): the caller logs and the next pass retries. Only an expired sign-in
 // (401) propagates, so the app can sign out.

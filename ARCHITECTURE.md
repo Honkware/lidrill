@@ -18,9 +18,9 @@ The Worker holds the secrets and the rate limits, so it is where anything that c
 | `POST /api/maia/move`, `/api/maia/draw` | Forwarded to the Python service | Origin, 60 a minute per IP |
 | `POST /api/maia/policy` | Forwarded to the Python service | Origin, 300 a minute per IP |
 | `POST /api/evals/get`, `/api/evals/put` | Forwarded to the Python service | Origin, 120 a minute per IP |
-| `/api/sync/*` | Forwarded to `/u/<username>/*` on the Python service | Lichess token, 240 a minute per account |
+| `/api/sync/*` | Forwarded to `/u/<username>/*` on the Python service | Lichess token or sync key, 240 a minute per account |
 
-The Origin check accepts `lidrill.org`, `www.lidrill.org`, the `workers.dev` address and `http://localhost` on any port (`ORIGINS` in `worker/index.ts`). `http://127.0.0.1` is not on the list, so open the dev site as `localhost`. For sync the Worker asks Lichess who the token belongs to, caches the answer for 15 minutes, and sends only the username on. The token never reaches the VM.
+The Origin check accepts `lidrill.org`, `www.lidrill.org`, the `workers.dev` address and `http://localhost` on any port (`ORIGINS` in `worker/index.ts`). `http://127.0.0.1` is not on the list, so open the dev site as `localhost`. For sync the Worker asks Lichess who the token belongs to, caches the answer for 15 minutes, and sends only the username on. The token never reaches the VM. A player with no Lichess account syncs with a sync key instead (`src/sync/key.ts`): a random 130-bit secret the first device makes and the second is given as a code. The Worker asks nobody about it and forwards under `k_` and the first 40 hex characters of its SHA-256, so the VM never holds the key, and it holds one address to the account rate across all the keys it sends.
 
 ## Python service
 

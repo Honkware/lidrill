@@ -33,7 +33,8 @@ import { sound } from './sound'
 import { timeProfiles, type TimeProfile } from './time'
 import { Countdown, timedSet } from './timed'
 import { SignInExpired } from './sync/lichess'
-import { serverSync as syncWithServer } from './sync/server'
+import { codeOf, keyOf, newSyncKey, readSyncKey, saveSyncKey } from './sync/key'
+import { serverSync as syncWithServer, syncedRows } from './sync/server'
 import { bury, DAILY_CAP, dueQueue, dueToday, inDeck, saveWhyMissed, unbury } from './train'
 
 export type { Screen } from './routes'
@@ -89,6 +90,7 @@ export class Ctrl {
   error?: string
   notice?: { text: string; href?: string; undo?: () => void }
   moreOpen = false
+  syncCodeError?: string
   today?: TodayData
   due?: DueNow
   nextUp?: Next
@@ -608,8 +610,8 @@ export class Ctrl {
   // every 5 minutes, and when the network comes back. Fire-and-forget:
   // failures wait for the next pass, only an expired sign-in propagates.
   private startServerSync() {
-    if (this.auth) void this.serverSync()
-    if (!this.auth || this.serverSyncTimer) return
+    if (this.syncToken) void this.serverSync()
+    if (!this.syncToken || this.serverSyncTimer) return
     this.serverSyncTimer = setInterval(() => void this.serverSync(), 5 * 60 * 1000)
   }
 
@@ -619,9 +621,10 @@ export class Ctrl {
   }
 
   private async serverSync(): Promise<void> {
-    if (!this.auth || this.serverSyncing) return this.serverSyncing
+    const token = this.syncToken
+    if (!token || this.serverSyncing) return this.serverSyncing
     this.serverSyncing = (async () => {
-      const r = await syncWithServer(this.auth!.token)
+      const r = await syncWithServer(token)
       if (r.pulled) await this.refresh(true)
     })()
       .catch(async e => {
@@ -630,6 +633,60 @@ export class Ctrl {
       })
       .finally(() => (this.serverSyncing = undefined))
     return this.serverSyncing
+  }
+
+  // The Lichess account when there is one, else this browser's sync key
+  private get syncToken(): string | undefined {
+    return this.auth?.token ?? readSyncKey()
+  }
+
+  // The code to give another device, when this one syncs by key
+  get syncCode(): string | undefined {
+    const key = this.auth ? undefined : readSyncKey()
+    return key && codeOf(key)
+  }
+
+  // This device starts a store of its own. Everything it has is already
+  // queued, so the first pass pushes all of it.
+  startSyncCode() {
+    if (this.auth || readSyncKey()) return
+    saveSyncKey(newSyncKey())
+    this.startServerSync()
+    this.redraw()
+  }
+
+  // This device joins another's store. A code nobody has synced under is
+  // most likely mistyped, and taking it would start an empty store that
+  // looks like a sync that worked.
+  async joinSyncCode(code: string) {
+    const key = keyOf(code)
+    this.syncCodeError = undefined
+    if (!key) this.syncCodeError = 'That isn’t a sync code. It is 26 letters and digits.'
+    else {
+      try {
+        if (!(await syncedRows(key))) this.syncCodeError = 'Nothing is synced under that code. Check it against the other device.'
+      } catch {
+        this.syncCodeError = 'Sync isn’t available right now. Try again in a minute.'
+      }
+    }
+    if (!key || this.syncCodeError) return this.redraw()
+    saveSyncKey(key)
+    // Everything under the code is new to this device
+    await db.serverMeta.delete('pullSince')
+    this.stopServerSync()
+    this.startServerSync()
+    await this.serverSyncing
+    // The pulled profile names the accounts; their newer games are fetched
+    if (this.profile?.chesscomUser) void this.sync()
+    if (this.screen === 'welcome' || this.sample) this.go('train')
+    else this.redraw()
+  }
+
+  // The rows stay on the server for the other devices
+  stopSyncCode() {
+    saveSyncKey(undefined)
+    this.stopServerSync()
+    this.redraw()
   }
 
   // --- account ---

@@ -8,7 +8,7 @@ import { STUDY_SCOPE } from '../lichess/study'
 import { BOARDS, DEFAULT_BOARD, DEFAULT_PIECES, PIECE_SETS } from '../look'
 import { setSound, soundOn } from '../sound'
 import { btnClass, button, card, HANG_RULE, label, segmented } from './ui'
-import { chesscomField } from './welcome'
+import { chesscomField, syncCodeField } from './welcome'
 
 const LEVEL_NAME = { beginner: 'Beginner', club: 'Club', advanced: 'Advanced' } as const
 
@@ -29,6 +29,24 @@ const choice = (selected: boolean, onClick: () => void, children: (VNode | strin
     { attrs: { type: 'button', 'aria-pressed': selected }, class: { 'border-accent': selected, 'border-transparent': !selected, 'bg-raised': true }, on: { click: onClick } },
     children,
   )
+
+// Sync for a player with no Lichess account: this device's code, or the
+// field for another device's
+function devices(ctrl: Ctrl): (VNode | null)[] {
+  const code = ctrl.syncCode
+  if (code)
+    return [
+      el('p', 'text-sm text-dim', 'Enter this code on your other device to keep puzzles and opening progress in step.'),
+      el('p', 'select-all break-all rounded-lg bg-raised px-3 py-2 font-mono text-sm', code),
+      el('p', 'text-sm text-dim', 'Anyone with the code can read and change this data, so keep it to yourself.'),
+      button('Stop syncing on this device', () => ctrl.stopSyncCode(), 'plain'),
+    ]
+  return [
+    el('p', 'text-sm text-dim', 'Without a Lichess account, a sync code keeps your puzzles and opening progress in step across devices.'),
+    el('div', 'grid', [button('Get a sync code', () => ctrl.startSyncCode(), 'plain')]),
+    syncCodeField(ctrl),
+  ]
+}
 
 export function settingsView(ctrl: Ctrl): VNode {
   const p = ctrl.profile
@@ -112,10 +130,11 @@ export function settingsView(ctrl: Ctrl): VNode {
         )
       : card([label('Lichess'), el('p', 'text-sm text-dim', 'Sign in to add your Lichess games.'), button('Sign in with Lichess', () => ctrl.signIn())], 'space-y-3'),
     card([label('Chess.com'), chesscomField(ctrl, p?.chesscomUser ? 'Save' : 'Add')], 'space-y-3'),
+    ctrl.auth ? null : card([label('Your devices'), ...devices(ctrl)], 'space-y-3'),
     card(
       [
         label('Your data'),
-        el('p', 'text-sm text-dim', "Your games, puzzles and progress are stored in this browser, and on lidrill's server under your Lichess account when you are signed in, which is how a second device catches up. Two things are sent either way, without your name: \"Why?\" sends the puzzle's position and Stockfish's lines through the server to an AI model (via OpenRouter), and an analyzed game's moves and evals are kept there so the same game is not analyzed twice."),
+        el('p', 'text-sm text-dim', "Your games, puzzles and progress are stored in this browser. Signed in with Lichess, or with a sync code, they are also kept on lidrill's server, which is how a second device catches up. Two things are sent either way, without your name: \"Why?\" sends the puzzle's position and Stockfish's lines through the server to an AI model (via OpenRouter), and an analyzed game's moves and evals are kept there so the same game is not analyzed twice."),
         el('div', 'flex flex-wrap gap-2', [
           button('Export', () => ctrl.exportFile(), 'plain'),
           el('label', `${btnClass('plain')} cursor-pointer`, [
