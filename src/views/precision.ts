@@ -12,8 +12,8 @@ import { button, card, label, pct, segmented } from './ui'
 // The human precision pass: the reviewer reads each claim from
 // the gate corpus over its position and marks it right, wrong, or "cannot
 // determine". Progress lives in localStorage; the summary and the export
-// are what the release gate ingests. Entry is a quiet link in Settings -
-// this is a release-gate tool, not a player tab.
+// are what the release gate ingests. It is opened by its address,
+// #/precision: a release-gate tool, with no link from the player's screens.
 
 const boards = new WeakMap<Element, Api>()
 

@@ -10,6 +10,8 @@ import { setSound, soundOn } from '../sound'
 import { btnClass, button, card, HANG_RULE, label, segmented } from './ui'
 import { chesscomField } from './welcome'
 
+const LEVEL_NAME = { beginner: 'Beginner', club: 'Club', advanced: 'Advanced' } as const
+
 // What each Lichess permission is used for
 const SCOPE_WHY: Record<string, string> = {
   'puzzle:read': 'Read your puzzle dashboard and history, to find weak themes and puzzles you missed.',
@@ -42,7 +44,7 @@ export function settingsView(ctrl: Ctrl): VNode {
         label('What counts'),
         el('p', 'text-sm text-dim', 'A streak game is one with nothing given away. At each level:'),
         ...(['beginner', 'club', 'advanced'] as const).map(b =>
-          el('p', 'text-sm', { class: { 'text-dim': p?.band !== b } }, [p?.band === b ? el('strong', '', 'You: ') : '', HANG_RULE[b]]),
+          el('p', 'text-sm', { class: { 'text-dim': p?.band !== b } }, [el('strong', '', `${LEVEL_NAME[b]}${p?.band === b ? ', your level' : ''}: `), HANG_RULE[b]]),
         ),
       ],
       'space-y-2',
@@ -74,6 +76,8 @@ export function settingsView(ctrl: Ctrl): VNode {
           ),
         ),
         ctrl.auth ? button('Use my Lichess look', () => ctrl.useLichessLook(), 'plain') : null,
+        el('p', 'text-sm text-dim', 'Sounds'),
+        segmented('Sounds', [['on', 'On'], ['off', 'Off']], soundOn() ? 'on' : 'off', v => { setSound(v === 'on'); ctrl.redraw() }),
       ],
       'space-y-3',
     ),
@@ -111,7 +115,7 @@ export function settingsView(ctrl: Ctrl): VNode {
     card(
       [
         label('Your data'),
-        el('p', 'text-sm text-dim', '"Why?" after a puzzle sends that position and Stockfish\'s lines, nothing else, through lidrill\'s server to an AI model (via OpenRouter).'),
+        el('p', 'text-sm text-dim', "Your games, puzzles and progress are stored in this browser, and on lidrill's server under your Lichess account when you are signed in, which is how a second device catches up. Two things are sent either way, without your name: \"Why?\" sends the puzzle's position and Stockfish's lines through the server to an AI model (via OpenRouter), and an analyzed game's moves and evals are kept there so the same game is not analyzed twice."),
         el('div', 'flex flex-wrap gap-2', [
           button('Export', () => ctrl.exportFile(), 'plain'),
           el('label', `${btnClass('plain')} cursor-pointer`, [
@@ -127,13 +131,6 @@ export function settingsView(ctrl: Ctrl): VNode {
       'space-y-3',
     ),
     el('p', 'px-1 text-xs text-dim', 'lidrill is open source under the AGPL. Stockfish 19 runs in your browser.'),
-    el(
-      'button',
-      btnClass('quiet', 'sm'),
-      { attrs: { type: 'button', 'aria-pressed': soundOn() }, on: { click: () => { setSound(!soundOn()); ctrl.redraw() } } },
-      ['Sounds', el('span', { class: { 'text-accent': soundOn() } }, soundOn() ? 'On' : 'Off')],
-    ),
-    el('p', 'px-1 text-xs', [el('a', 'text-dim underline decoration-dotted underline-offset-2', { attrs: { href: '#/precision' } }, 'Review explanation claims (release gate)')]),
   ])
 }
 
