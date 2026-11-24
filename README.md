@@ -29,15 +29,15 @@ You need [Bun](https://bun.sh).
 
 ```sh
 bun install
+cp .dev.vars.example .dev.vars
 bun run dev
-bun run test
 ```
 
-`bun run dev` starts the app without explanations, because those need the Worker. To try them locally, run `bun run build` and then `wrangler dev`, with your OpenRouter key in `.dev.vars` (there is a `.dev.vars.example` to copy).
+`bun run dev` serves the app with hot reload at `http://localhost:5173` and starts the Worker beside it, with `/api` proxied to the Worker. When both are up it prints whether the Worker is running, whether the Python service answers, and whether an OpenRouter key is set. Explanations need your own OpenRouter key in `.dev.vars`, and without a `.dev.vars` only the app starts. CI runs `bun run lint`, `bun run build` (which typechecks first), `bun run test` and `bun run gate:offline`. `ARCHITECTURE.md` says what runs in the browser, in the Worker and in the Python service.
 
-Maia's level can be any rating from 600 to 2300. [LevelRL](https://github.com/Honkware/levelrl) measured the settings that make Maia-3 play at about every 100 points in that range, and a level in between plays each move with one of the two nearest measured settings, so the number is an approximate Lichess blitz rating. Its think times come from a fit to the clocks of about 7,000 Lichess games (`server/think_fit.md`). The model runs in the sync service. To play locally, install `server/requirements.txt` and `server/requirements-maia.txt`, start `server/app.py` as its README shows, and add `BACKEND_URL` and `LIDRILL_KEY` to `.dev.vars`. The weights (about 300 MB) are downloaded from Hugging Face the first time Maia moves.
+Maia's level can be any rating from 600 to 2300. [LevelRL](https://github.com/Honkware/levelrl) measured the settings that make Maia-3 play at about every 100 points in that range, and a level in between plays each move with one of the two nearest measured settings, so the number is an approximate Lichess blitz rating. Its think times come from a fit to the clocks of about 7,000 Lichess games (`server/think_fit.md`). The model runs in the Python service, which also keeps the synced data. To play locally, install `server/requirements.txt` and `server/requirements-maia.txt` and start `server/app.py` as `server/README.md` shows, with the `LIDRILL_KEY` that is in `.dev.vars`. The weights (about 300 MB) are downloaded from Hugging Face the first time Maia moves.
 
-If you want to host your own copy, change the route in `wrangler.jsonc` and the allowed origins in `worker/index.ts`, create a `PACKETS` KV namespace, and set the `OPENROUTER_API_KEY` and `POW_SECRET` secrets. The sync service lives in `server/` and is described in `docs/server-tier.md`.
+If you want to host your own copy, change the route in `wrangler.jsonc` and the allowed origins in `worker/index.ts`, create a `PACKETS` KV namespace, and set the `OPENROUTER_API_KEY` and `POW_SECRET` secrets. Sync and Maia also need the Python service in `server/` and the `BACKEND_URL` and `LIDRILL_KEY` secrets; sync is described in `docs/server-tier.md`.
 
 ## Licence and credits
 
