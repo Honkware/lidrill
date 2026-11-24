@@ -48,7 +48,7 @@ const PACKET_TTL = 30 * 86400
 
 const UCI = /^[a-h][1-8][a-h][1-8][qrbn]?$/
 
-const ORIGINS = [/^https:\/\/(www\.)?lidrill\.org$/, /^https:\/\/lidrill\.lidrill\.workers\.dev$/, /^http:\/\/localhost:\d+$/]
+const ORIGINS = [/^https:\/\/(www\.)?lidrill\.org$/, /^https:\/\/lidrill\.lidrill\.workers\.dev$/, /^http:\/\/(localhost|127\.0\.0\.1):\d+$/]
 
 const json = (body: unknown, status = 200, extra: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...extra } })
@@ -248,8 +248,8 @@ async function explain(request: Request, env: Env, ctx: { waitUntil(p: Promise<u
   return narrateAndCache(pkt, solved, cacheKey, ctx, env)
 }
 
-// --- Server tier: /api/sync/* is the only
-// door to the loopback backend. The client sends its Lichess token; we
+// --- Server tier: /api/sync/* and /api/maia/* are the two doors to the
+// loopback backend. For sync the client sends its Lichess token; we
 // validate it with Lichess (cached 15 min per token), and only the account
 // username goes into the backend URL - the token never reaches the VM.
 
@@ -285,11 +285,13 @@ async function syncProxy(request: Request, url: URL, env: Env, ctx: { waitUntil(
   const path = url.pathname.slice('/api/sync'.length)
   const upstream = `${env.BACKEND_URL}/u/${encodeURIComponent(account.username)}${path}${url.search}`
   const method = request.method
+  // fetch throws when the backend can't be reached at all
   const res = await fetch(upstream, {
     method,
     headers: { 'x-lidrill-key': env.LIDRILL_KEY, ...(method === 'POST' || method === 'PUT' || method === 'DELETE' ? { 'content-type': request.headers.get('content-type') ?? 'application/json' } : {}) },
     ...(method === 'POST' || method === 'PUT' ? { body: await request.text() } : {}),
-  })
+  }).catch(() => undefined)
+  if (!res) return json({ error: 'Sync isn’t available right now.' }, 502)
   return new Response(res.body, { status: res.status, headers: { 'content-type': 'application/json' } })
 }
 
@@ -305,9 +307,9 @@ async function maia(request: Request, env: Env, route: 'move' | 'draw' | 'policy
   if (!(await limit.limit({ key: ip })).success) return json({ error: 'Too many moves at once. Try again in a minute.' }, 429)
   const body = await request.text()
   if (body.length > 10_000) return json({ error: 'Too large' }, 413)
-  const res = await fetch(`${env.BACKEND_URL}/maia/${route}`, { method: 'POST', headers: { 'x-lidrill-key': env.LIDRILL_KEY, 'content-type': 'application/json' }, body })
-  if (res.status === 400) return json({ error: refused }, 400)
-  if (!res.ok) return json({ error: 'Maia isn’t available right now.' }, 502)
+  const res = await fetch(`${env.BACKEND_URL}/maia/${route}`, { method: 'POST', headers: { 'x-lidrill-key': env.LIDRILL_KEY, 'content-type': 'application/json' }, body }).catch(() => undefined)
+  if (res?.status === 400) return json({ error: refused }, 400)
+  if (!res?.ok) return json({ error: 'Maia isn’t available right now.' }, 502)
   return json(await res.json())
 }
 

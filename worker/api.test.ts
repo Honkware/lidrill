@@ -400,6 +400,17 @@ describe('/api/sync/*', () => {
     expect(await res.json()).toEqual({ error: 'sign-in-expired' })
     expect(backendCalls).toHaveLength(0)
   })
+
+  it('answers 502 with a sync error when the backend cannot be reached', async () => {
+    const stubbed = fetch
+    vi.stubGlobal('fetch', async (input: unknown, init?: RequestInit) => {
+      if (String(input).startsWith('https://backend.example/')) throw new TypeError('fetch failed')
+      return stubbed(input as string, init)
+    })
+    const res = await syncRequest('/api/sync/state')
+    expect(res.status).toBe(502)
+    expect(await res.json()).toEqual({ error: 'Sync isn’t available right now.' })
+  })
 })
 
 describe('POST /api/maia/move', () => {
@@ -434,6 +445,21 @@ describe('POST /api/maia/move', () => {
     expect((await post('/api/maia/move', game, { proof: null })).status).toBe(502)
     backend(400, { detail: 'level 1550 was not measured' })
     expect((await post('/api/maia/move', game, { proof: null })).status).toBe(400)
+  })
+
+  it('answers 502 with the same message when the backend cannot be reached', async () => {
+    vi.stubGlobal('fetch', async () => {
+      throw new TypeError('fetch failed')
+    })
+    const res = await post('/api/maia/move', game, { proof: null })
+    expect(res.status).toBe(502)
+    expect(await res.json()).toEqual({ error: 'Maia isn’t available right now.' })
+  })
+
+  it('takes a page served from 127.0.0.1 as it does one from localhost', async () => {
+    backend(200, { move: 'e7e5' })
+    expect((await post('/api/maia/move', game, { origin: 'http://127.0.0.1:5173', proof: null })).status).toBe(200)
+    expect((await post('/api/maia/move', game, { origin: 'http://127.0.0.1.evil.example:5173', proof: null })).status).toBe(403)
   })
 })
 
