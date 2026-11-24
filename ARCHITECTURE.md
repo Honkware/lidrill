@@ -2,6 +2,36 @@
 
 lidrill is a static site that does its work in the browser, with two small services behind it. A Cloudflare Worker (`worker/index.ts`) answers `/api/*` on the same origin as the site, and a Python service (`server/app.py`) on a VM keeps the synced data and runs Maia-3. The browser only ever talks to the Worker. The Worker is the only client of the Python service.
 
+```mermaid
+flowchart LR
+  API["Lichess and Chess.com APIs"] -->|games| APP
+  subgraph Browser
+    APP["App (src/)"]
+    SF["Stockfish 19, WebAssembly: analysis and certification"]
+    IDB[("IndexedDB: games, puzzles, FSRS cards")]
+    APP --> SF
+    APP --> IDB
+  end
+  APP -->|"/api/*"| GATE
+  subgraph Worker["Cloudflare Worker (worker/index.ts)"]
+    GATE["Origin check, proof of work, rate limits"]
+    EXP["Fact packet, model draft, rule-based checker, template floor"]
+    GATE --> EXP
+  end
+  EXP --> KV[("KV and Cache API: packets, finished explanations")]
+  EXP -->|"draft, claim check"| OR["OpenRouter"]
+  GATE -->|"sync, Maia"| PY
+  subgraph VM["Python service on a VM (server/)"]
+    PY["FastAPI app"]
+    MAIA["Maia-3 on CPU: calibrated level, fitted think time and resignation"]
+    DB[("SQLite, one file per account")]
+    SFN["Analysis daemon: native Stockfish"]
+    PY --> MAIA
+    PY --> DB
+    SFN --> DB
+  end
+```
+
 ## Browser
 
 The app in `src/` fetches games from Lichess and Chess.com, analyses them with Stockfish 19 (a WebAssembly build in a web worker, copied to `public/engine/` by `scripts/copy-engine.mjs`), builds the puzzles and schedules them with FSRS (`ts-fsrs`). Everything is stored in IndexedDB through Dexie (`src/db.ts`), so the app works offline and without an account. The Lichess token stays in the browser's `auth` table.
@@ -60,3 +90,5 @@ A Maia move in production goes from the browser to `https://lidrill.org/api/maia
 | `STOCKFISH`, `ANALYSIS_DEPTH` | Analysis daemon | The engine binary and the search depth, 14 unless set |
 
 Locally the Worker reads its four from `.dev.vars`. On the VM the Python side reads `/etc/lidrill/server.env` through the systemd units in `server/systemd/`. The rate limits and the KV namespace are bindings in `wrangler.jsonc`.
+
+To host your own copy, change the route in `wrangler.jsonc` and the allowed origins in `worker/index.ts`, create a `PACKETS` KV namespace, and set the four Worker secrets above.
