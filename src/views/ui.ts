@@ -105,11 +105,9 @@ export function dateLabel(ms: number): string {
 
 // 24px line icons, drawn for lidrill
 const ICONS: Record<string, string> = {
-  today: 'M4 12l4 4 12-12',
   train: 'M6 4v16M18 4v16M6 12h12M3 8v8M21 8v8',
-  games: 'M4 6h16M4 12h16M4 18h10',
-  play: 'M7 4.5v15l12-7.5z',
-  settings: 'M12 15a3 3 0 100-6 3 3 0 000 6zM4 12h2m12 0h2M12 4v2m0 12v2M6.3 6.3l1.4 1.4m8.6 8.6l1.4 1.4m0-11.4l-1.4 1.4m-8.6 8.6l-1.4 1.4',
+  openings: 'M12 7v13M12 7a3 3 0 00-3-3H4v13h5a3 3 0 013 3M12 7a3 3 0 013-3h5v13h-5a3 3 0 00-3 3',
+  more: 'M5 12h.01M12 12h.01M19 12h.01',
   back: 'M15 5l-7 7 7 7',
   first: 'M17 6l-6 6 6 6M7 6v12',
   prev: 'M15 6l-6 6 6 6',

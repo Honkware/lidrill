@@ -11,7 +11,7 @@ import { countdownBar } from './time'
 export function drillView(ctrl: Ctrl): VNode {
   const timed = ctrl.timed
   const title = timed ? 'Move under a clock' : "Today's puzzles"
-  const back = () => ctrl.go(timed ? timed.from : 'today')
+  const back = () => (timed ? ctrl.go(timed.from) : ctrl.go('train', 'day'))
   const last = ctrl.drills.at(-1)
   // The summary keeps the last puzzle's board, under its own key since that
   // puzzle's board was destroyed when it ended

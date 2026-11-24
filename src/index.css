@@ -85,6 +85,8 @@ cg-board square.hint { box-shadow: inset 0 0 0 4px var(--color-warn); }
 .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
 .pb-tabbar { padding-bottom: calc(3.5rem + env(safe-area-inset-bottom)); }
 @media (min-width: 640px) { .pb-tabbar { padding-bottom: 0; } }
+/* The More sheet sits on the tab bar */
+.bottom-tabbar { bottom: calc(3.5rem + env(safe-area-inset-bottom)); }
 .bottom-notice { bottom: calc(1rem + env(safe-area-inset-bottom)); }
 .bottom-notice-tabs { bottom: calc(4.5rem + env(safe-area-inset-bottom)); }
 @media (min-width: 640px) { .bottom-notice-tabs { bottom: 1.5rem; } }

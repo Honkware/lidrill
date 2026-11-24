@@ -4,8 +4,9 @@ import { el } from '../el'
 import type { Next } from '../next'
 import { btnClass, button, card, errorLine, icon, listRow, loadingBlock, rowList, weekBars } from './ui'
 
-// The one next thing to do as the big button, the day's parts under it,
-// the streak, and a row each for the places that always have something
+// Train when no puzzle is due, and the day's overview at #/train/day: the
+// one next thing to do as the big button, the day's parts under it, the
+// streak, and a row each for the places that always have something
 export function todayView(ctrl: Ctrl): VNode {
   const d = ctrl.due
   const n = ctrl.nextUp

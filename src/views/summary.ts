@@ -46,12 +46,12 @@ export function summary(ctrl: Ctrl, s: Summary): VNode {
   ])
 }
 
-// Next from nextAction, and Today. The game against Maia keeps its own panel
+// Next from nextAction, and the day's overview on Train. The game against Maia keeps its own panel
 // and puts these under it, plain while solving its puzzles comes first.
 export function nextButtons(ctrl: Ctrl, primary = true): VNode {
   const n = ctrl.nextUp
   return el('div', 'grid gap-2 sm:grid-cols-[1fr_auto]', [
     button(n ? `Next: ${n.label}${n.count ? ` ${n.count}` : ''}` : 'Next', () => void ctrl.goNext(), primary ? 'primary' : 'plain', !n),
-    button('Today', () => ctrl.go('today'), 'quiet'),
+    button('Today', () => ctrl.go('train', 'day'), 'quiet'),
   ])
 }

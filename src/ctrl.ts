@@ -59,7 +59,7 @@ export interface TodayData {
   puzzlePerf?: { now: number; delta?: number }
 }
 
-// What is due now, for Today, Train and the Next button after a session
+// What is due now, for Train, the More menu and the Next button after a session
 export interface DueNow extends Due {
   puzzlesDone: number
   openingsDone: number
@@ -76,7 +76,7 @@ export interface ReviewRow {
 }
 
 export class Ctrl {
-  screen: Screen = 'today'
+  screen: Screen = 'train'
   auth?: Auth
   profile?: Profile
   loaded = false
@@ -86,6 +86,7 @@ export class Ctrl {
   syncing = false
   error?: string
   notice?: { text: string; href?: string }
+  moreOpen = false
   today?: TodayData
   due?: DueNow
   nextUp?: Next
@@ -197,6 +198,7 @@ export class Ctrl {
     const arg = decodeURIComponent(rest.join('/'))
     const moved = movedTo(name)
     if (moved) return location.replace(`#/${moved}`)
+    this.moreOpen = false
     this.teardown()
     if (name !== 'drill') this.timed = undefined
     if (this.signedOut) this.screen = 'welcome'
@@ -208,6 +210,9 @@ export class Ctrl {
     else if (name === 'opening') await this.openOpenings(arg || undefined)
     else if (name === 'learn' && arg) await this.openLearn(arg)
     else if (name === 'spar' && arg) await this.openSpar(arg)
+    // Train opens on the board while puzzles are due. Its overview stays
+    // open at #/train/day, and after a run that has just ended.
+    else if (pageOf(name) === 'train' && arg !== 'day' && !this.sessionDone && (await dueToday()).remaining) return location.replace('#/drill')
     else this.screen = pageOf(name)
     if (this.screen === 'precision' && this.precisionMarks === undefined) this.precisionMarks = loadMarks()
     this.redraw()
@@ -223,7 +228,7 @@ export class Ctrl {
   }
 
   // Back within the app, or to `fallback` when the screen was opened directly
-  back(fallback: Screen | Moved = 'today') {
+  back(fallback: Screen | Moved = 'train') {
     if (this.depth > 0) {
       this.depth--
       history.back()
@@ -282,14 +287,13 @@ export class Ctrl {
     const version = [games, analyzed, puzzles, reviews, journal, practice, repertoire, openings, this.profile?.band, this.profile?.repertoire?.join(), this.profile?.repertoireStudy?.id, this.openingsTouched, new Date().toDateString()].join('|')
     const key = `${this.screen}:${version}`
     if (key !== this.loadedKey) {
-      const all = ['today', 'games', 'settings', 'train', 'openings', 'play'].includes(this.screen) ? await db.games.toArray() : []
+      const all = ['games', 'settings', 'train', 'openings', 'play'].includes(this.screen) ? await db.games.toArray() : []
       const done = all.filter(g => g.analyzedAt !== undefined)
-      if (this.screen === 'today') {
-        await this.loadToday()
-        this.maiaStart = startEstimate(this.profile?.ratings, all)
-      }
+      // Settings shows the puzzle performance from the same read
+      if (this.screen === 'train' || this.screen === 'settings') await this.loadToday()
+      if (this.screen === 'train') this.maiaStart = startEstimate(this.profile?.ratings, all)
       if (this.screen === 'games') await this.loadGames(all, done)
-      if (this.screen === 'games' || this.screen === 'train') this.timeProfiles = timeProfiles(all)
+      if (this.screen === 'games') this.timeProfiles = timeProfiles(all)
       if (this.screen === 'play') {
         this.playStarts = ownStarts(all)
         this.maiaGames = all.filter(g => g.site === 'maia')
@@ -602,7 +606,7 @@ export class Ctrl {
     await signOut()
     this.auth = undefined
     this.status = ''
-    this.go(this.profile?.chesscomUser ? 'today' : 'welcome')
+    this.go(this.profile?.chesscomUser ? 'train' : 'welcome')
   }
 
   // Chess.com is optional and username-only: its API has no sign-in
@@ -694,7 +698,7 @@ export class Ctrl {
     this.queueLeft = this.queue.length
     const puzzle = id ? await db.puzzles.get(id) : undefined
     if (!puzzle) {
-      if (!this.session.length) return this.go('today')
+      if (!this.session.length) return this.go('train', 'day')
       sound.notify()
       this.sessionDone = true
       return this.loadDue()
@@ -718,7 +722,7 @@ export class Ctrl {
   }
 
   // The player's own puzzles against their think time, from the time
-  // profile on Games or the Clock tile on Train
+  // profile on Games or Clock in the More menu
   async startTimed(from: Screen) {
     const games = await db.games.toArray()
     const profiles = timeProfiles(games)
@@ -766,6 +770,7 @@ export class Ctrl {
   // move on
   private onKey(e: KeyboardEvent) {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.ctrlKey || e.metaKey || e.altKey) return
+    if (this.moreOpen && e.key === 'Escape') return this.closeMore()
     const d = this.screen === 'drill' ? this.displayDrill : this.screen === 'replay' ? this.replay?.drill : undefined
     if (!d) return
     const key = e.key
@@ -1108,7 +1113,24 @@ export class Ctrl {
     this.profile = undefined
     applyLook()
     this.notice = { text: 'Deleted.' }
-    this.go(this.auth ? 'today' : 'welcome')
+    this.go(this.auth ? 'train' : 'welcome')
+  }
+
+  // The menu's counts are read when it opens, since any screen can open it
+  async toggleMore() {
+    this.moreOpen = !this.moreOpen
+    this.redraw()
+    if (!this.moreOpen) return
+    const all = await db.games.toArray()
+    this.timeProfiles = timeProfiles(all)
+    this.maiaStart = startEstimate(this.profile?.ratings, all)
+    await this.loadDue()
+    this.redraw()
+  }
+
+  closeMore() {
+    this.moreOpen = false
+    this.redraw()
   }
 
   dismissNotice() {
