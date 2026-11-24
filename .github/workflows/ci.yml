@@ -19,9 +19,11 @@ jobs:
       - run: bun run test
       - run: bun run gate:offline
 
-  # The site and the Worker go out once main passes. The Maia server on the
-  # VM is still updated by hand (git pull and a restart), since a restart
-  # drops any game in progress.
+  # The site and the Worker go out once main passes. The Maia server is
+  # updated by hand (git pull and a restart): it runs on a separate VM
+  # reached over SSH, and a restart interrupts the requests in flight for a
+  # few seconds. It keeps no game state, so a game carries on when the
+  # browser asks again.
   deploy:
     needs: check
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
