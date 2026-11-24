@@ -1,7 +1,7 @@
 import { bookFor } from './analysis/book'
 import { Engine, workerEngine } from './analysis/engine'
 import { eachWithEngine, runQueue, type Progress } from './analysis/queue'
-import { db, type Game, type Profile, type Puzzle } from './db'
+import { db, type Game, type Profile } from './db'
 import { fetchAccount } from './lichess/api'
 import { failedPuzzles, fetchActivity, fetchDashboard, fetchThemePuzzles, snapshot, weakThemes } from './lichess/puzzles'
 import { journalFor, worst5Cutoff } from './metrics'
