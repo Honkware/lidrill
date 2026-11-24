@@ -1,12 +1,13 @@
 import { bookFor } from './analysis/book'
 import { Engine, workerEngine } from './analysis/engine'
 import { eachWithEngine, runQueue, type Progress } from './analysis/queue'
-import { db, type Game, type Profile } from './db'
+import { db, type Game, type Profile, type Puzzle } from './db'
 import { fetchAccount } from './lichess/api'
 import { failedPuzzles, fetchActivity, fetchDashboard, fetchThemePuzzles, snapshot, weakThemes } from './lichess/puzzles'
 import { journalFor, worst5Cutoff } from './metrics'
 import { BAND_DEFAULTS, computeBand } from './profile'
 import { findPractice } from './practice'
+import { maiaFindable } from './puzzles/findable'
 import { GENERATOR_VERSION, generatePuzzles, SOLUTION_PLIES_CAP } from './puzzles/generate'
 import { calibrate } from './report'
 import { SignInExpired } from './sync/lichess'
@@ -147,7 +148,7 @@ async function addPractice(games: Game[]): Promise<void> {
   await db.practice.bulkAdd(found.filter(p => !known.has(p.id)))
 }
 
-const genOptsFor = (profile: Profile) => ({ swingThresholdCp: profile.swingThresholdCp, marginCp: profile.marginCp, depth: 16, maxSolutionMoves: 3, band: profile.band })
+const genOptsFor = (profile: Profile) => ({ swingThresholdCp: profile.swingThresholdCp, marginCp: profile.marginCp, depth: 16, maxSolutionMoves: 3, band: profile.band, findable: maiaFindable() })
 
 // Analyzes every game that has no evals yet and makes its puzzles, journal
 // entry and drill positions. Run by a sync after the fetch, and on its own
@@ -159,7 +160,7 @@ export async function analyzePending(profile: Profile, token: string | undefined
   let sinceCutoff = 0
   const genOpts = genOptsFor(profile)
   await runQueue(getPool(), { depth: 14, bookPlies: bookFor(token) }, onProgress, signal, async (game, eng) => {
-    await savePuzzles(await generatePuzzles(game, eng, genOpts), true)
+    await savePuzzles(await generatePuzzles(game, eng, genOpts), false)
     await db.games.update(game.id, { puzzlesVersion: GENERATOR_VERSION })
     if (profile.band === 'advanced' && ++sinceCutoff >= 10) {
       cutoff = worst5Cutoff(await db.games.filter(g => g.analyzedAt !== undefined).toArray())
