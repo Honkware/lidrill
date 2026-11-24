@@ -10,12 +10,19 @@
 // The injected errors are edits to real floor text on real positions, not
 // model output, so the catch rates say what the rules can see, not how often
 // a model makes each mistake.
+//
+// A second set of edits is made of claims the validator accepts by design
+// and the claim check exists to cut. For those it records whether the trace
+// rule (src/server/trace.ts) would still send the draft to the second model:
+// one that the validator accepts and the trace rule has nothing to say about
+// would be served after a single model call.
 import { readFileSync, writeFileSync } from 'node:fs'
 import type { Band } from '../src/db'
 import { templateFloor } from '../src/server/floor'
 import { buildPacket, packetProblems, validReport, type EngineReport, type Packet } from '../src/server/packet'
 import { renderRef, type Slot } from '../src/server/render'
 import { validateSlots } from '../src/server/slots'
+import { untraced } from '../src/server/trace'
 
 const REPORTS = 'src/server/fixtures/gate-reports.json'
 const BANDS: Band[] = ['beginner', 'club', 'advanced']
@@ -87,6 +94,15 @@ const INJECTIONS: Injection[] = [
   },
 ]
 
+// Unsupported claims in words the validator has no rule for
+const UNTRACED: { name: string; apply(why: Slot, p: Packet): Slot | undefined }[] = [
+  { name: 'sentence with no fact id', apply: s => add(s, 'The other pieces were not ready.') },
+  { name: 'description of a piece', apply: s => (s.text.includes('{ref:best}') ? add(s, 'After {ref:best} their king was weak.') : undefined) },
+  { name: 'count the facts do not hold', apply: s => (s.text.includes('{ref:best}') ? add(s, 'You had two ways after {ref:best}.') : undefined) },
+  { name: 'win claimed on the answer alone', apply: (s, p) => (s.text.includes('{ref:best}') && !/\bwin/.test(renderRef('best', p) ?? '') ? add(s, 'In the end {ref:best} wins.') : undefined) },
+  { name: 'mate claimed on a move that does not mate', apply: (s, p) => (s.text.includes('{ref:best}') && hasMate(p) && !p.best.pv[0].mate ? add(s, 'After {ref:best} it is mate.') : undefined) },
+]
+
 const reports = (JSON.parse(readFileSync(REPORTS, 'utf8')) as unknown[]).map(r => validReport(r))
 if (reports.some(r => !r)) throw new Error(`${REPORTS}: a report failed validReport`)
 
@@ -98,6 +114,7 @@ let floorOk = 0
 let floorOkStrict = 0
 const floorViolations: Record<string, number> = {}
 const inj = Object.fromEntries(INJECTIONS.map(i => [i.name, { expect: i.expect, applicable: 0, rejected: 0, intended: 0, classes: {} as Record<string, number> }]))
+const unt = Object.fromEntries(UNTRACED.map(i => [i.name, { applicable: 0, rejected: 0, secondPass: 0, onePass: 0 }]))
 const bump = (o: Record<string, number>, k: string) => (o[k] = (o[k] ?? 0) + 1)
 
 for (const report of reports as EngineReport[])
@@ -138,6 +155,21 @@ for (const report of reports as EngineReport[])
       if (cls.has(i.expect)) o.intended++
       for (const c of cls) bump(o.classes, c)
     }
+
+    // Only what the edit added counts here too: some floors already hold a
+    // sentence the trace rule would hand to the second model
+    const loose = new Set(untraced(floor, p))
+    for (const i of UNTRACED) {
+      const why = i.apply(floor[at], p)
+      if (!why) continue
+      const slots = floor.map((s, k) => (k === at ? why : s))
+      const before = new Set(fv)
+      const o = unt[i.name]
+      o.applicable++
+      if (validateSlots({ slots }, p).violations.some(v => !before.has(v))) o.rejected++
+      else if (untraced(slots, p).some(u => !loose.has(u))) o.secondPass++
+      else o.onePass++
+    }
   }
 
 const pct = (a: number, b: number) => (b ? `${((100 * a) / b).toFixed(0)}%` : 'n/a')
@@ -157,10 +189,14 @@ const lines = [
 ]
 const total = Object.values(inj).reduce((a, o) => [a[0] + o.rejected, a[1] + o.intended, a[2] + o.applicable], [0, 0, 0])
 lines.push(`  all: ${total[0]} / ${total[1]} / ${total[2]}`)
+lines.push('claims left to the claim check (rejected by the validator / sent to the second model / served on one call / applicable):')
+for (const i of UNTRACED) lines.push(`  ${i.name}: ${unt[i.name].rejected} / ${unt[i.name].secondPass} / ${unt[i.name].onePass} / ${unt[i.name].applicable}`)
+const served = Object.values(unt).reduce((a, o) => a + o.onePass, 0)
 console.log(lines.join('\n'))
 
 const out = process.argv.indexOf('--json')
-if (out > 0) writeFileSync(process.argv[out + 1], `${JSON.stringify({ packets, narrated, fallback, refusals, floorOk, floorOkStrict, floorViolations, injections: inj }, null, 2)}\n`)
+if (out > 0) writeFileSync(process.argv[out + 1], `${JSON.stringify({ packets, narrated, fallback, refusals, floorOk, floorOkStrict, floorViolations, injections: inj, untraced: unt }, null, 2)}\n`)
 
-// Exit non-zero if any injected error slipped through, so CI fails on a regression
-if (total[0] < total[2]) process.exit(1)
+// Exit non-zero if any injected error slipped through, or an unsupported
+// claim would be served without the claim check, so CI fails on a regression
+if (total[0] < total[2] || served) process.exit(1)
