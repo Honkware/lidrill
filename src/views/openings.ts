@@ -33,6 +33,8 @@ export function openingsPage(ctrl: Ctrl): VNode {
 function body(ctrl: Ctrl): (VNode | null)[] {
   const rows = ctrl.openingStats
   const picking = ctrl.openingPicking || !ctrl.profile?.openings?.length
+  // Nothing chosen yet: the chooser is the screen
+  if (!ctrl.profile?.openings?.length) return [el('p', 'text-sm text-dim', 'Choose an opening to learn.'), card(picker(ctrl), 'space-y-4')]
   return [
     nextStep(ctrl),
     rows.length ? el('section', 'rounded-xl bg-surface', [rowList(rows.map(r => openingRow(ctrl, r)))]) : null,
