@@ -26,7 +26,8 @@
     { "name": "POLICY_LIMIT", "namespace_id": "1005", "simple": { "limit": 300, "period": 60 } }
   ],
   // Packet store: key = packetHash, value = packet
-  // JSON, TTL 30 days. Real namespace ids (created 2026-10-06 with
+  // JSON, TTL 30 days. Finished explanations live beside the packets under
+  // keys that start with why/ (src/server/explainCache.ts), same TTL. Real namespace ids (created 2026-10-06 with
   // `wrangler kv namespace create PACKETS` / `--preview`); wrangler dev
   // emulates KV so local runs ignore them.
   "kv_namespaces": [

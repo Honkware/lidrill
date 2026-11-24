@@ -9,10 +9,10 @@ After a puzzle you can tap "Why?" to get an explanation in plain language. I did
 1. Stockfish searches the position in your browser.
 2. The Worker turns the engine's lines into a list of facts, such as the evals, the threat, captures, mates and any tactical patterns it detected.
 3. The model writes the explanation, but it can only point at those facts by id.
-4. A rule-based checker rejects a draft that mentions a move, pattern or mate that isn't in the facts, and a second model drops any claim with no fact behind it.
+4. A rule-based checker rejects a draft that mentions a move, pattern or mate that isn't in the facts. A draft whose every word traces to a fact it cites is shown as written, and any other goes to a second model that drops each claim with no fact behind it.
 5. If the draft still fails after one repair attempt, you get a simpler explanation built directly from the facts.
 
-The moves in the final text are filled in from the engine's lines by the renderer. An explanation costs between 1 and 2 cents in model calls.
+The moves in the final text are filled in from the engine's lines by the renderer. An explanation that needs both models costs between 1 and 2 cents in model calls, and one that was already written for the same position is served from a cache. [docs/explanations.md](docs/explanations.md) follows a request step by step and lists the rules that decide which mistakes become puzzles.
 
 ## What else it does
 
