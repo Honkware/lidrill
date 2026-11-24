@@ -52,7 +52,7 @@ function syncCard(ctrl: Ctrl): VNode {
       // The first puzzles are ready long before the last game is analyzed
       ctrl.syncing && puzzles ? el('div', 'grid', [button(`Train on ${puzzles === 1 ? 'the first puzzle' : `the first ${puzzles} puzzles`}`, () => ctrl.go('train'))]) : null,
       el('div', 'space-y-3 border-t border-raised pt-3', [
-        ctrl.auth ? el('p', 'text-sm', [el('span', 'text-dim', 'Lichess '), ctrl.auth.username]) : el('div', 'grid sm:flex', [button('Sign in with Lichess', () => ctrl.signIn())]),
+        ctrl.auth ? el('p', 'text-sm', [el('span', 'text-dim', 'Lichess '), ctrl.auth.username]) : el('div', 'grid sm:flex', [button('Sign in with Lichess', () => ctrl.signIn(), ctrl.profile?.chesscomUser ? 'plain' : 'primary')]),
         chesscomField(ctrl, ctrl.profile?.chesscomUser ? 'Save' : 'Add'),
       ]),
     ],

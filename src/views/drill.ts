@@ -278,8 +278,8 @@ function whyPart(d: Drill): VNode | null {
     // A sample's text is written by hand, so there is nothing to report
     d.canFlagWhy
       ? d.whyFlagged
-        ? el('p', 'text-xs text-dim', 'Noted. It goes on the list of explanations to fix.')
-        : el('button', 'text-xs text-dim underline decoration-dotted underline-offset-2', { attrs: { type: 'button', title: 'Report this explanation as wrong or unclear' }, on: { click: () => d.flagWhy() } }, 'This is off')
+        ? el('p', 'text-xs text-dim', 'Reported. It goes on the list of explanations to fix.')
+        : el('button', 'text-xs text-dim underline decoration-dotted underline-offset-2', { attrs: { type: 'button', title: 'Report this explanation as wrong or unclear' }, on: { click: () => d.flagWhy() } }, 'Report this explanation')
       : null,
   ])
 }

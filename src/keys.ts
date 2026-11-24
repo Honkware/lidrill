@@ -24,10 +24,10 @@ export const DRILL_KEYS: Record<string, DrillAction> = {
 
 // The keys worth showing, in the order a puzzle uses them
 export const KEY_HELP: [string, string][] = [
-  ['Space', 'Next puzzle'],
+  ['Space', 'Continue'],
   ['H', 'Hint'],
   ['W', 'Why?'],
-  ['R', 'Try again'],
+  ['R', 'Retry'],
   ['B', 'Bury'],
   ['← →', 'Step through the line'],
   ['F', 'Flip the board'],

@@ -20,7 +20,7 @@ export function moreMenu(ctrl: Ctrl): VNode {
     row('Play Maia', `about ${ctrl.maiaLevel}`, '#/play'),
     row('Conversion', d ? `${d.conversion} open` : '', '#/conversion'),
     ctrl.profile?.band === 'beginner'
-      ? row('Defense', 'locked', undefined, 'Unlocks at club level (rated 1000+)')
+      ? row('Defense', 'from 1000 rating', undefined, 'Unlocks at club level (rated 1000+)')
       : row('Defense', d ? `${d.defense} open` : '', '#/defense'),
     clock
       ? row('Clock', `${limitFor(clock.think, 1)} s a move`, () => void ctrl.startTimed('train'))
