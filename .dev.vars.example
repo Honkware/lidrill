@@ -1,9 +1,11 @@
-# Copy to .dev.vars for `wrangler dev`. In production both are Worker secrets:
-#   wrangler secret put OPENROUTER_API_KEY
-#   wrangler secret put POW_SECRET
+# Copy to .dev.vars for `bun run dev`. In production all four are Worker
+# secrets, each set with `wrangler secret put <NAME>`.
+
+# Explanations are off while this is the placeholder
 OPENROUTER_API_KEY=your-openrouter-key
 # Any long random string; it signs the /api/challenge proof-of-work tokens
 POW_SECRET=change-me
-# Only for sync and Maia games: where server/app.py listens, and its LIDRILL_KEY
+# Only for sync, Maia games and opening trees: where server/app.py listens,
+# and the LIDRILL_KEY it was started with
 BACKEND_URL=http://127.0.0.1:8010
 LIDRILL_KEY=change-me-too

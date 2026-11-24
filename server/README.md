@@ -6,7 +6,8 @@ The server tier's loopback backend (`docs/server-tier.md`).
   `$DATA_DIR/<username>.db`. Opaque row versions `{table, id, updatedAt,
   data}`; per-row conflict rule: newer `updatedAt` wins. Requires the
   `X-Lidrill-Key` shared secret on every endpoint; bind stays on 127.0.0.1 and
-  the only door from the internet is the lidrill Worker's `/api/sync/*` proxy.
+  the only doors from the internet are the lidrill Worker's `/api/sync/*` and
+  `/api/maia/*` proxies.
 - `analysis.py` + `analysis_daemon.py` - phase-2 analysis worker: native
   Stockfish 19 (multi-thread, one job at a time, `Nice=10`) judges pushed
   games with an exact port of the client's `analyze.ts`/`judge.ts`, writes
@@ -51,6 +52,20 @@ python3.12 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 LIDRILL_KEY=… DATA_DIR=/opt/lidrill/data .venv/bin/uvicorn app:app --host 127.0.0.1 --port 8010
 ```
+
+The `/maia/*` endpoints also need `requirements-maia.txt`, which says how to
+get the CPU build of torch.
+
+## Run (local)
+
+From the repo root, with the same venv, the key that is in `.dev.vars` and a
+`DATA_DIR` you can write to (the default is the VM's `/opt/lidrill/data`):
+
+```sh
+LIDRILL_KEY=change-me-too DATA_DIR=/tmp/lidrill-data server/.venv/bin/python -m uvicorn app:app --app-dir server --port 8010
+```
+
+`bun run dev` then reports the backend as running.
 
 ## Test
 

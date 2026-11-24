@@ -26,10 +26,13 @@ browser B ─┘   /api/sync/*         └─ 127.0.0.1:8010  lidrill-server (Fa
   quick tunnel to the backend. The URL changes when the unit restarts - it is a Worker
   secret (`BACKEND_URL`), so updating it is `wrangler secret put`. A named
   tunnel with a stable `lidrill.org` hostname is the obvious v2 upgrade.
-- **Worker `/api/sync/*`** (`worker/index.ts`): the only internet door. The
+- **Worker `/api/sync/*`** (`worker/index.ts`): the internet door for sync. The
   client sends its Lichess token; the Worker validates it against Lichess
   `/api/account` (cached 15 min per token), uses the username as the account
   key, and forwards with the shared secret. The token never reaches the VM.
+- **Worker `/api/maia/*`**: the same service also runs Maia-3 (`/maia/move`,
+  `/maia/draw`, `/maia/policy`, described in `server/README.md`). These need
+  no sign-in; the Worker checks the Origin and a per-visitor rate limit.
 - **Client sync** (`src/sync/server.ts`, triggered from `Ctrl`): on sign-in,
   after every game sync, every 5 minutes, and on `online`.
 
@@ -37,8 +40,9 @@ browser B ─┘   /api/sync/*         └─ 127.0.0.1:8010  lidrill-server (Fa
 
 - Tables: `games`, `puzzles` (cards live inside puzzles - the client remains
   the scheduler), `reviews`, `profile`, `syncState`, `journal`, `liPuzzle`,
-  `practice`, `replaySessions`. Explanations stay in the packet KV; `auth`,
-  `explorer`, `certs` never sync.
+  `practice`, `replaySessions`, `repertoire`, `openingCards` (`SYNC_TABLES`
+  in `src/db.ts`, mirrored by `TABLES` in `server/app.py`). Explanations stay
+  in the packet KV; `auth`, `explorer`, `certs` never sync.
 - Local writes queue in `syncQueue` (Dexie hooks for keyed tables; the two
   auto-increment tables queue at their write sites). A pass pushes the
   queue's current row states, then pulls rows newer than the `pullSince`
@@ -80,9 +84,10 @@ journalctl -u lidrill-tunnel -g https | head -1   # the current tunnel URL
 sudo systemctl restart lidrill-{server,tunnel,analysis}
 ```
 
-Deploy: `git pull` in `/opt/lidrill/server` (the backend deployment checkout;
-the venv lives in its `server/` subdirectory, next to `app.py`) and
-`/opt/lidrill/app` (bun checkout, for the TS pipeline when phase-2
-certification lands), then `systemctl restart …`. Worker secrets:
-`wrangler secret put BACKEND_URL` (tunnel URL) and `LIDRILL_KEY` (shared with
-`/etc/lidrill/server.env` on the VM).
+Deploy: the site and the Worker go out from CI when `main` passes
+(`.github/workflows/ci.yml`). The VM is updated by hand: `git pull` in
+`/opt/lidrill/server` (a clone of the GitHub repo; the venv lives in its
+`server/` subdirectory, next to `app.py`), then `systemctl restart …`. Worker
+secrets: `wrangler secret put BACKEND_URL` (tunnel URL) and `LIDRILL_KEY`
+(shared with `/etc/lidrill/server.env` on the VM). `ARCHITECTURE.md` lists
+every variable on both sides.
