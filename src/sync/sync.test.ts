@@ -47,6 +47,11 @@ describe('chess.com', () => {
     expect(g.moves.length).toBeGreaterThan(10)
   })
 
+  it('gives a game with no named opening an empty name', () => {
+    const raw = { ...chesscom.games[0], eco: 'https://www.chess.com/openings/Undefined' }
+    expect(fromChesscom(raw, 'Hikaru')!.opening).toBe('')
+  })
+
   it('reads the clock after each move from the %clk comments', () => {
     const g = fromChesscom(chesscom.games[0], 'Hikaru')!
     expect(g.clocks!.length).toBe(g.moves.length)

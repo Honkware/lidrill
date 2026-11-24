@@ -32,7 +32,8 @@ export function fromChesscom(g: ChesscomGame, user: string): Game | null {
   const theirs = g[color === 'white' ? 'black' : 'white'].result
   const result: Result = mine === 'win' ? 'win' : DRAWS.has(mine) ? 'draw' : 'loss'
   // The eco field is a URL like .../openings/Alapin-Sicilian-Defense-2...Qa5
-  const slug = g.eco?.split('/openings/')[1] ?? ''
+  // A game that leaves every named opening gets .../openings/Undefined
+  const slug = (g.eco?.split('/openings/')[1] ?? '').replace(/^Undefined$/, '')
   return {
     id: `chesscom:${g.url.split('/').pop()}`,
     site: 'chesscom',

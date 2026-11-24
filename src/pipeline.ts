@@ -184,6 +184,8 @@ export async function syncAndAnalyze(
   const now = new Date()
   onStatus('Fetching games…')
   const added = await sync(accounts)
+  // Chess.com's name for no opening, kept by imports before it was dropped
+  await db.games.filter(g => g.opening === 'Undefined').modify({ opening: '' })
   const lichess = accounts.lichessToken ? await refreshLichess(accounts.lichessToken, now) : {}
   const before = await db.profile.get('me')
   let profile = await saveProfile({ lichessUser: accounts.lichessUser, chesscomUser: accounts.chesscomUser, ...lichess })
