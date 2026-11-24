@@ -33,7 +33,7 @@ export function moreMenu(ctrl: Ctrl): VNode {
 }
 
 function row(name: string, value: string, to: string | (() => void) | undefined, title?: string): VNode {
-  const body = [el('span', 'min-w-0 flex-1 truncate font-medium', name), el('span', 'shrink-0 text-sm tabular-nums text-dim', value)]
+  const body = [el('span', 'shrink-0 font-medium', name), el('span', 'min-w-0 flex-1 truncate text-right text-sm tabular-nums text-dim', value)]
   if (!to) return el('li', 'flex min-h-11 items-center gap-3 px-4 py-3 opacity-50 sm:px-5', { attrs: { title: title!, 'aria-disabled': 'true' } }, body)
   return listRow(to, [...body, icon('next', 16)])
 }

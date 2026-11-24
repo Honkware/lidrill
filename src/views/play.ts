@@ -51,7 +51,7 @@ export function setupView(ctrl: Ctrl): VNode {
           ]),
       // Seven times fit a phone's card only with the symbol for unlimited
       segments('Time', TIMES.map(t => (t === 'unlimited' ? [t, '∞', 'Unlimited'] : [t, t])), time, t => ctrl.setPlayChoice({ time: t })),
-      segments('Colour', [['white', 'White'], ['black', 'Black'], ['random', 'Random']], color, c => ctrl.setPlayChoice({ color: c })),
+      segments('Color', [['white', 'White'], ['black', 'Black'], ['random', 'Random']], color, c => ctrl.setPlayChoice({ color: c })),
       segments('Pace', [['human', 'Human'], ['instant', 'Instant']], pace, p => ctrl.setPlayChoice({ pace: p }), 'Human takes about as long as a person; Instant replies at once'),
     ]),
     ctrl.playStarts.length
