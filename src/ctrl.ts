@@ -17,7 +17,7 @@ import { addCards, dueCards, freshLeft, learnedKeys, NEW_PER_DAY, openingsDue, s
 import { cachedPolicy, treeLevel } from './openings/policy'
 import { mastersFor, recommend } from './openings/recommend'
 import { gamesOpenings, openingArg, posKey, rebuildRepertoire } from './openings/repertoire'
-import { LearnRun, learnSet } from './openings/learn'
+import { clearLearn, LearnRun, learnSet, readLearn } from './openings/learn'
 import { OpeningSession } from './openings/session'
 import { SparRun } from './openings/spar'
 import { buildTree, coverage, gameCards, unlearned, wentWrong, type Recommend, type TreeNode } from './openings/tree'
@@ -528,6 +528,12 @@ export class Ctrl {
     this.learnRound++
     this.redraw()
     try {
+      // A set left earlier today goes on where it stopped, with no tree to walk
+      const saved = readLearn(arg)
+      if (saved) {
+        this.learn = new LearnRun(opening, saved, await learnedKeys(saved.fresh), this.redraw, saved)
+        return
+      }
       const room = (await freshLeft()) || NEW_PER_DAY
       let nodes = this.trees.get(arg)
       if (!nodes) {
@@ -1229,6 +1235,7 @@ export class Ctrl {
     if (!confirm("Delete all games, puzzles and history from this browser? This can't be undone.")) return
     this.stopSync()
     await deleteAllData()
+    clearLearn()
     this.profile = undefined
     applyLook()
     this.notice = { text: 'Deleted.' }

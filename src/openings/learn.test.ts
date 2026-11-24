@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db, type Opening } from '../db'
 import { isLearned, saveTreeCards } from './cards'
-import { LearnRun, learnLine, learnSet } from './learn'
+import { clearLearn, LearnRun, learnLine, learnSet, readLearn } from './learn'
 import type { Reply } from './policy'
 import { keyOf } from './repertoire'
 import { replay } from './session'
@@ -126,6 +126,39 @@ describe('LearnRun', () => {
     expect([r.state, r.marks, isLearned(await fresh())]).toEqual(['line-done', ['good'], true])
     r.nextLine()
     expect(r.state).toBe('done')
+  })
+
+  it('keeps a set that was left, and goes on at the practice of a line already shown', async () => {
+    clearLearn()
+    const { nodes } = await buildTree(opening, rep, policy)
+    await saveTreeCards(nodes, opening.name)
+    // both lines, two new positions each
+    const set = learnSet(opening, nodes, new Set(), 4)
+    expect(set.lines).toHaveLength(2)
+    const r = new LearnRun(opening, set, new Set(), () => {})
+    r.begin()
+    expect(readLearn('white:Italian Game')).toBeUndefined()
+    await playLine(r)
+    const shown = readLearn('white:Italian Game')!
+    expect([shown.index, shown.shown]).toEqual([0, true])
+
+    const again = new LearnRun(opening, shown, new Set(), () => {}, shown)
+    again.begin()
+    expect([again.pass, again.play.turn]).toEqual(['practice', 'ask'])
+    await playLine(again)
+    // the first line is done, so what is kept is the second, not yet shown
+    const next = readLearn('white:Italian Game')!
+    expect([next.index, next.shown, next.marks[0]]).toEqual([1, false, 'good'])
+    // another opening, or another day, starts a new set
+    expect(readLearn('black:Sicilian Defense')).toBeUndefined()
+    expect(readLearn('white:Italian Game', 'Thu Jan 01 2026')).toBeUndefined()
+
+    const last = new LearnRun(opening, next, new Set(), () => {}, next)
+    last.begin()
+    await playLine(last)
+    last.practise()
+    await playLine(last)
+    expect(readLearn('white:Italian Game')).toBeUndefined()
   })
 
   it('takes the first grade from how the move was found in practice', async () => {

@@ -4,7 +4,7 @@ import { Rating } from 'ts-fsrs'
 import { db, type Opening } from '../db'
 import { grade, isLearned, learnCard } from './cards'
 import { LinePlay, type Resolved } from './line'
-import { keyOf, posKey, startsWith } from './repertoire'
+import { keyOf, openingArg, posKey, startsWith } from './repertoire'
 import { MARK, type Mark } from './session'
 import type { TreeNode } from './tree'
 
@@ -19,6 +19,44 @@ import type { TreeNode } from './tree'
 
 // The opponent's move waits this long, so it can be seen landing
 const OPPONENT_MS = 500
+
+// A set the player left before its end, kept for the day so opening Learn
+// again goes on with the same lines at the same place. The positions
+// already practised are learned in the database either way; this keeps the
+// rest of the set and whether the line on the board had been shown.
+const SAVED_KEY = 'lidrill.learn'
+
+export interface SavedLearn {
+  opening: string // 'white:Italian Game'
+  day: string
+  lines: string[][]
+  fresh: string[]
+  marks: Mark[]
+  index: number
+  shown: boolean // the line at index has had its pass with arrows
+}
+
+const UCI = /^[a-h][1-8][a-h][1-8][qrbn]?$/
+
+export function readLearn(opening: string, day = new Date().toDateString()): SavedLearn | undefined {
+  try {
+    const s = JSON.parse(localStorage.getItem(SAVED_KEY) ?? 'null') as SavedLearn | null
+    if (!s || s.opening !== opening || s.day !== day) return undefined
+    if (!Array.isArray(s.fresh) || !Array.isArray(s.marks) || !s.lines.every(l => l.every(m => UCI.test(m))) || !s.lines[s.index]) throw new Error('old shape')
+    return s
+  } catch {
+    clearLearn()
+    return undefined
+  }
+}
+
+export function clearLearn() {
+  try {
+    localStorage.removeItem(SAVED_KEY)
+  } catch {
+    // storage is off: there was nothing saved
+  }
+}
 
 const same = (a: string[], b: string[]) => a.length === b.length && startsWith(a, b)
 
@@ -95,11 +133,14 @@ export class LearnRun {
   private learned: Set<string>
   private redraw: () => void
 
-  constructor(opening: Opening, set: { lines: string[][]; fresh: string[] }, learned: Set<string>, redraw: () => void) {
+  constructor(opening: Opening, set: { lines: string[][]; fresh: string[] }, learned: Set<string>, redraw: () => void, saved?: SavedLearn) {
     this.opening = opening
     this.lines = set.lines
     this.fresh = set.fresh
-    this.marks = set.fresh.map(() => undefined)
+    this.marks = saved?.marks ?? set.fresh.map(() => undefined)
+    // A line already shown goes on at its practice run
+    this.index = saved?.index ?? 0
+    if (saved?.shown) this.pass = 'practice'
     this.learned = new Set(learned)
     this.redraw = redraw
     this.play = new LinePlay({
@@ -158,16 +199,32 @@ export class LearnRun {
     if (this.state !== 'line-done') return
     if (this.index === this.lines.length - 1) {
       this.state = 'done'
+      this.save()
       return this.redraw()
     }
     this.index++
     this.pass = 'show'
     this.state = 'playing'
+    this.save()
     this.play.start(this.line, this.opening.color)
+  }
+
+  private save() {
+    try {
+      // A line practised to its end is behind the player: the next one is saved
+      const over = this.state === 'line-done'
+      const index = this.index + (over ? 1 : 0)
+      if (this.state === 'done' || index >= this.lines.length) return clearLearn()
+      const s: SavedLearn = { opening: openingArg(this.opening), day: new Date().toDateString(), lines: this.lines, fresh: this.fresh, marks: this.marks, index, shown: !over && (this.pass === 'practice' || this.state === 'shown') }
+      localStorage.setItem(SAVED_KEY, JSON.stringify(s))
+    } catch {
+      // storage is full or off: the set just isn't resumable
+    }
   }
 
   private ended() {
     this.state = this.pass === 'show' ? 'shown' : 'line-done'
+    this.save()
     this.redraw()
   }
 
@@ -178,6 +235,7 @@ export class LearnRun {
       if (card && !isLearned(card)) await learnCard(card, new Date(), r.grade)
       this.learned.add(r.key)
       this.marks[at] = MARK[r.grade]
+      this.save()
     } else if (r.grade === Rating.Again && card && isLearned(card)) await grade(card, Rating.Again)
     if (r.grade === Rating.Again && card && !this.misses.some(m => m.id === r.key)) this.misses.push({ id: r.key, moves: r.moves, san: r.san })
   }
