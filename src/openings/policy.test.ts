@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '../db'
-import { cachedPolicy, treeLevel } from './policy'
+import { cachedPolicy, treeLevel, fetchPolicy } from './policy'
 
 beforeEach(() => db.policy.clear())
 
@@ -27,6 +27,17 @@ describe('cachedPolicy', () => {
 })
 
 describe('treeLevel', () => {
+  it('waits and asks again when told to slow down, and gives up only after several waits', async () => {
+    let limited = 2
+    const waits: number[] = []
+    const wait = async (ms: number) => void waits.push(ms)
+    const fetchFn = (async () => (limited-- > 0 ? new Response(JSON.stringify({ error: 'Too many moves at once.' }), { status: 429 }) : new Response(JSON.stringify({ moves: [{ uci: 'e7e5', p: 1 }] })))) as unknown as typeof fetch
+    expect(await fetchPolicy(['e2e4'], 1500, fetchFn, wait)).toEqual([{ uci: 'e7e5', p: 1 }])
+    expect(waits).toHaveLength(2)
+    limited = 100
+    await expect(fetchPolicy(['e2e4'], 1500, fetchFn, wait)).rejects.toThrow('Too many moves')
+  })
+
   it('rounds the estimate to 100 inside the levels Maia plays', () => {
     expect([treeLevel(1449), treeLevel(1450), treeLevel(420), treeLevel(2600)]).toEqual([1400, 1500, 600, 2300])
   })

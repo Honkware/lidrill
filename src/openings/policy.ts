@@ -25,8 +25,20 @@ export const LEVEL_STEP = 100
 
 export const treeLevel = (rating: number) => clampLevel(Math.round(rating / LEVEL_STEP) * LEVEL_STEP)
 
-export async function fetchPolicy(moves: string[], level: number, fetchFn: typeof fetch = fetch): Promise<Reply[]> {
-  const res = await fetchFn('/api/maia/policy', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ moves, level }) })
+// The Worker allows a visitor so many of these a minute, and the first walk
+// of a big tree asks for more. Being told to slow down is no failure of the
+// walk, so it waits and asks again instead of ending with an error the
+// player did nothing to cause.
+const SLOW_DOWN_MS = 15_000
+const SLOW_DOWN_TRIES = 6
+
+export async function fetchPolicy(moves: string[], level: number, fetchFn: typeof fetch = fetch, wait = (ms: number) => new Promise<void>(r => setTimeout(r, ms))): Promise<Reply[]> {
+  const ask = () => fetchFn('/api/maia/policy', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ moves, level }) })
+  let res = await ask()
+  for (let i = 0; res.status === 429 && i < SLOW_DOWN_TRIES; i++) {
+    await wait(SLOW_DOWN_MS)
+    res = await ask()
+  }
   const body = (await res.json().catch(() => ({}))) as { moves?: Reply[]; error?: string }
   if (!res.ok || !body.moves) throw new Error(body.error ?? 'Maia isn’t available right now.')
   return body.moves
