@@ -229,7 +229,11 @@ export class Drill {
     this.loaded.then(() => {
       // Turning Points arrives with the board already at the puzzle position
       this.cursor = owned ? 0 : this.start
+      // A new board holds the starting position, and the pieces would slide
+      // from there to the puzzle's
+      if (owned) cg.set({ animation: { enabled: false } })
       this.sync()
+      if (owned) cg.set({ animation: { enabled: true } })
       if (this.cursor < this.start)
         this.later(() => {
           this.land(this.start) // the opponent's last move animates in
