@@ -1,15 +1,17 @@
 import { templateFloor } from './floor'
-import { fromFen } from './facts'
 import { deltaText, solvingRefOf, type Packet, type SetMembership } from './packet'
 import { STYLE_WORDS } from './readability'
 import { movesById, gameFrameIds, NO_THREAT_ID, REF, renderRef, SLOTS, type Slot } from './render'
 import { MISS_FRAME, requiredFor, validateSlots, type FrameContext } from './slots'
+import { bound, magnitudeOk, stillHangs, untraced } from './trace'
 
 // The narrator. A cheap model drafts the
-// four slots in ref form; the mechanical validator decides; one repair try;
-// then a temperature-0 pass splits the draft into claims and any claim not
-// tied to a fact id is deleted (never repaired); a smoothing pass may rejoin
-// what's left. Anything that fails, or runs past the budget, gets the floor.
+// four slots in ref form; the mechanical validator decides; one repair try.
+// A draft whose every sentence traces to the facts it cites (trace.ts) is
+// served as it is. Any other draft goes to a temperature-0 pass that splits
+// it into claims, and any claim not tied to a fact id is deleted (never
+// repaired); a smoothing pass may rejoin what's left. Anything that fails,
+// or runs past the budget, gets the floor.
 // The draft is validated in the solve frame - how the player solved
 // the puzzle (best | set | miss) selects what the slots must do.
 
@@ -74,12 +76,13 @@ export const SYSTEM_V2 = [
   'One-term rule: name at most one chess term (fork, pin, removing the defender…) in the whole explanation, exactly once, in the pattern slot. Everywhere else name concrete pieces and squares by fact id; stacked jargon ("deflection-decoy-overload") fails.',
   'Trigger-anchor rule: a claim about an abstract idea (pressure, space, the initiative) must carry the fact id that makes it true in the same sentence; if no fact proves it, leave it out.',
   'Stay under the word budget the packet gives for the whole rendered explanation. Short sentences, subject-verb-object first, no stacked subordinate clauses.',
-  'whatHappened: the move made here and what it cost - the player\'s try in this puzzle when one is recorded, otherwise the original game move, marked as game context. why: the mechanism, using the required ids and enough line steps. pattern: the certified pattern and its library text - open the pattern slot with the position-anchored instance (at least one packet ref that is not library text: the move, square or certificate that makes it true), then the definition ref; a bare definition with no position ref fails. Render each magnitude once: one swing, one bucket - never restate the same amount in a second phrasing or a parenthetical. nextTime: the habit id, nothing else of substance.',
+  'whatHappened: the move made here and what it cost - the player\'s try in this puzzle when one is recorded, otherwise the original game move, marked as game context. why: two or three sentences, using the required ids and as many line steps or certificates as the packet asks for. In the miss frame they say why the move made failed: what it left undefended or allowed ({ref:c-punish}, {ref:c-try}, or the reply ids from lines.gameMove or lines.yourTry), which threat it missed ({ref:threat}), and what the best move wins instead (its certificate, or the capture in its line). Name the fact that decides it; do not recite the engine\'s line move by move. pattern: the certified pattern and its library text - open the pattern slot with the position-anchored instance (at least one packet ref that is not library text: the move, square or certificate that makes it true), then the definition ref; a bare definition with no position ref fails. Render each magnitude once: one swing, one bucket - never restate the same amount in a second phrasing or a parenthetical. nextTime: the habit id, nothing else of substance.',
   'solve frames - the input says which: best - the player found the engine\'s best move: whatHappened opens by crediting it ({ref:best}), then explain that move on its merits. When there is no named tactic (no c-motif, no mate), use the strategic features the move improves - development, space, king safety, activity, pawn structure - and anchor each claim to a c-fd* fact id from the list. also-good - the player\'s move is in the acceptance set: open whatHappened with "Your move works.", name the solving move ({ref:alt1}…) and why it is sound, then name the engine\'s first choice ({ref:best}) with the certified gap ({ref:c-acc1}, "worth about … more"). miss - the contrast frame: the game move (or try) and what it cost, then "Best was: {ref:best}".',
   'tokens: "Answer:" is retired everywhere - with an acceptance set there is no single answer; the miss frame labels best "Best was:". "cost you" is legal only in the miss frame - never in best or also-good.',
   'Ownership: say "you"/"your" for the player\'s moves and patterns and "they"/"their" for the opponent\'s, right before the id, in the same sentence. Amounts like {ref:swing} take no "your". V-POV: a possessive attaches only to the game move ({ref:played}); the answer and its line are not yours yet - no "your" on them.',
   'V-LINE: line steps beyond the answer are evidence, and evidence ends at the certified consequence - the capture, mate or certified amount that decides it. Never run the line past the answer mid-hunt; when the consequence is certified, stop there. Show the full certified line only when it is five plies or fewer; if it is longer, do not list the moves at all - explain via a c-fd* feature delta, the forced certificate, or the outcome certificate. Moves listed in a sequence must be consecutive plies from the same line; do not use "..." or "follow" or "leads to" for non-mating lines. Exception: when the task is meeting a certified threat, do not list the answer line at all; the why slot uses only {ref:threat}, {ref:best}, c-stops or a c-fd* feature delta - no pv1… or t1… line refs.',
   'Certificate ids (c-…) render as a whole clause, like "every other move is at least 0.8 pawns worse": put them after a colon or after "because", never inside a phrase.',
+  'Checked words: every sentence cites at least one fact id. A piece name, "takes", "check", a count, or any description of a piece or a square may appear only in a sentence that cites a fact holding that word - the move made by that piece or taking it, or the certificate that states it. Say "takes" for a capture; "wins" needs a certificate. A draft that keeps to plain connecting words around its fact ids is served as written.',
   'Only say the answer stops, prevents or meets the threat if c-stops is in the list; only say a move was forced, needed or the only move if c-forced is.',
   'Plain, short sentences. No praise, no labels like brilliant, no rhetorical questions, no exclamation marks. Do not open a sentence with This, That, It or Such used as a pronoun.',
   'Answer with JSON only: {"slots":[{"slot":"whatHappened","text":"…","refs":["…"]}, …]}, each listed slot exactly once.',
@@ -195,6 +198,12 @@ export interface Narration {
   models: string[]
   pruned?: number
   frame: FrameContext['membership']
+  // The route to the served text: one-pass is the first draft alone, repair
+  // a second draft served the same way, second-pass either draft once the
+  // claim check had to look at it
+  path: 'one-pass' | 'repair' | 'second-pass' | 'floor'
+  // Why the draft still needed the claim check (empty on one-pass and repair)
+  untraced?: string[]
   // Diagnostic: the lint
   // violations the accepted draft carried, the draft's own slots, and every
   // claim the prune cut with the check that fired - which check floors a
@@ -223,7 +232,7 @@ export async function narrate(p: Packet, call: Caller, solve: SolveInput = { mem
   let cost = 0
   const models: string[] = []
   const frame: FrameContext = { membership: solve.membership, solvingRef: solvingRefOf(solve.move, p) }
-  const floor = (reason: string): Narration => ({ slots: templateFloor(p, frame), source: 'floor', reason, calls, cost, models, frame: frame.membership })
+  const floor = (reason: string): Narration => ({ slots: templateFloor(p, frame), source: 'floor', reason, calls, cost, models, frame: frame.membership, path: 'floor' })
   if (p.meta.certification.status !== 'certified') return floor(`not certified: ${p.meta.certification.refusals.join('; ')}`)
   // The pattern slot must name a certified term. A quiet
   // position with a certified threat names the meeting-the-threat gloss; one
@@ -267,6 +276,7 @@ export async function narrate(p: Packet, call: Caller, solve: SolveInput = { mem
 
   let draft = await ask('draft', `Facts packet:\n${view}\n\nWrite the slots.`, 'draft', slotSchema)
   let verdict = validateSlots(draft, p, frame)
+  const repaired = !verdict.ok
   if (!verdict.ok) {
     const again = await ask('repair', `Facts packet:\n${view}\n\nYour draft:\n${JSON.stringify(draft ?? null)}\n\nFix every problem and answer with the slots again:\n- ${verdict.violations.slice(0, 20).join('\n- ')}`, 'draft', slotSchema)
     if (again === undefined) return { ...floor(`draft failed: ${verdict.violations.slice(0, 3).join('; ')}`), draftLints: verdict.violations }
@@ -279,6 +289,11 @@ export async function narrate(p: Packet, call: Caller, solve: SolveInput = { mem
   const draftLints = verdict.violations
   const draftSlots = verdict.slots
   let slots = verdict.slots!
+
+  // Nothing left for the claim check to find: every word is plain or comes
+  // from a fact in its sentence, so the second model is not called
+  const loose = untraced(slots, p)
+  if (!loose.length) return { slots, source: 'model', calls, cost, models, frame: frame.membership, path: repaired ? 'repair' : 'one-pass', draftLints, draft: draftSlots }
 
   // Decompose into claims; delete the unanchored ones
   // One more try if the claim check times out or fails: it's the check that
@@ -299,7 +314,7 @@ export async function narrate(p: Packet, call: Caller, solve: SolveInput = { mem
       slots = verdict.slots!
     }
   }
-  return { slots, source: 'model', calls, cost, models, pruned: pruning.removed, frame: frame.membership, draftLints, draft: draftSlots, cuts }
+  return { slots, source: 'model', calls, cost, models, pruned: pruning.removed, frame: frame.membership, path: 'second-pass', untraced: loose, draftLints, draft: draftSlots, cuts }
 }
 
 interface Claim {
@@ -338,7 +353,7 @@ export function prune(slots: Slot[], raw: unknown, p: Packet): { slots: Slot[]; 
       inText.length === 0 ? 'no fact id in the claim text'
       : inText.some(r => !anchors.has(r)) ? `unanchored ref: ${inText.find(r => !anchors.has(r))}`
       : !bound(c.text, inText, p) ? 'mate/threat claim not bound to a mate or threat fact'
-      : !tenseOk(c, inText, p) ? 'present-tense claim the position no longer supports'
+      : c.tense === 'present' && !stillHangs(inText, p) ? 'present-tense claim the position no longer supports'
       : !magnitudeOk(c.text, inText, p) ? 'orphaned magnitude'
       : undefined
     if (check === undefined) continue
@@ -349,66 +364,3 @@ export function prune(slots: Slot[], raw: unknown, p: Packet): { slots: Slot[]; 
   for (const s of out) s.refs = [...new Set([...s.text.matchAll(REF)].map(m => m[1] ?? NO_THREAT_ID))]
   return { slots: out, removed, total, cuts }
 }
-
-// A mate claim must rest on a mate fact, a threat claim on the threat. The
-// regexes run on the words the model wrote, with ref tokens masked: a gloss
-// id like {ref:gloss:back-rank-mate} renders "back-rank mate" but is library
-// text, not the model claiming mate - unmasked it false-positived
-// every mate-pattern packet.
-function bound(text: string, ids: string[], p: Packet): boolean {
-  const own = text.replace(REF, ' ')
-  const moves = movesById(p)
-  if (/\b(check)?mat(e|es|ed|ing)\b/i.test(own)) {
-    const mateIds = ids.filter(id =>
-      moves.get(id)?.mate ||
-      id === 'c-mate' || id === 'c-mate-net' ||
-      (id === 'threat' && p.threat?.consequence.type === 'mate') ||
-      // A holding move in a mate-in-1 packet is itself a certified
-      // mating move; an acceptance certificate over a mating alternative
-      // certifies the mate; and an alternative whose own eval is mate is a
-      // mate fact on its id - "Qd8# delivers mate" is anchored on any of them.
-      // A mate-pattern tactical certificate (back-rank mate, smothered mate)
-      // over a best move that mates is a mate fact too.
-      p.holding.some(h => h.id === id && h.san.endsWith('#')) ||
-      p.alternatives.some(a => a.id === id && a.eval.type === 'mate') ||
-      p.certificates.some(c => {
-        if (c.id === id) return c.type === 'acceptance' ? p.alternatives.find(a => a.id === c.subject)?.eval.type === 'mate' : c.type === 'tactical' && /\bmate\b/.test(c.motif ?? '') && p.best.mateIn !== null
-        return false
-      }))
-    if (!mateIds.length) return false
-  }
-  if (/\bthreat\w*/i.test(own) && !ids.some(id => id === 'threat' || /^t\d+$/.test(id) || id === NO_THREAT_ID)) return false
-  return true
-}
-
-// V-SWING: a magnitude ("lost 3.7 pawns", "won material") must bind
-// to the capture, swing, threat or line certificate that produces it - an
-// orphaned magnitude is pruned, never served. Written-out numbers are
-// already impossible (notation lint), so this catches the shape "that won
-// material." resting on a move ref that certifies no amount.
-const MAGNITUDE = /\b(pawns?|material|worth|extra)\b/i
-function magnitudeOk(text: string, ids: string[], p: Packet): boolean {
-  if (!MAGNITUDE.test(text)) return true
-  return ids.some(id => {
-    if (id === 'swing' || id === 'tryswing' || id === 'material' || id === 'threat' || /^t\d+$/.test(id)) return true
-    const cert = p.certificates.find(c => c.id === id)
-    return !!cert && (cert.type === 'tactical' || cert.type === 'stopsThreat' || cert.type === 'forced' || cert.type === 'acceptance' || cert.type === 'mate')
-  })
-}
-
-// "The rook is hanging" must still be true after the move in question
-function tenseOk(c: Claim, ids: string[], p: Packet): boolean {
-  if (c.tense !== 'present') return true
-  for (const id of ids) {
-    const cert = p.certificates.find(x => x.id === id && x.motif === 'hanging piece')
-    if (!cert) continue
-    const sq = (cert.payload as { square?: string }).square
-    const after = fromFen(p.position.fenAfter)
-    if (!sq || !after) return false
-    const piece = [...after.board].find(([s]) => s === squareIndex(sq))
-    if (!piece) return false
-  }
-  return true
-}
-
-const squareIndex = (sq: string) => (sq.charCodeAt(0) - 97) + (Number(sq[1]) - 1) * 8

@@ -155,7 +155,7 @@ describe('POST /api/explain v2 (slim)', () => {
     const res = await post('/api/explain', { v: 2, packetHash, band: 'club' })
     expect(res.status).toBe(200)
     const data = (await res.json()) as { version: number; source: string; frame: string; packet: { meta: { certification: { tier: string } } } }
-    expect(data.version).toBe(16)
+    expect(data.version).toBe(17)
     expect(data.source).toBe('floor') // refused certification, no model call
     expect(data.frame).toBe('miss') // no solving move: the contrast frame
     expect(data.packet.meta.certification.tier).toBe('client-lite')
@@ -221,7 +221,7 @@ describe('POST /api/explain v1 (legacy report-in)', () => {
     const res = await post('/api/explain', forkReport({ best: forkReport().best.map(r => ({ ...r, depth: 18 })) }))
     expect(res.status).toBe(200)
     const data = (await res.json()) as { version: number; source: string; packet: { meta: { certification: { tier: string; policyVersion: string } } } }
-    expect(data.version).toBe(16)
+    expect(data.version).toBe(17)
     expect(data.source).toBe('floor')
     expect(data.packet.meta.certification.tier).toBe('client-lite')
     expect(data.packet.meta.certification.policyVersion).toBe('cert/1.0-client')

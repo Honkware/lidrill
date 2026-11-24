@@ -96,7 +96,7 @@ const SUBJECTS: [RegExp, 'player' | 'opponent' | 'neutral'][] = [
   [/\bthe position\b/gi, 'neutral'],
 ]
 
-const sentencesOf = (t: string) => t.split(/(?<=[.!?])\s+/).filter(s => s.trim())
+export const sentencesOf = (t: string) => t.split(/(?<=[.!?])\s+/).filter(s => s.trim())
 
 // Ids a ref stands for: NO_THREAT is the no-threat certificate
 const refIds = (t: string) => [...t.matchAll(REF)].map(m => m[1] ?? NO_THREAT_ID)

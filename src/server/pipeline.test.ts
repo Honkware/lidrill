@@ -5,6 +5,7 @@ import { AUTO_ROUTER_SLUG, MODELS, narrate, promptView, prune, type Caller, type
 import { buildPacket, dedupeKey, nullMoveFen, packetHash, packetProblems, stampTier, validPacket, validReport, type Certificate, type EngineReport, type EngineRun, type Packet } from './packet'
 import { renderSlot, renderText, type Slot } from './render'
 import { validateSlots } from './slots'
+import { untraced } from './trace'
 
 const run = (lines: EngineRun['lines'], depth = 24): EngineRun => ({ lines, depth, nodes: 1_000_000, capped: false })
 const cp = (value: number) => ({ type: 'cp' as const, value })
@@ -475,12 +476,31 @@ describe('narrator pipeline', () => {
     }
   }
 
-  it('serves a draft that passes every check, at temperature 0.3, then a temperature-0 claim check', async () => {
+  // The validator accepts this, but "loves the center" rests on no fact
+  const unsure = () => good().map(s => (s.slot === 'why' ? { ...s, text: `${s.text} The knight loves the center.` } : s))
+
+  it('serves a draft traced to its facts on the draft call alone', async () => {
     const { call, calls } = caller([{ slots: good() }])
     const n = await narrate(p, call)
-    expect(n.source).toBe('model')
+    expect(n).toMatchObject({ source: 'model', path: 'one-pass', calls: 1 })
+    expect(calls.map(c => [c.pass, c.temperature])).toEqual([['draft', 0.3]])
+    expect(n.cost).toBeCloseTo(0.001)
+  })
+
+  it('sends a draft with an untraced sentence to the temperature-0 claim check, which cuts it', async () => {
+    const { call, calls } = caller([{ slots: unsure() }], claimsFor(unsure()))
+    const n = await narrate(p, call)
+    expect(n).toMatchObject({ source: 'model', path: 'second-pass', pruned: 1 })
     expect(calls.map(c => [c.pass, c.temperature])).toEqual([['draft', 0.3], ['decompose', 0]])
-    expect(n.cost).toBeCloseTo(0.003)
+    expect(n.untraced).toEqual(['why: no fact id in "The knight loves the center."'])
+    expect(n.slots.find(s => s.slot === 'why')!.text).not.toMatch(/center/)
+  })
+
+  it('a repaired draft that is traced skips the claim check too', async () => {
+    const bad = { slots: [{ slot: 'whatHappened', text: 'Ke2 lost a rook.', refs: [] }] }
+    const { call, calls } = caller([bad, { slots: good() }])
+    expect(await narrate(p, call)).toMatchObject({ source: 'model', path: 'repair', calls: 2 })
+    expect(calls.map(c => c.pass)).toEqual(['draft', 'repair'])
   })
 
   it('repairs once, then falls back to the floor', async () => {
@@ -488,7 +508,7 @@ describe('narrator pipeline', () => {
     const fixed = await narrate(p, caller([bad, { slots: good() }]).call)
     expect(fixed.source).toBe('model')
     const twice = await narrate(p, caller([bad, bad]).call)
-    expect(twice).toMatchObject({ source: 'floor', calls: 2 })
+    expect(twice).toMatchObject({ source: 'floor', path: 'floor', calls: 2 })
     expect(twice.reason).toMatch(/repair failed/)
   })
 
@@ -560,9 +580,9 @@ describe('narrator pipeline', () => {
   it('a failed claim check fails closed', async () => {
     const call: Caller = async c => {
       if (c.pass === 'decompose') throw new Error('timeout')
-      return { json: { slots: good() }, cost: 0.001 }
+      return { json: { slots: unsure() }, cost: 0.001 }
     }
-    expect((await narrate(p, call)).reason).toBe('claim check unavailable')
+    expect(await narrate(p, call)).toMatchObject({ source: 'floor', path: 'floor', reason: 'claim check unavailable' })
   })
 
   it('smooth is pinned to the draft slug; no router fields on any production pass', async () => {
@@ -624,6 +644,53 @@ describe('narrator pipeline', () => {
     expect(calls[1].model).toBe(MODELS.lint.model)
     expect(calls[0].routing).toBeUndefined()
     expect(calls[1].routing).toBeUndefined()
+  })
+})
+
+// The rule that lets a draft skip the second model: it must find something
+// in every draft the claim check exists for
+describe('claim trace', () => {
+  const p = packetOf(forkReport())
+  const why = (text: string): Slot[] => good().map(s => (s.slot === 'why' ? { ...s, text: `${s.text} ${text}` } : s))
+
+  it('has nothing to say about a draft of plain words around its fact ids', () => {
+    expect(untraced(good(), p)).toEqual([])
+  })
+
+  it.each([
+    ['a sentence with no fact id', 'The knight loves the center.', /no fact id/],
+    ['a piece no cited fact holds', 'After {ref:pv1}, {ref:pv2} takes the queen.', /"queen" is in no fact/],
+    ['a win claimed on a bare capture', '{ref:pv2} wins the rook.', /"wins" is in no fact/],
+    ['a count', '{ref:pv2} takes two rooks.', /"two" is in no fact/],
+    ['a description of a piece', 'After {ref:best} their king is weak.', /"king" is in no fact|"weak" is in no fact/],
+    ['a check the move does not give', '{ref:pv2} takes with check.', /"check" is in no fact/],
+    ['a mate claim on a move that does not mate', '{ref:pv2} is close to mate.', /mate or threat claim/],
+    ['an amount no fact certifies', '{ref:best} is worth extra material.', /amount with no fact/],
+    ['a word the checker has never seen', '{ref:best} dominates.', /"dominates" is in no fact/],
+  ])('flags %s', (_, text, reason) => {
+    expect(untraced(why(text), p).join('\n')).toMatch(reason)
+  })
+
+  it('lets a move lend its piece, the piece it takes and its check', () => {
+    // Nc7+ forks, Kd7 steps away, Nxa8 takes the rook
+    expect(untraced(why('The knight gives check with {ref:best}.'), p)).toEqual([])
+    expect(untraced(why('After {ref:pv1}, the knight takes the rook: {ref:pv2}.'), p)).toEqual([])
+  })
+
+  it('leaves a hanging piece that has left its square to the second model', () => {
+    const q = packetOf(forkReport())
+    q.certificates.push({ id: 'c-hang', type: 'tactical', subject: 'best', side: 'b', targetSide: 'w', motif: 'hanging piece', payload: { square: 'b8', piece: 'rook' }, text: 'the rook on b8 was loose' })
+    q.claimAnchors.push('c-hang')
+    expect(untraced(why('They had this: {ref:c-hang}.'), q)).toEqual(['why: a hanging piece that is no longer on its square'])
+  })
+
+  it('knows every word the floor uses, on every reference report', () => {
+    const reports = JSON.parse(readFileSync('src/server/fixtures/gate-reports.json', 'utf8')) as EngineReport[]
+    for (const r of reports)
+      for (const band of ['beginner', 'club', 'advanced'] as const) {
+        const q = packetOf({ ...r, band })
+        for (const membership of ['miss', 'best'] as const) expect(untraced(templateFloor(q, { membership }), q).filter(x => /is in no fact/.test(x))).toEqual([])
+      }
   })
 })
 

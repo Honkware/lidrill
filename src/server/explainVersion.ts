@@ -7,4 +7,6 @@
 // from the older contract can carry a doubled magnitude or a gloss-first
 // pattern. 16 - mateNet: the c-mate certificate renders with the
 // escape-square refutations, and stored packets rebuild at builder/1.3.
-export const EXPLAIN_VERSION = 16
+// 17 - prompt p2.6: the why slot of a miss says why the move failed, and a
+// draft traced word for word to its facts is served without the claim check.
+export const EXPLAIN_VERSION = 17

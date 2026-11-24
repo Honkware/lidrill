@@ -486,7 +486,7 @@ function stability(p: RunPair, flip: boolean) {
 
 export type BuildResult = { ok: true; packet: Packet } | { ok: false; error: string }
 
-export const PROMPT_VERSION = 'p2.5'
+export const PROMPT_VERSION = 'p2.6'
 export const RENDERER_VERSION = 'render/1.1'
 
 export function buildPacket(report: EngineReport, promptVersion = PROMPT_VERSION): BuildResult {

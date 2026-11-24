@@ -121,6 +121,8 @@ it.runIf(process.env.GATE)('explanation gate', async () => {
         problems: packetProblems(p),
         floorViolations: floorCheck,
         source: n?.source,
+        path: n?.path,
+        untraced: n?.untraced,
         reason: n?.reason,
         pruned: n?.pruned,
         draftLints: n?.draftLints,
