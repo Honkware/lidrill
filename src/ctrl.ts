@@ -131,6 +131,7 @@ export class Ctrl {
   playChoices = readChoices()
   playPuzzles?: string[] // ids of the puzzles the last finished Maia game produced, once analyzed
   private playFrom: Start | boolean = false
+  private playUntimed = false
   private maiaStart = 1000
   studies?: StudyInfo[]
   openingStats: OpeningStat[] = []
@@ -1098,16 +1099,18 @@ export class Ctrl {
 
   // A new game from Play replaces one left unfinished. from is a start from
   // the player's games, true for any of them, false for move 1.
-  startPlay(from: Start | boolean) {
+  startPlay(from: Start | boolean, untimed = false) {
     clearGame()
+    this.playUntimed = untimed
     this.playFrom = from
     this.go('maia')
   }
 
-  // A game from a puzzle's position, on the player's side, at the level,
-  // time and pace set on Play
+  // A game from a puzzle's position, on the player's side, at the level
+  // and pace set on Play. It has no clock: the player came to try a
+  // position, and a clock would already be running as the board appears.
   sparFrom(d: Drill) {
-    if (d.game) this.startPlay(startAt(d.game, d.puzzle.ply))
+    if (d.game) this.startPlay(startAt(d.game, d.puzzle.ply), true)
   }
 
   private async openMaia() {
@@ -1123,7 +1126,7 @@ export class Ctrl {
     const { time, color: side, pace } = this.playChoices
     // A position from an own game keeps its side whatever was chosen
     const color = start?.color ?? (side === 'random' ? (Math.random() < 0.5 ? 'white' : 'black') : side)
-    this.play = new PlayRun({ level: this.maiaLevel, color, rating: this.maiaRating, start, clock: clockOf(time), pace }, this.redraw, run => void this.finishPlay(run))
+    this.play = new PlayRun({ level: this.maiaLevel, color, rating: this.maiaRating, start, clock: clockOf(this.playUntimed ? 'unlimited' : time), pace }, this.redraw, run => void this.finishPlay(run))
   }
 
   // A game given up in the first few moves is thrown away. Any other is
