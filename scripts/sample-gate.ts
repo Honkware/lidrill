@@ -21,7 +21,7 @@ const key = process.env.OPENROUTER_API_KEY
 if (!key) throw new Error('OPENROUTER_API_KEY is required')
 const band = (process.argv[2] as 'beginner' | 'club' | 'advanced') || 'club'
 
-const reports = JSON.parse(readFileSync('src/server/fixtures/gate-reports.json', 'utf8')) as unknown[]
+const reports = JSON.parse(readFileSync('src/server/fixtures/gate-reports.json', 'utf8')) as object[]
 
 const built = reports.flatMap(raw => {
   const r = validReport(JSON.parse(JSON.stringify({ ...raw, band })))
