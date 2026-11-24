@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "predev": "bun scripts/copy-engine.mjs",
-    "dev": "vite",
+    "dev": "bun scripts/dev.ts",
     "prebuild": "bun scripts/copy-engine.mjs",
     "build": "tsc -b && vite build",
     "lint": "oxlint",

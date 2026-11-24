@@ -17,6 +17,8 @@ function cspMeta(): Plugin {
 
 export default defineConfig({
   plugins: [tailwindcss(), cspMeta()],
+  // The Worker that `bun run dev` starts beside Vite (scripts/dev.ts)
+  server: { proxy: { '/api': 'http://localhost:8787' } },
   test: {
     environment: 'jsdom',
     setupFiles: ['fake-indexeddb/auto'],
