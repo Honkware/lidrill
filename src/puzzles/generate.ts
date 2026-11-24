@@ -5,6 +5,11 @@ import { parseUci } from 'chessops/util'
 import { createEmptyCard } from 'ts-fsrs'
 import type { Band, Eval, Game, Puzzle, PuzzleTag, PuzzleType } from '../db'
 import type { Engine, SearchResult } from '../analysis/engine'
+import { fromFen, looseList } from '../server/facts'
+import { featureBlock } from '../server/features'
+import { motifs } from '../server/motifs'
+import { uciLine } from '../server/packet'
+import { MAIA_MIN_P, type Findable } from './findable'
 
 export interface GenerateOptions {
   swingThresholdCp: number
@@ -15,6 +20,9 @@ export interface GenerateOptions {
   // puzzles - the position still surfaces in Replay,
   // which stops at the same critical moments
   band?: Band
+  // Maia's probability for the answer. Left out, or answering undefined
+  // when Maia can't be reached, puzzles are made as before without it.
+  findable?: Findable
 }
 
 // A puzzle the player can't be shown within a few moves is not a
@@ -82,6 +90,49 @@ export function isUnique(lines: SearchResult[], marginCp: number): boolean {
   return toCp(best) - toCp(second) >= marginCp
 }
 
+// A second line this far ahead also wins: 500 is where verdictOf
+// (src/server/packet.ts) starts to call a position winning. The best move is
+// then one of several that convert, and a player who picks another is right.
+export const ALSO_WINS_CP = 500
+
+// A mate the solution can play out in full is still its own answer, since
+// ending the game is not the same as staying ahead. A longer one is only a
+// number to the player, so it is compared like any other eval.
+export function secondAlsoWins(lines: SearchResult[], maxSolutionMoves: number): boolean {
+  const [best, second] = lines
+  if (!best || !second) return false
+  if (isMate(best) && best.eval.mate! <= maxSolutionMoves) return false
+  return povCp(second.eval, 'white') >= ALSO_WINS_CP
+}
+
+// A quiet best move with nothing to show for it has to beat the second line
+// by a minor piece (300). A smaller edge that only depth finds is not
+// something the player can check on the board.
+export const QUIET_GAP_CP = 300
+
+// What a player can see in the best move: it takes, checks or promotes, its
+// line holds a named pattern (motifs.ts), it attacks something that was not
+// loose before or saves something that was, or it changes a feature the
+// explanation can name (features.ts)
+export function hasPoint(fen: string, pv: string[]): boolean {
+  const line = uciLine(fen, pv)?.replay
+  const before = fromFen(fen)
+  if (!line || !before) return false
+  const m = line.moves[0]
+  if (m.captured || m.check || m.mate || m.promotion) return true
+  if (motifs(line).length) return true
+  const after = line.positions[0]
+  const them = m.color === 'white' ? 'black' : 'white'
+  const squares = (pos: typeof before, color: typeof them) => looseList(pos, color).map(l => l.square)
+  const wasLoose = squares(before, them)
+  if (squares(after, them).some(sq => !wasLoose.includes(sq))) return true
+  const stillLoose = squares(after, m.color)
+  if (squares(before, m.color).some(sq => !stillLoose.includes(sq))) return true
+  return !!featureBlock(fen, m.fenAfter, 'best')?.deltas.length
+}
+
+const gapCp = (lines: SearchResult[]) => povCp(lines[0].eval, 'white') - povCp(lines[1].eval, 'white')
+
 function classify(c: Candidate, prevJudged: boolean, best: SearchResult): { type: PuzzleType; tag: PuzzleTag } {
   const tag: PuzzleTag = isMate(best) ? 'mate' : c.before < 0 ? 'defensive' : 'hang'
   if (prevJudged && c.before >= 200) return { type: 'missed-win', tag }
@@ -99,7 +150,9 @@ export async function generatePuzzles(game: Game, engine: Engine, opts: Generate
       if (hold) puzzles.push(hold)
       continue
     }
+    if (secondAlsoWins(lines, opts.maxSolutionMoves)) continue
     const best = lines[0]
+    if (gapCp(lines) < QUIET_GAP_CP && !hasPoint(c.fen, best.pv)) continue
     // Engine now likes the played move: not a mistake at depth. Compared as
     // SAN because castling is e1h1 in chessops and e1g1 from Stockfish.
     if (sanOf(c.fen, best.pv[0]) === sanOf(c.fen, c.played)) continue
@@ -107,6 +160,9 @@ export async function generatePuzzles(game: Game, engine: Engine, opts: Generate
     // Recapture-only puzzles teach nothing
     const prevMove = game.moves[c.ply - 2]
     if (prevMove && best.pv[0].slice(2, 4) === prevMove.uci.slice(2, 4) && prevMove.san.includes('x')) continue
+
+    const maiaP = await opts.findable?.(game, c.ply, [best.pv[0]])
+    if (maiaP !== undefined && maiaP < MAIA_MIN_P) continue
 
     const solution = await extendSolution(c.fen, best, engine, opts)
     // Over the band cap, this is replay material, not a puzzle
@@ -124,6 +180,7 @@ export async function generatePuzzles(game: Game, engine: Engine, opts: Generate
       type,
       tag,
       swingCp: c.swingCp,
+      ...(maiaP !== undefined ? { maiaP } : {}),
       card: createEmptyCard(),
     })
   }
@@ -146,6 +203,8 @@ async function holdPuzzle(game: Game, c: Candidate, engine: Engine, opts: Genera
   if (holding.length < 2 || holding.length > MAX_HOLDING_MOVES) return undefined
   const played = sanOf(c.fen, c.played)
   if (holding.some(uci => sanOf(c.fen, uci) === played)) return undefined
+  const maiaP = await opts.findable?.(game, c.ply, holding)
+  if (maiaP !== undefined && maiaP < MAIA_MIN_P) return undefined
   return {
     id: `${game.id}:${c.ply}`,
     gameId: game.id,
@@ -158,6 +217,7 @@ async function holdPuzzle(game: Game, c: Candidate, engine: Engine, opts: Genera
     type: 'hang',
     tag: c.before < 0 ? 'defensive' : 'hang',
     swingCp: c.swingCp,
+    ...(maiaP !== undefined ? { maiaP } : {}),
     card: createEmptyCard(),
   }
 }
@@ -178,7 +238,7 @@ async function extendSolution(fen: string, best: SearchResult, engine: Engine, o
     pos.play(parseUci(reply)!)
     const next = await engine.searchLines(makeFen(pos.toSetup()), opts.depth, 2)
     if (!next.length) break
-    const unique = next.length === 1 || isUnique(next, opts.marginCp)
+    const unique = next.length === 1 || (isUnique(next, opts.marginCp) && !secondAlsoWins(next, opts.maxSolutionMoves))
     if (!unique) break
     solution.push(reply, next[0].pv[0])
     pos.play(parseUci(next[0].pv[0])!)

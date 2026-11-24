@@ -120,6 +120,9 @@ export interface Puzzle {
   explanation?: Explanation | string // the "Why?" text, kept so it's only generated once (string: older, unlinked)
   // "Hold" puzzles: every first move that keeps the position (one-move only)
   alternatives?: string[]
+  // Maia-3's probability for the answer a little above the player's level
+  // (src/puzzles/findable.ts); missing when Maia wasn't asked
+  maiaP?: number
   solutionLen: number // player moves in the solution
   type: PuzzleType
   tag: PuzzleTag

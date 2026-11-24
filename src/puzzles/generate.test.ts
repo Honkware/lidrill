@@ -6,7 +6,8 @@ import { Engine, type SearchResult, type UciEngine } from '../analysis/engine'
 import type { Game, Move } from '../db'
 import { bandFromRatings, computeBand } from '../profile'
 import { pgnMoves } from '../sync/pgn'
-import { findCandidates, generatePuzzles, isUnique, povCp, SOLUTION_PLIES_CAP } from './generate'
+import { findLevel, maiaFindable, moreFindable } from './findable'
+import { findCandidates, generatePuzzles, hasPoint, isUnique, povCp, secondAlsoWins, SOLUTION_PLIES_CAP } from './generate'
 
 const require = createRequire(import.meta.url)
 
@@ -67,6 +68,104 @@ describe('uniqueness', () => {
   it('squashes mates to ±1000 for swings', () => {
     expect(povCp({ mate: -2 }, 'white')).toBe(-1000)
     expect(povCp({ cp: 250 }, 'black')).toBe(-250)
+  })
+})
+
+// The evals are Stockfish's at depth 16 on positions from the fixture games
+describe('a second move that also wins', () => {
+  const r = (cp: number | undefined, mate?: number): SearchResult => ({ eval: { cp, mate }, pv: ['e2e4'], depth: 16, multipv: 1 })
+  it('is no puzzle even when the gap clears the margin', () => {
+    // 8/1Rp1ppk1/3r4/8/4B1b1/1P2Q1Pr/6K1/8 w: Qg5+ at +11.3, Qf4 at +6.5
+    expect(isUnique([r(1130), r(654)], 150)).toBe(true)
+    expect(secondAlsoWins([r(1130), r(654)], 3)).toBe(true)
+    // r1bq1rk1/p4p2/3bp3/3p2Np/Np1Pn2P/1P4P1/P1P2P2/R1BQR1K1 w: Rxe4 at +6.8, Qxh5 at +5.1
+    expect(secondAlsoWins([r(676), r(507)], 3)).toBe(true)
+  })
+  it('leaves a puzzle whose second move only keeps an edge', () => {
+    // r1bqkb1r/1pp2ppp/p1n2n2/1B1p4/3NP3/2N5/PPP2PPP/R1BQK2R w: Nxc6 at +6.1, Bxc6+ at +3.0
+    expect(secondAlsoWins([r(614), r(300)], 3)).toBe(false)
+  })
+  it('keeps a mate the solution can play out, and drops one it cannot', () => {
+    // rnbR2nr/p3kBp1/2p5/1p2B3/8/2N5/PPP2RpP/6K1 w: Re8+ mates in 2, Rxc8 is +8.3
+    expect(secondAlsoWins([r(undefined, 2), r(826)], 3)).toBe(false)
+    // 8/1Rp1ppk1/3r4/8/4B1b1/1P2Q1Pr/6K1/8 w at depth 24: mate in 11, Qf4 is +9.1
+    expect(secondAlsoWins([r(undefined, 11), r(911)], 3)).toBe(true)
+  })
+})
+
+describe('a quiet best move', () => {
+  // After 1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. d3 d6 5. O-O Nf6
+  const italian = 'r1bqk2r/ppp2ppp/2np1n2/2b1p3/2B1P3/3P1N2/PPP2PPP/RNBQ1RK1 w kq - 2 6'
+  it('has a point when it takes, checks, attacks or saves something', () => {
+    // Legal's mate starts with a check
+    expect(hasPoint('rn1qkbnr/ppp2pp1/3p3p/4N3/2B1P3/2N5/PPPP1PPP/R1BbK2R w KQkq - 0 6', ['c4f7', 'e8e7', 'c3d5'])).toBe(true)
+    // Nf1 opens the rook's defence of the d4 pawn the queen was about to take
+    expect(hasPoint('r2q1rk1/p1p1pp1p/1p2b3/2n5/2PPPb2/Q7/P2N2BP/R1BR2K1 w - - 0 19', ['d2f1', 'f4e5', 'c1e3'])).toBe(true)
+    // d4 hits the bishop on c5
+    expect(hasPoint(italian, ['d3d4'])).toBe(true)
+  })
+  it('has none when nothing on the board changes hands or comes under attack', () => {
+    expect(hasPoint(italian, ['g1h1'])).toBe(false)
+    expect(hasPoint(italian, ['a2a3'])).toBe(false)
+  })
+
+  const moves = pgnMoves('1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. d3 d6 5. O-O Nf6 6. Ng5 O-O')!.map((m, i) => ({ ...m, eval: { cp: i < 10 ? 30 : -320 } }))
+  const scripted = (best: number) =>
+    ({ searchLines: async () => [{ eval: { cp: best }, pv: ['g1h1'], depth: 16, multipv: 1 }, { eval: { cp: 0 }, pv: ['a2a3'], depth: 16, multipv: 2 }] }) as unknown as Engine
+  const opts = { swingThresholdCp: 300, marginCp: 150, depth: 16, maxSolutionMoves: 3 }
+  it('with no point is a puzzle only when it beats the second move by a minor piece', async () => {
+    expect(await generatePuzzles(game(moves, 'white'), scripted(200), opts)).toEqual([])
+    expect(await generatePuzzles(game(moves, 'white'), scripted(400), opts)).toHaveLength(1)
+  })
+})
+
+describe('findability', () => {
+  const moves = pgnMoves('1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. d3 d6 5. O-O Nf6 6. Ng5 O-O')!.map((m, i) => ({ ...m, eval: { cp: i < 10 ? 30 : -320 } }))
+  const engine = { searchLines: async () => [{ eval: { cp: 700 }, pv: ['d3d4'], depth: 16, multipv: 1 }, { eval: { cp: -400 }, pv: ['a2a3'], depth: 16, multipv: 2 }] } as unknown as Engine
+  const opts = { swingThresholdCp: 300, marginCp: 150, depth: 16, maxSolutionMoves: 3 }
+
+  it('stores Maia\'s probability for the answer on the puzzle', async () => {
+    const [p] = await generatePuzzles(game(moves, 'white'), engine, { ...opts, findable: async () => 0.12 })
+    expect(p.maiaP).toBe(0.12)
+  })
+  it('drops an answer Maia gives under 1 in 100', async () => {
+    expect(await generatePuzzles(game(moves, 'white'), engine, { ...opts, findable: async () => 0.004 })).toEqual([])
+  })
+  it('makes the puzzle without the field when Maia cannot be reached', async () => {
+    const [p] = await generatePuzzles(game(moves, 'white'), engine, { ...opts, findable: async () => undefined })
+    expect(p.solution).toEqual(['d3d4'])
+    expect('maiaP' in p).toBe(false)
+  })
+  it('asks 300 above the game rating, inside the range Maia plays', () => {
+    expect(findLevel(800)).toBe(1100)
+    expect(findLevel(200)).toBe(600)
+    expect(findLevel(2250)).toBe(2300)
+  })
+  it('sends the game up to the puzzle and sums the accepted moves', async () => {
+    const asked: { moves: string[]; level: number }[] = []
+    const fetchFn = (async (_: string, init: { body: string }) => {
+      asked.push(JSON.parse(init.body))
+      return new Response(JSON.stringify({ moves: [{ uci: 'd3d4', p: 0.2 }, { uci: 'c2c3', p: 0.3 }, { uci: 'f3g5', p: 0.1 }] }))
+    }) as unknown as typeof fetch
+    const g = game(moves, 'white', { rating: 1210 })
+    expect(await maiaFindable(fetchFn)(g, 11, ['d3d4', 'c2c3'])).toBeCloseTo(0.5)
+    expect(asked).toEqual([{ moves: moves.slice(0, 10).map(m => m.uci), level: 1510 }])
+  })
+  it('stops asking after one failed request', async () => {
+    let calls = 0
+    const fetchFn = (async () => {
+      calls++
+      throw new TypeError('offline')
+    }) as unknown as typeof fetch
+    const findable = maiaFindable(fetchFn)
+    const g = game(moves, 'white', { rating: 1220 })
+    expect(await findable(g, 11, ['d3d4'])).toBeUndefined()
+    expect(await findable(g, 9, ['d3d4'])).toBeUndefined()
+    expect(calls).toBe(1)
+  })
+  it('sorts findable puzzles first and leaves unrated ones in front', () => {
+    const ps = [{ maiaP: 0.05 }, { maiaP: 0.4 }, {}]
+    expect(ps.sort(moreFindable)).toEqual([{}, { maiaP: 0.4 }, { maiaP: 0.05 }])
   })
 })
 
